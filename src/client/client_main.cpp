@@ -10,7 +10,6 @@ int main(int argc, char* argv[]) {
     char command = '!';
     // socket: server ip
 
-    // Utils *utils = new Utils();
     string usr;
     // readUsername(usr);
     readInput(usr, MAX_NAME_SIZE, "Please, insert your username: ");

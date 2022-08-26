@@ -2,7 +2,7 @@
 
 Client::Client(string username, string srv_ip) {
     this->username = username;
-    server_session = new Session();
+    active_session = new Session();
     send_buffer = (unsigned char*)malloc(MAX_BUF_SIZE);
     if(!send_buffer)
         handleErrors("Malloc error");
@@ -59,7 +59,7 @@ int Client::receiveMsg(int &payload_size) {
 
 /********************************************************************/
 
-void Client::sendUsername() {
+unsigned char* Client::sendUsername() {
     cout << "sendUsername\n";
     int start_index = 0;
     int payload_size = NONCE_SIZE + username.size();
@@ -70,18 +70,20 @@ void Client::sendUsername() {
     */
     //cout << strlen((char*)send_buffer) << endl;
     memset(send_buffer, 0, MAX_BUF_SIZE);
-    server_session->generateNonce();
+    active_session->generateNonce();
     // prepare buffer: | payload_size | nonce_client | username |
     memcpy(send_buffer, (unsigned char*)&payload_size, NUMERIC_FIELD_SIZE);
     start_index += NUMERIC_FIELD_SIZE;
-    memcpy(send_buffer + start_index, server_session->nonce.data(), NONCE_SIZE);
+    memcpy(send_buffer + start_index, active_session->nonce.data(), NONCE_SIZE);
     start_index += NONCE_SIZE;
     memcpy(send_buffer + start_index, username.c_str(), username.size());
     start_index += username.size();
     //sendMsg
-    // server_session->sendMsg(send_buffer, payload_size + NUMERIC_FIELD_SIZE);
+    // active_session->sendMsg(send_buffer, payload_size + NUMERIC_FIELD_SIZE);
     cout << "authentication->sendMsg (nonce, usr)" << endl;
     sendMsg(payload_size);     // dimensione TOTALE del messaggio da inviare -> header + payload
+    
+    return active_session->nonce.data();
 }
 
 bool Client::receiveCertSign(unsigned char*& srv_nonce) {
@@ -113,7 +115,7 @@ bool Client::receiveCertSign(unsigned char*& srv_nonce) {
         handleErrors("Malloc error");
     memcpy(nonce, recv_buffer + start_index, NONCE_SIZE);   // client nonce
     start_index += NONCE_SIZE;
-    if(!server_session->checkNonce(nonce)) {
+    if(!active_session->checkNonce(nonce)) {
         cerr << "Received nonce not valid\n";
         free(nonce);
         return false;
@@ -171,25 +173,25 @@ bool Client::receiveCertSign(unsigned char*& srv_nonce) {
     unsigned char* signed_msg = (unsigned char*)malloc(signed_msg_len);
     if(!signed_msg)
         handleErrors("Malloc error");
-    memcpy(signed_msg, server_session->nonce.data(), NONCE_SIZE);
+    memcpy(signed_msg, active_session->nonce.data(), NONCE_SIZE);
     start_index = NONCE_SIZE;
     memcpy(signed_msg + start_index, srv_nonce, NONCE_SIZE);
     start_index += NONCE_SIZE;
     memcpy(signed_msg + start_index, ECDH_srv_key, ECDH_key_size);
-    if(!server_session->verifyDigSign(dig_sign, dig_sign_len, srv_pubK, signed_msg, signed_msg_len)) {
+    if(!active_session->verifyDigSign(dig_sign, dig_sign_len, srv_pubK, signed_msg, signed_msg_len)) {
         cerr << "Digital Signature not verified" << endl;
         return false;
     }
     cout << " Digital Signature Verified!" << endl;
     free(signed_msg);
     BIO_dump_fp(stdout, (const char*) ECDH_srv_key, ECDH_key_size);
-    server_session->deserializePubKey(ECDH_srv_key, ECDH_key_size, server_session->ECDH_peerKey);
+    active_session->deserializePubKey(ECDH_srv_key, ECDH_key_size, active_session->ECDH_peerKey);
     return true;
 }
 
 void Client::sendSign(unsigned char* srv_nonce) {
     unsigned char* ECDH_my_pub_key = NULL;
-    unsigned int ECDH_my_key_size = server_session->serializePubKey(server_session->ECDH_myKey, ECDH_my_pub_key);
+    unsigned int ECDH_my_key_size = active_session->serializePubKey(active_session->ECDH_myKey, ECDH_my_pub_key);
     
     unsigned char* msg_to_sign = (unsigned char*)malloc(NONCE_SIZE + ECDH_my_key_size);
     if(!msg_to_sign)
@@ -197,7 +199,7 @@ void Client::sendSign(unsigned char* srv_nonce) {
     memcpy(msg_to_sign, srv_nonce, NONCE_SIZE);
     memcpy(msg_to_sign + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
     unsigned char* signed_msg = NULL;
-    int signed_msg_len = server_session->signMsg(msg_to_sign, NONCE_SIZE + ECDH_my_key_size, my_priv_key, signed_msg);
+    int signed_msg_len = active_session->signMsg(msg_to_sign, NONCE_SIZE + ECDH_my_key_size, my_priv_key, signed_msg);
 
     // prepare send buffer
     memset(send_buffer, 0, MAX_BUF_SIZE);
@@ -232,19 +234,19 @@ bool Client::authentication() {
     */
     //cout << strlen((char*)send_buffer) << endl;
     memset(send_buffer, 0, MAX_BUF_SIZE);
-    server_session->generateNonce();
+    active_session->generateNonce();
     // prepare buffer: | payload_size | opcode | nonce_client | username |
     memcpy(send_buffer, (unsigned char*)&payload_size, NUMERIC_FIELD_SIZE);
     start_index += NUMERIC_FIELD_SIZE;
     uint16_t opcode = LOGIN;
     memcpy(send_buffer + start_index, (unsigned char*)&opcode, OPCODE_SIZE);
     start_index += OPCODE_SIZE;
-    memcpy(send_buffer + start_index, server_session->nonce.data(), NONCE_SIZE);
+    memcpy(send_buffer + start_index, active_session->nonce.data(), NONCE_SIZE);
     start_index += NONCE_SIZE;
     memcpy(send_buffer + start_index, username.c_str(), username.size());
     start_index += username.size();
     //sendMsg
-    // server_session->sendMsg(send_buffer, payload_size + NUMERIC_FIELD_SIZE);
+    // active_session->sendMsg(send_buffer, payload_size + NUMERIC_FIELD_SIZE);
     cout << "authentication->sendMsg (nonce, usr)" << endl;
     sendMsg(payload_size);     // dimensione TOTALE del messaggio da inviare -> header + payload
     /*BIO_dump_fp(stdout, (const char*)send_buffer, start_index);    // stampa in esadecimale
@@ -267,23 +269,23 @@ bool Client::authentication() {
     //start_index = 0;
     int received_size = receiveMsg(payload_size);    // return total size received data
 
-    server_session->deserializeKey(ECDH_srv_key, ECDH_key_size, server_session->ECDH_peerKey);
+    active_session->deserializeKey(ECDH_srv_key, ECDH_key_size, active_session->ECDH_peerKey);
     */
     // DONE legge/deserializza msg -> verifica nonce -> verifica cert server -> verifica firma server -> 
     //genera ECDH_key -> prepara buffer&invia -> riceve lista utenti
     
-    server_session->retrievePrivKey("./client/users/" + username + "_key.pem", my_priv_key);
-    server_session->generateECDHKey();
+    active_session->retrievePrivKey("./client/users/" + username + "_key.pem", my_priv_key);
+    active_session->generateECDHKey();
     sendSign(srv_nonce);
     cout << "sendsign serv nonce" << endl;
     /*
     unsigned char* ECDH_my_pub_key = NULL;
-    unsigned int ECDH_my_key_size = server_session->serializeKey(server_session->ECDH_myKey, ECDH_my_pub_key);
+    unsigned int ECDH_my_key_size = active_session->serializeKey(active_session->ECDH_myKey, ECDH_my_pub_key);
     
     */
 
-    server_session->deriveSecret();     // derive secrete & compute session key
-    cout << "server_session derive secret " << endl;
+    active_session->deriveSecret();     // derive secrete & compute session key
+    cout << "active_session derive secret " << endl;
     cout << "authentication> receive users list" << endl;
     receiveFileList();
     return true;
@@ -291,7 +293,7 @@ bool Client::authentication() {
 
 void Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
     // load CA certificate
-    string ca_cert_filename = "./client/SecureChat_CA_cert.pem";    // controllare percorso directory
+    string ca_cert_filename = "./client/FoundationOfCybersecurity_cert.pem";    // controllare percorso directory
     FILE* ca_cert_file = fopen(ca_cert_filename.c_str(), "r");
     if(!ca_cert_file) {
         handleErrors("CA_cert file doesn't exist");
@@ -303,7 +305,7 @@ void Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
         handleErrors("PEM_read_X509 returned NULL");
 
     // load the CRL
-    string crl_filename = "./client/SecureChat_CA_crl.pem";
+    string crl_filename = "./client/FoundationOfCybersecurity_crl.pem";
     FILE* crl_file = fopen(crl_filename.c_str(), "r");
     if(!crl_file) 
         handleErrors("CRL file doesn't exist");
@@ -389,11 +391,11 @@ void Client::showCommands() {
     cout << "\n-----------------------------------------------\n";
     cout << "Commands menu" << endl;
     cout << "!help -> show this commands list" << endl;
-    cout << "!list -> show available users list" << endl;
-    cout << "!upload -> " << endl;
-    cout << "!download -> " << endl;
-    cout << "!rename -> " << endl;
-    cout << "!delete -> " << endl;
+    cout << "!list -> show available file list" << endl;
+    cout << "!upload -> upload an existing file in your cloud storage" << endl;
+    cout << "!download -> download a file from your cloud storage" << endl;
+    cout << "!rename -> rename a file in your cloud storage" << endl;
+    cout << "!delete -> delete a file from your cloud storage" << endl;
     cout << "!exit -> logout from server and exit program" << endl;
 
 }
@@ -405,29 +407,33 @@ bool Client::handlerCommand(string& command) {
     if(command.compare("!help") == 0)
         showCommands();
     else if(command.compare("!list") == 0) {
-        // opcode 2
+        // opcode 8
         requestFileList();
         /*
         string msg = "Available users?";
-        server_session->userList((unsigned char*)msg.c_str(), msg.length());*/
-        // se unsigned char msg[] => server_session->userList(msg, sizeof(msg));
-    } /*else if(command.compare("!rtt") == 0) {
+        active_session->userList((unsigned char*)msg.c_str(), msg.length());*/
+        // se unsigned char msg[] => active_session->userList(msg, sizeof(msg));
+    } else if(command.compare("!upload") == 0) {
+        // opcode 1
+        // TODO
+        uploadFile();    // username saved in class member
+    } else if(command.compare("!download") == 0) {
+        // opcode 2
+        // TODO
+        downloadFile();
+    } else if(command.compare("!rename") == 0) {
         // opcode 3
-        chat_username.clear();
-        requestToTalk();    // username saved in class member
-    } else if(command.compare("!quit") == 0) {
-        // quit chat - opcode 8
-        if(!isChatting) {
-            cout << "Command not available. If you want to logout, type \"!exit\"" << endl;
-            return false;
-        }
-        quitChat();
+        // TODO
+        renameFile();    // username saved in class member
+    } else if(command.compare("!delete") == 0) {
+        // opcode 4
+        // TODO
+        deleteFile();
     } else if(command.compare("!exit") == 0) {
-        // logout from server - opcode 0
-        if(isChatting)
-            quitChat();
+        // logout from server - opcode 10
+        // TODO
         logout();        
-    }*/ else {
+    } else {
         cout << "Invalid command" << endl;
         return false;
     }
@@ -439,7 +445,7 @@ void Client::requestFileList() {
     // opcode 2
     string msg = "Available files?";
     memset(send_buffer, 0, MAX_BUF_SIZE);
-    int payload_size = server_session->fileList((unsigned char*)msg.c_str(), msg.length(), send_buffer);    // prepare msg to send
+    int payload_size = active_session->fileList((unsigned char*)msg.c_str(), msg.length(), send_buffer);    // prepare msg to send
     sendMsg(payload_size);
 
     receiveFileList();
@@ -451,7 +457,7 @@ void Client::receiveFileList() {
     int aad_len;
     int payload_size;
     int received_size = receiveMsg(payload_size);
-    int list_len = server_session->decryptMsg(recv_buffer + NUMERIC_FIELD_SIZE, payload_size, aad, aad_len, user_list);
+    int list_len = active_session->decryptMsg(recv_buffer + NUMERIC_FIELD_SIZE, payload_size, aad, aad_len, user_list);
     uint16_t opcode = *(unsigned short*)(aad + NUMERIC_FIELD_SIZE);
     if(opcode == 0) {
         string errorMsg((const char*)user_list, strlen((char*)user_list));
@@ -468,7 +474,9 @@ void Client::receiveFileList() {
     cout << "Available files:\n" << list << endl;
 }
 
+// TODO
 void Client::logout() {
+    // deallocare tutte le risorse utilizzate e chiudere il socket di connessione col server
 
 }
 
