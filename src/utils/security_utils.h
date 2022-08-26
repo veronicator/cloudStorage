@@ -45,7 +45,7 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 
 void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 
-int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
+//int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
 /*
 struct UserInfo {
     string username;    // client username
@@ -76,7 +76,7 @@ class Session {
         // Session utils
         uint createAAD(unsigned char* aad, uint16_t opcode); // return aad_len
         void generateRandomValue(unsigned char* new_value, int value_size);
-        // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input ancd put in "input" string
+        // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input and put in "input" string
 
         void retrievePrivKey(string path, EVP_PKEY*& key);  // retrieve its own private key from pem file
         void computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);

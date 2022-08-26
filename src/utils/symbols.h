@@ -14,16 +14,22 @@
 #define HELP 11
 #define ERROR 12
 
+// whitelist
+#define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"
+#define FILENAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890+-_.!@#$%^&()~"
+
 // Server info
 #define SRV_PORT 4242
 
 // Variables size
 // TODO
-#define MAX_COMMAND_SIZE 5
+#define MAX_COMMAND_SIZE 10
 #define MAX_NAME_SIZE 20
 #define MAX_CLIENTS 20
+// to check/decide size
 #define MAX_MSG_SIZE 10000
 #define MAX_BUF_SIZE 20000
+//
 #define NUMERIC_FIELD_SIZE sizeof(uint32_t)   // size (in bytes) of fields containing dimension
 #define OPCODE_SIZE sizeof(uint16_t)
 

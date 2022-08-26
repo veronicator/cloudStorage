@@ -206,6 +206,7 @@ int Server::receiveMsg(int& payload_size, int sockd, vector<unsigned char>& recv
     if(payload_size != msg_size - (int)NUMERIC_FIELD_SIZE)
         handleErrors("recv_buffer size error", sockd);
 
+    // remove the first field of the message, containing the payload size
     recv_buf.erase(recv_buf.begin(), recv_buf.begin() + NUMERIC_FIELD_SIZE);
     cout << "recv size buf: " << recv_buf.size() << endl;
 
@@ -225,10 +226,10 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
 
     // retrieve server private key
     EVP_PKEY* srv_priv_k;
-    usr.client_session->retrievePrivKey("./server/ServerChat_key.pem", srv_priv_k);
+    usr.client_session->retrievePrivKey("./server/Server_key.pem", srv_priv_k);
 
     // retrieve e serialize server certificate
-    string cert_file_name = "./server/ServerChat_cert.pem";
+    string cert_file_name = "./server/Server_cert.pem";
     FILE* cert_file = fopen(cert_file_name.c_str(), "r");
     if(!cert_file) { 
         handleErrors("Server_cert file doesn't exist", sockd);

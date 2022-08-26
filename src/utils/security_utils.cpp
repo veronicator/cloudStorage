@@ -13,6 +13,7 @@ void handleErrors(const char *error) {
     exit(1);
 }
 
+/* manage the error and close the socket used with the client that has the error */
 void handleErrors(const char *error, int sockd) {
     perror(error);
     close(sockd);
@@ -45,6 +46,7 @@ void readInput(string& input, const int MAX_SIZE, string msg = "") {
     } while (!ok);  // (input.length() == 0 || input.length() > MAX_SIZE || input.find_first_not_of(ok_chars) != string::npos);
 }
 
+/*
 int buffer_copy(unsigned char*& dest, unsigned char* src, int len) {
     dest = (unsigned char*)malloc(len);
     if(!dest)
@@ -52,6 +54,7 @@ int buffer_copy(unsigned char*& dest, unsigned char* src, int len) {
     memcpy(dest, src, len);
     return len;
 }
+*/
 
 /********************************************************************/
 
