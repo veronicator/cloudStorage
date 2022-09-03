@@ -13,9 +13,6 @@ struct UserInfo {
     //unsigned char *recv_buffer;
     //vector<unsigned char> send_buffer;
     //vector<unsigned char> recv_buffer;
-    // chat
-    string chat_user;   // client username chatting with
-    int chat_sockd;     // client_chat socket descriptor ?
 
     UserInfo(int sd, string name);
     //UserInfo();

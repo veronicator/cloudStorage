@@ -208,7 +208,7 @@ void Session::generateECDHKey() {
     EVP_PKEY* DH_params = NULL;
     EVP_PKEY_CTX* param_ctx;
     
-    if(!(param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL)))    // puts the parametesa for EC in the context
+    if(!(param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL)))    // puts the parameters for EC in the context
         handleErrors();
     if(EVP_PKEY_paramgen_init(param_ctx) != 1)
         handleErrors();

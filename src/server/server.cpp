@@ -206,6 +206,7 @@ int Server::receiveMsg(int& payload_size, int sockd, vector<unsigned char>& recv
     if(payload_size != msg_size - (int)NUMERIC_FIELD_SIZE)
         handleErrors("recv_buffer size error", sockd);
 
+    // TODO: trovare soluzione alternativa invece di cancellare gli elementi dal vector ?
     // remove the first field of the message, containing the payload size
     recv_buf.erase(recv_buf.begin(), recv_buf.begin() + NUMERIC_FIELD_SIZE);
     cout << "recv size buf: " << recv_buf.size() << endl;
