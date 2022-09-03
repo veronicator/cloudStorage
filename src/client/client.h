@@ -17,6 +17,10 @@ class Client {
 
     /***** utility methods *****/
 
+    // new sed/receive
+    void sendMsg(int payload_size, unsigned char *to_send);
+    int receiveMsg(int &payload_size, unsigned char *&to_receive);
+
     void sendMsg(int msg_dim);       //dopo invio: deallocare buffer
     int receiveMsg(int& payload_size);    // restituisce lunghezza totale messaggio ricevuto, msg_size
 

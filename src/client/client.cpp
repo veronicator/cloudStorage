@@ -25,6 +25,44 @@ void Client::createSocket(string srv_ip) {
 }
 
 /********************************************************************/
+// send/receive alternative version
+
+void Client::sendMsg(int payload_size, unsigned char *to_send) {
+    cout << "sendMsg new" << endl;
+    if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE)
+        handleErrors("Message to send too big");
+    payload_size += NUMERIC_FIELD_SIZE;
+    if(send(sd, to_send, payload_size, 0) < payload_size)
+        handleErrors("Socket Send error");
+    free(to_send);
+    
+ }
+
+ int Client::receiveMsg(int &payload_size, unsigned char *&to_receive) {
+    cout << "receiveMsg new" << endl;
+
+    int msg_size = 0;
+    if (to_receive != NULL) {
+        free(to_receive);
+    }
+    to_receive = (unsigned char*)malloc(MAX_BUF_SIZE);
+    memset(to_receive, 0, MAX_BUF_SIZE);
+    msg_size = recv(sd, to_receive, MAX_BUF_SIZE-1, 0);
+    cout << "msg size: " << msg_size << endl;
+
+    if(msg_size < (unsigned int)NUMERIC_FIELD_SIZE)
+        handleErrors("Socket receive error");
+    payload_size = *(unsigned int*)(to_receive);
+    cout << payload_size << " payload received" << endl;
+    //check if received all data
+    if(payload_size != msg_size - NUMERIC_FIELD_SIZE)
+        handleErrors("recv_buffer size error");
+
+    return msg_size;
+
+ }
+
+/********************************************************************/
 
 void Client::sendMsg(int msg_size) {
     cout << "sendMsg" << endl;
@@ -59,10 +97,80 @@ int Client::receiveMsg(int &payload_size) {
 
 /********************************************************************/
 
+bool Client::authentication() {
+    cout << "Client->autentication\n";
+    int start_index = 0;
+    int payload_size = OPCODE_SIZE + NONCE_SIZE + username.size();
+    //unsigned char *buffer_msg = sostituito con this->send_buffer
+    /* send_buffer = (unsigned char*)malloc(NUMERIC_FIELD_SIZE + payload_size);
+    if(!send_buffer)
+        handleErrors("Malloc error"); 
+    */
+    //cout << strlen((char*)send_buffer) << endl;
+    memset(send_buffer, 0, MAX_BUF_SIZE);
+    active_session->generateNonce();
+    // prepare buffer: | payload_size | opcode | nonce_client | username |
+    memcpy(send_buffer, (unsigned char*)&payload_size, NUMERIC_FIELD_SIZE);
+    start_index += NUMERIC_FIELD_SIZE;
+    uint16_t opcode = LOGIN;
+    memcpy(send_buffer + start_index, (unsigned char*)&opcode, OPCODE_SIZE);
+    start_index += OPCODE_SIZE;
+    memcpy(send_buffer + start_index, active_session->nonce.data(), NONCE_SIZE);
+    start_index += NONCE_SIZE;
+    memcpy(send_buffer + start_index, username.c_str(), username.size());
+    start_index += username.size();
+    //sendMsg
+    // active_session->sendMsg(send_buffer, payload_size + NUMERIC_FIELD_SIZE);
+    cout << "authentication->sendMsg (nonce, usr)" << endl;
+    sendMsg(payload_size);     // dimensione del messaggio da inviare -> solo payload, l'header viene aggiunto in sendMsg
+    /*BIO_dump_fp(stdout, (const char*)send_buffer, start_index);    // stampa in esadecimale
+    cout << payload_size << " buffer len" << strlen((char*)send_buffer) << endl;
+    for(int i=0; i<start_index; i++) {
+        cout << send_buffer[i];
+    }
+    cout << endl;*/
+
+    // receive server cert e ECDH_server_key
+    cout << "authentication->receiveMsg" << endl;
+    unsigned char* srv_nonce = (unsigned char*)malloc(NONCE_SIZE);
+    if(!srv_nonce)
+        handleErrors("Malloc error");
+    if(!receiveCertSign(srv_nonce)) {
+        cerr << "receiveVerifyCert failed" << endl;
+        return false;
+    }
+    /*
+    //start_index = 0;
+    int received_size = receiveMsg(payload_size);    // return total size received data
+
+    active_session->deserializeKey(ECDH_srv_key, ECDH_key_size, active_session->ECDH_peerKey);
+    */
+    // DONE legge/deserializza msg -> verifica nonce -> verifica cert server -> verifica firma server -> 
+    //genera ECDH_key -> prepara buffer&invia -> riceve lista utenti
+    
+    active_session->retrievePrivKey("./client/users/" + username + "_key.pem", my_priv_key);
+    active_session->generateECDHKey();
+    sendSign(srv_nonce);
+    cout << "sendsign serv nonce" << endl;
+    /*
+    unsigned char* ECDH_my_pub_key = NULL;
+    unsigned int ECDH_my_key_size = active_session->serializeKey(active_session->ECDH_myKey, ECDH_my_pub_key);
+    
+    */
+
+    active_session->deriveSecret();     // derive secrete & compute session key
+    cout << "active_session derive secret " << endl;
+    cout << "authentication> receive users list" << endl;
+    receiveFileList();
+    return true;
+}
+
+/********************************************************************/
+
 unsigned char* Client::sendUsername() {
     cout << "sendUsername\n";
     int start_index = 0;
-    int payload_size = NONCE_SIZE + username.size();
+    int payload_size = OPCODE_SIZE + NONCE_SIZE + username.size();
     //unsigned char *buffer_msg = sostituito con this->send_buffer
     /* send_buffer = (unsigned char*)malloc(NUMERIC_FIELD_SIZE + payload_size);
     if(!send_buffer)
@@ -79,7 +187,6 @@ unsigned char* Client::sendUsername() {
     memcpy(send_buffer + start_index, username.c_str(), username.size());
     start_index += username.size();
     //sendMsg
-    // active_session->sendMsg(send_buffer, payload_size + NUMERIC_FIELD_SIZE);
     cout << "authentication->sendMsg (nonce, usr)" << endl;
     sendMsg(payload_size);     // dimensione TOTALE del messaggio da inviare -> header + payload
     
@@ -223,73 +330,8 @@ void Client::sendSign(unsigned char* srv_nonce) {
     cout << "sendSign end" << endl;
 }
 
-bool Client::authentication() {
-    cout << "Client->autentication\n";
-    int start_index = 0;
-    int payload_size = OPCODE_SIZE + NONCE_SIZE + username.size();
-    //unsigned char *buffer_msg = sostituito con this->send_buffer
-    /* send_buffer = (unsigned char*)malloc(NUMERIC_FIELD_SIZE + payload_size);
-    if(!send_buffer)
-        handleErrors("Malloc error"); 
-    */
-    //cout << strlen((char*)send_buffer) << endl;
-    memset(send_buffer, 0, MAX_BUF_SIZE);
-    active_session->generateNonce();
-    // prepare buffer: | payload_size | opcode | nonce_client | username |
-    memcpy(send_buffer, (unsigned char*)&payload_size, NUMERIC_FIELD_SIZE);
-    start_index += NUMERIC_FIELD_SIZE;
-    uint16_t opcode = LOGIN;
-    memcpy(send_buffer + start_index, (unsigned char*)&opcode, OPCODE_SIZE);
-    start_index += OPCODE_SIZE;
-    memcpy(send_buffer + start_index, active_session->nonce.data(), NONCE_SIZE);
-    start_index += NONCE_SIZE;
-    memcpy(send_buffer + start_index, username.c_str(), username.size());
-    start_index += username.size();
-    //sendMsg
-    // active_session->sendMsg(send_buffer, payload_size + NUMERIC_FIELD_SIZE);
-    cout << "authentication->sendMsg (nonce, usr)" << endl;
-    sendMsg(payload_size);     // dimensione TOTALE del messaggio da inviare -> header + payload
-    /*BIO_dump_fp(stdout, (const char*)send_buffer, start_index);    // stampa in esadecimale
-    cout << payload_size << " buffer len" << strlen((char*)send_buffer) << endl;
-    for(int i=0; i<start_index; i++) {
-        cout << send_buffer[i];
-    }
-    cout << endl;*/
 
-    // receive server cert e ECDH_server_key
-    cout << "authentication->receiveMsg" << endl;
-    unsigned char* srv_nonce = (unsigned char*)malloc(NONCE_SIZE);
-    if(!srv_nonce)
-        handleErrors("Malloc error");
-    if(!receiveCertSign(srv_nonce)) {
-        cerr << "receiveVerifyCert failed" << endl;
-        return false;
-    }
-    /*
-    //start_index = 0;
-    int received_size = receiveMsg(payload_size);    // return total size received data
-
-    active_session->deserializeKey(ECDH_srv_key, ECDH_key_size, active_session->ECDH_peerKey);
-    */
-    // DONE legge/deserializza msg -> verifica nonce -> verifica cert server -> verifica firma server -> 
-    //genera ECDH_key -> prepara buffer&invia -> riceve lista utenti
-    
-    active_session->retrievePrivKey("./client/users/" + username + "_key.pem", my_priv_key);
-    active_session->generateECDHKey();
-    sendSign(srv_nonce);
-    cout << "sendsign serv nonce" << endl;
-    /*
-    unsigned char* ECDH_my_pub_key = NULL;
-    unsigned int ECDH_my_key_size = active_session->serializeKey(active_session->ECDH_myKey, ECDH_my_pub_key);
-    
-    */
-
-    active_session->deriveSecret();     // derive secrete & compute session key
-    cout << "active_session derive secret " << endl;
-    cout << "authentication> receive users list" << endl;
-    receiveFileList();
-    return true;
-}
+/********************************************************************/
 
 void Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
     // load CA certificate
