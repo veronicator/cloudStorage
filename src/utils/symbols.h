@@ -25,10 +25,11 @@
 // TODO
 #define MAX_COMMAND_SIZE 10
 #define MAX_NAME_SIZE 20
-#define MAX_CLIENTS 20
+#define MAX_CLIENTS 50
 // to check/decide size
 #define MAX_MSG_SIZE 10000
 #define MAX_BUF_SIZE 20000
+#define FRAGM_SIZE 16384  // 16 KiB - dimensione frammento del file da inviare
 //
 #define NUMERIC_FIELD_SIZE sizeof(uint32_t)   // size (in bytes) of fields containing dimension
 #define OPCODE_SIZE sizeof(uint16_t)
