@@ -23,6 +23,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <regex.h>
+#include <regex>
 #include "symbols.h"
 
 using namespace std;
@@ -46,6 +47,8 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 //void readUsername(string& usr);
 
 void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
+
+void readFilenameInput(string& input, string msg);  
 
 //int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
 /*

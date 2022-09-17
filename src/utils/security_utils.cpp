@@ -23,6 +23,18 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
+void readFilenameInput(string& input, string msg = "") {
+    bool string_ok = false;
+    do{
+        cout<<msg<<endl;
+        getline(std::cin, input);
+        if(input.empty()) return;
+        const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+        string_ok = regex_match(input, re);
+    }
+    while(!string_ok);
+}
+
 
 void readInput(string& input, const int MAX_SIZE, string msg = "") {
     string ok_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!";

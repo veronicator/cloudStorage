@@ -552,7 +552,7 @@ void Client::uploadFile(){
     cout<<"*********     Upload File      *********"<<endl;
     cout<<"****************************************"<<endl;
 
-    readInput(filename, MAX_NAME_SIZE, "Insert file name");
+    readFilenameInput(filename, "Insert file name:");
     plaintext = (unsigned char*)malloc(filename.length() + sizeof(uint64_t));
     copy(filename.begin(), filename.end(), plaintext);
     filedimension = searchFile(filename);
