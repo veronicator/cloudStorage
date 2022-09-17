@@ -16,6 +16,7 @@
 #include <arpa/inet.h>  // htonl/ntohl
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <thread>

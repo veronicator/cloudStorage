@@ -1,7 +1,7 @@
 // TODO: ADD WHITELIST (FOR FILENAME)
 // Operation codes
 #define LOGIN 0
-#define UPLOADE_REQ 1
+#define UPLOAD_REQ 1
 #define DOWNLOAD_REQ 2
 #define RENAME_REQ 3
 #define DELETE_REQ 4
@@ -30,9 +30,11 @@
 #define MAX_MSG_SIZE 10000
 #define MAX_BUF_SIZE 20000
 #define FRAGM_SIZE 16384  // 16 KiB - dimensione frammento del file da inviare
+#define MAX_FILE_DIMENSION 4294967296
 //
 #define NUMERIC_FIELD_SIZE sizeof(uint32_t)   // size (in bytes) of fields containing dimension
 #define OPCODE_SIZE sizeof(uint16_t)
+#define AAD_SIZE (sizeof(uint32_t) + sizeof(uint16_t))
 
 #define NONCE_SIZE 4
 

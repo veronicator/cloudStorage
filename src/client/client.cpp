@@ -526,10 +526,68 @@ void Client::sendErrorMsg(string errorMsg) {
 
 }
 
-void Client::uploadFile(){}
+uint64_t Client::searchFile(string filename){
+    string path = "./users/" + this->username + "/upload/" + filename;
+    struct stat buffer;
+    if(stat(path.c_str(), &buffer) != 0){
+        cout<<"File not present"<<endl;
+        return -1;
+    }
+    if(buffer.st_size > MAX_FILE_DIMENSION){
+        cout<<"File too big"<<endl;
+        return -1;
+    }
+    return buffer.st_size;
+}
+
+void Client::uploadFile(){
+    string filename;
+    uint64_t filedimension;
+    unsigned char* aad;
+    unsigned char* plaintext;
+    unsigned char* cyphertext; //to be allocated with malloc of the right size
+
+    aad = (unsigned char*)malloc(AAD_SIZE); //to be changed in AAD_UPLOAD_SIZE if filename.length must be sent in AAD
+    cout<<"****************************************"<<endl;
+    cout<<"*********     Upload File      *********"<<endl;
+    cout<<"****************************************"<<endl;
+
+    readInput(filename, MAX_NAME_SIZE, "Insert file name");
+    plaintext = (unsigned char*)malloc(filename.length() + sizeof(uint64_t));
+    copy(filename.begin(), filename.end(), plaintext);
+    filedimension = searchFile(filename);
+    memcpy(plaintext, (unsigned char*)filedimension, sizeof(uint64_t));
+    this->active_session->encryptMsg(plaintext, sizeof(plaintext), aad, AAD_SIZE, cyphertext);
+
+    //send the basic information of the upload operation
+    //to be sent: <count_cs, op_code=1, {fileName, fileSize}_Kcs>
+
+    this->active_session->createAAD(aad, UPLOAD_REQ);
+    this->active_session->encryptMsg(plaintext, strlen((char*)plaintext), aad, strlen((char*)aad), cyphertext);
+
+    //server response: <count_sc, op_code=1, {ResponseMsg}_Kcs>
+
+    //start of the upload
+    //to be sent: <count_cs, op_code=5, {chunk_i}_Kcs>
+
+    //server response: <count_sc, op_code=5, {ResponseMsg}_Kcs>
+}
 
 void Client::downloadFile(){}
 
-void Client::renameFile(){}
+void Client::renameFile(){
+    string old_filename, new_filename;
+    cout<<"****************************************"<<endl;
+    cout<<"*********     Rename File      *********"<<endl;
+    cout<<"****************************************"<<endl;
+
+    readInput(old_filename, MAX_NAME_SIZE, "Insert the name of the file to be changed");
+    readInput(new_filename, MAX_NAME_SIZE, "Insert the new name of the file ");
+
+    //send the information of the rename operation
+    //to be sent: <count_cs, opcode=3, {old_filename, new_filename}_Kcs>
+
+    //server response: <count_sc, op_code=3, {ResponseMsg}_Kcs>
+}
 
 void Client::deleteFile(){}

@@ -39,6 +39,7 @@ class Client {
     void logout();  // dealloca tutto ed esce
     // TODO: implementare/modificare come serve 
         // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
+    uint64_t searchFile(string filename);
     void uploadFile();
     void downloadFile();
     void renameFile();
