@@ -191,6 +191,7 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 
 /********************************************************************/
 
+
 void Session::generateNonce() {
     /*nonce = (unsigned char*)malloc(NONCE_SIZE);
     if(!nonce)
@@ -611,6 +612,8 @@ int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char*& outp
 
 Session::~Session(){
     free(session_key);
+    EVP_PKEY_free(ECDH_myKey);
+    EVP_PKEY_free(ECDH_peerKey);
     nonce.fill('0');
     //free(nonce);
     //free(iv);

@@ -61,6 +61,7 @@ class Session {
     uint32_t send_counter = 1;
     uint32_t rcv_counter = 0;
 
+
     void incrementCounter(uint32_t& counter);
     void computeSessionKey(unsigned char* secret, int slen);  //shared secret -> session key
 
@@ -68,8 +69,8 @@ class Session {
         EVP_PKEY* ECDH_myKey = NULL;    // ephimeral 
         EVP_PKEY* ECDH_peerKey = NULL;  // ephimeral
         //unsigned char* ECDH_myPubKey;  // serialized ecdh public key, to send
-        array<unsigned char, NONCE_SIZE> nonce;
         //unsigned char* iv;
+        array<unsigned char, NONCE_SIZE> nonce;
 
         Session() {};
         ~Session(); //deallocare tutti i vari buffer utilizzati: session_key ecc
@@ -79,6 +80,8 @@ class Session {
         void generateRandomValue(unsigned char* new_value, int value_size);
         // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input and put in "input" string
 
+        EVP_PKEY* get_peerKey();
+
         void retrievePrivKey(string path, EVP_PKEY*& key);  // retrieve its own private key from pem file
         void computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);
         unsigned int signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char*& dig_sign);   // return dig sign length
@@ -86,6 +89,7 @@ class Session {
 
         void generateNonce();
         bool checkNonce(unsigned char *received_nonce);
+
         void generateECDHKey();    //generate ECDH key pair and return the public key
         void deriveSecret();
 
