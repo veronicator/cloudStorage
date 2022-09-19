@@ -5,8 +5,10 @@ class Client {
     //EVP_PKEY *my_priv_key;  // togliere?
     Session *active_session;
 
-    unsigned char *send_buffer;
-    unsigned char *recv_buffer;
+    //unsigned char *send_buffer;
+    //unsigned char *recv_buffer;
+    array<unsigned char, MAX_BUF_SIZE> send_buffer;
+    array<unsigned char, MAX_BUF_SIZE> recv_buffer;
 
     /********* socket *********/
     int sd; // socket descriptor
@@ -30,7 +32,7 @@ class Client {
 
     // methods invoked during the authentication phase -> never called from outside class -> can be private
     int sendUsername();
-    bool receiveCertSign(unsigned char*& srv_nonce);    // receive (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
+    bool receiveCertSign(unsigned char* srv_nonce);    // receive (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
     void sendSign(unsigned char* srv_nonce, EVP_PKEY *priv_k);
 
     // methods invoked by handlerCommand method -> only from inside -> can be private
