@@ -578,7 +578,7 @@ unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsi
 
 /********************************************************************/
 
-int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char*& output_buf) {
+int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf) {
     unsigned char *aad = (unsigned char*)malloc(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
     if(!aad)
         handleErrors("Malloc error");

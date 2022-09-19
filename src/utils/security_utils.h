@@ -104,7 +104,7 @@ class Session {
         //unsigned int decryptMsg(unsigned char *ciphertext, int ct_len, int aad_len, unsigned char *plaintext, unsigned char *rcv_iv, unsigned char *tag);  // dencrypt received message and return message (pt) length
         unsigned int decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *&aad, int &aad_len, unsigned char *&plaintext);  // dencrypt received message and return message (pt) length
         
-        int fileList(unsigned char *plaintext, int pt_len, unsigned char*& output_buf);    // return payload size
+        int fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf);    // return payload size
         //encrypt/decrypt()
         /* 
          * deriva shared secret
