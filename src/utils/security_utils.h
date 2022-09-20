@@ -70,7 +70,7 @@ class Session {
         EVP_PKEY* ECDH_peerKey = NULL;  // ephimeral
         //unsigned char* ECDH_myPubKey;  // serialized ecdh public key, to send
         //unsigned char* iv;
-        array<unsigned char, NONCE_SIZE> nonce;
+        //array<unsigned char, NONCE_SIZE> nonce;
 
         Session() {};
         ~Session(); //deallocare tutti i vari buffer utilizzati: session_key ecc
@@ -88,7 +88,9 @@ class Session {
         bool verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, EVP_PKEY* pub_key, unsigned char* msg_buf, unsigned int msg_len);
 
         void generateNonce();
+        void generateNonce(unsigned char *nonce);
         bool checkNonce(unsigned char *received_nonce);
+        bool checkNonce(unsigned char *received_nonce, unsigned char *sent_nonce);
 
         void generateECDHKey();    //generate ECDH key pair and return the public key
         void deriveSecret();

@@ -192,15 +192,19 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 /********************************************************************/
 
 
-void Session::generateNonce() {
+/*void Session::generateNonce() {
+    generateRandomValue(nonce.data(), NONCE_SIZE);    
+}*/
+
+void Session::generateNonce(unsigned char *nonce) {
     /*nonce = (unsigned char*)malloc(NONCE_SIZE);
     if(!nonce)
         handleErrors("Malloc error");*/
-    generateRandomValue(nonce.data(), NONCE_SIZE);    
+    generateRandomValue(nonce, NONCE_SIZE);    
 }
 
-bool Session::checkNonce(unsigned char* received_nonce) {
-    return memcmp(received_nonce, nonce.data(), NONCE_SIZE) == 0;
+bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonce) {
+    return memcmp(received_nonce, sent_nonce, NONCE_SIZE) == 0;
 }
 
 void Session::generateECDHKey() {
@@ -274,7 +278,7 @@ void Session::deriveSecret() {
 
     free(shared_secret);
     // free(nonce);
-    nonce.fill('0');
+    //nonce.fill('0');
 }
 
 /********************************************************************/
@@ -614,7 +618,7 @@ Session::~Session(){
     free(session_key);
     EVP_PKEY_free(ECDH_myKey);
     EVP_PKEY_free(ECDH_peerKey);
-    nonce.fill('0');
+    //nonce.fill('0');
     //free(nonce);
     //free(iv);
 }
