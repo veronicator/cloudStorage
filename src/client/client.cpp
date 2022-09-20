@@ -43,7 +43,7 @@ void Client::createSocket(string srv_ip) {
 }
 
 /********************************************************************/
-// send/receive alternative version
+// send/receive
 
 /**
  * send a message to the server
@@ -98,7 +98,7 @@ int Client::sendMsg(int payload_size) {
         return -1;
     }
 
-    uint32_t payload_n = *(unsigned int*)(receiver.data());
+    uint32_t payload_n = *(uint32_t*)(receiver.data());
     uint32_t payload_size = ntohl(payload_n);
     cout << payload_size << " received payload length" << endl;
     //check if received all data
@@ -121,8 +121,12 @@ int Client::sendMsg(int payload_size) {
 
 bool Client::authentication() {
     cout << "Client->autentication\n";
+    
+    array<unsigned char, NONCE_SIZE> client_nonce;
+    vector<unsigned char> server_nonce(NONCE_SIZE);
+
     // M1
-    if(sendUsername() != 1) {
+    if(sendUsername(client_nonce) != 1) {
         cerr << "Authentication failed" << endl;
     }
     
@@ -156,7 +160,7 @@ bool Client::authentication() {
 
     // M2: receive server cert e ECDH_server_key
     cout << "authentication->receiveMsg" << endl;
-    array<unsigned char, NONCE_SIZE> server_nonce;
+    vector<unsigned char> server_nonce(NONCE_SIZE);
     /*unsigned char* srv_nonce = (unsigned char*)malloc(NONCE_SIZE);
     if(!srv_nonce) {
         cerr << "Malloc failed " << endl;
@@ -165,7 +169,7 @@ bool Client::authentication() {
     }
     */
     // receive M2
-    if(!receiveCertSign(server_nonce.data())) {
+    if(!receiveCertSign(client_nonce, server_nonce)) {
         cerr << "receiveVerifyCert failed" << endl;
         return false;
     }
@@ -181,9 +185,9 @@ bool Client::authentication() {
     EVP_PKEY *my_priv_key;
     active_session->retrievePrivKey("./client/users/" + username + "/" + username + "_key.pem", my_priv_key);
     active_session->generateECDHKey();
-    sendSign(server_nonce.data(), my_priv_key);
+    sendSign(server_nonce, my_priv_key);
     cout << "sendsign serv nonce" << endl;
-    server_nonce.fill('0');
+    server_nonce.clear();
     /*
     unsigned char* ECDH_my_pub_key = NULL;
     unsigned int ECDH_my_key_size = active_session->serializeKey(active_session->ECDH_myKey, ECDH_my_pub_key);
@@ -201,56 +205,71 @@ bool Client::authentication() {
 /********************************************************************/
 
 // Message M1
-int Client::sendUsername() {
+int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     cout << "sendUsername\n";
     int start_index = 0;
     uint32_t payload_size = OPCODE_SIZE + NONCE_SIZE + username.size();
     uint32_t payload_n = htonl(payload_size);
 
+    active_session->generateNonce(client_nonce.data());
+
     // clear content of the sender buffer
     memset(send_buffer.data(), '0', send_buffer.size());
     send_buffer.clear();    //fill('0');
     //memset(send_buffer, 0, MAX_BUF_SIZE);
-    active_session->generateNonce();
-    // prepare buffer: | payload_size | nonce_client | username |
+
+    // prepare buffer: | payload_size | opcode_LOGIN | nonce_client | username |
+    //memcpy(vec.data(), &p, NUMERIC_FIELD_SIZE);
+    send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
     memcpy(send_buffer.data(), (unsigned char*)&payload_n, NUMERIC_FIELD_SIZE);
     start_index += NUMERIC_FIELD_SIZE;
-    memcpy(send_buffer.data() + start_index, active_session->nonce.data(), NONCE_SIZE);
+
+    uint16_t opcode = htons((uint16_t)LOGIN);
+    memcpy(send_buffer.data() + NUMERIC_FIELD_SIZE, &opcode, OPCODE_SIZE);
+    start_index += OPCODE_SIZE;
+
+    send_buffer.insert(send_buffer.end(), client_nonce.begin(), client_nonce.end());
+    //memcpy(send_buffer.data() + start_index, active_session->nonce.data(), NONCE_SIZE);
     start_index += NONCE_SIZE;
-    memcpy(send_buffer.data() + start_index, username.c_str(), username.size());
+
+    send_buffer.insert(send_buffer.end(), username.begin(), username.end());
+    //memcpy(send_buffer.data() + start_index, username.c_str(), username.size());
     start_index += username.size();
+
     //sendMsg
-    cout << "authentication->sendMsg (nonce, usr)" << endl;
+    cout << "authentication->sendMsg M1: nonce, username " << endl;
     if(sendMsg(payload_size) != 1) {
-        active_session->nonce.fill('0');
+        client_nonce.fill('0');
         return -1;
     }
     return 1;
 }
 
 // M2
-bool Client::receiveCertSign(unsigned char *srv_nonce) {
+bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce, 
+                            vector<unsigned char> &srv_nonce) {
     cout << "receiveCertSign\n";
-    if(!srv_nonce)
-        return false;
+
     int start_index = 0;
     int payload_size =  receiveMsg();
 
     start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
 
     // check opcode
-    uint16_t opcode_n = *(unsigned short*)(recv_buffer.data() + start_index);
+    uint16_t opcode_n = *(uint16_t*)(recv_buffer.data() + start_index);
     uint16_t opcode = ntohs(opcode_n);
     start_index += OPCODE_SIZE;
     cout << "start index " << start_index << endl;
     if(opcode != LOGIN) {
         if(opcode == ERROR) {
-            string errorMsg((const char*)recv_buffer.data() + start_index, payload_size - OPCODE_SIZE);
+            //string errorMsg((const char*)recv_buffer.data() + start_index, payload_size - OPCODE_SIZE);
+            string errorMsg(recv_buffer.begin() + start_index, recv_buffer.end());
             cerr << errorMsg << endl;
         } else {
             cerr << "Received not expected message" << endl;
         }
         
+        memset(recv_buffer.data(), '0', recv_buffer.size());
         recv_buffer.clear();    //fill('0');
         /*
         #pragma optimize("", off);
@@ -266,8 +285,12 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
     //cout << opcode << " received opcode client" << endl;
 
     // retrieve & check client nonce
-    array<unsigned char, NONCE_SIZE> received_nonce;
-    memcpy(received_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);
+    vector<unsigned char> received_nonce;
+    received_nonce.reserve(NONCE_SIZE);
+    received_nonce.insert(received_nonce.begin(), 
+                        recv_buffer.begin() + start_index, 
+                        recv_buffer.begin() + start_index + NONCE_SIZE);
+    //memcpy(received_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);
     /*
     unsigned char *nonce = (unsigned char*)malloc(NONCE_SIZE);
     if(!nonce) {
@@ -277,12 +300,14 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
     }
     */
 
-    memcpy(received_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);   // client nonce
+    //memcpy(received_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);   // client nonce
     start_index += NONCE_SIZE;
-    if(!active_session->checkNonce(received_nonce.data())) {
+    if(!active_session->checkNonce(received_nonce.data(), client_nonce.data())) {
         cerr << "Received nonce not valid\n";
-        received_nonce.fill('0');
-        // deallocare anche gli altri buffer
+        received_nonce.clear();
+        client_nonce.fill('0');
+        // deallocare tutti i buffer utilizzati
+        memset(recv_buffer.data(), '0', recv_buffer.size());
         recv_buffer.clear();    //fill('0');
         /*
         #pragma optimize("", off);
@@ -298,17 +323,26 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
     cout << "Received nonce verified!" << endl;
     // memset(nonce, 0, NONCE_SIZE);
     //free(nonce);
+
     // retrieve server nonce
-    memcpy(srv_nonce, recv_buffer.data() + start_index, NONCE_SIZE);   // server nonce
+    srv_nonce.insert(srv_nonce.begin(), 
+                    recv_buffer.begin() + start_index, 
+                    recv_buffer.begin() + start_index + NONCE_SIZE);
+    //memcpy(srv_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);   // server nonce
     start_index += NONCE_SIZE;
 
     // retrieve server cert
-    int cert_size_n = *(unsigned int*)(recv_buffer.data() + start_index);
+    uint32_t cert_size_n = *(uint32_t*)(recv_buffer.data() + start_index);
     int cert_size = ntohl(cert_size_n);
     start_index += NUMERIC_FIELD_SIZE;
-    
-    array<unsigned char, MAX_BUF_SIZE> temp_buffer;
 
+    // get server certificate
+    vector<unsigned char> buffer;
+    buffer.insert(buffer.begin(), 
+                recv_buffer.begin() + start_index, 
+                recv_buffer.begin() + start_index + cert_size);
+    
+    //array<unsigned char, MAX_BUF_SIZE> temp_buffer;
     /*unsigned char *server_cert = (unsigned char*)malloc(cert_size);
     if(!server_cert) {
         cerr << "Malloc server_cert failed" << endl;
@@ -322,14 +356,18 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
         //free(srv_nonce);
         return false;
     }*/
-    memcpy(temp_buffer.data(), recv_buffer.data() + start_index, cert_size);
+    //memcpy(temp_buffer.data(), recv_buffer.data() + start_index, cert_size);
     start_index += cert_size;
 
     // deserialize, verify certificate & extract server pubKey
     EVP_PKEY* srv_pubK;
-    if(!verifyCert(temp_buffer.data(), cert_size, srv_pubK)) {
+    if(!verifyCert(buffer.data(), cert_size, srv_pubK)) {
         cerr << "Server certificate not verified\n";
 
+        memset(buffer.data(), '0', buffer.size());
+        memset(recv_buffer.data(), '0', recv_buffer.size());
+
+        buffer.clear();
         recv_buffer.clear();    //fill('0');
         /*
         #pragma optimize("", off);
@@ -345,26 +383,34 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
         return false;
     }
     cout << "Server certificate verified!" << endl;
-    temp_buffer.fill('0');   //once verified, the certificate can be deleted -> array "reset"
+    memset(buffer.data(), '0', buffer.size());
+    buffer.clear();
+    //temp_buffer.fill('0');   //once verified, the certificate can be deleted -> array "reset"
 
-    // retrieve ECDH server pub key
-    uint32_t ECDH_key_size_n = *(unsigned int*)(recv_buffer.data() + start_index);
+    // retrieve ECDH server pub key: size + key
+    uint32_t ECDH_key_size_n = *(uint32_t*)(recv_buffer.data() + start_index);
     uint32_t ECDH_key_size = ntohl(ECDH_key_size_n);
     start_index += NUMERIC_FIELD_SIZE;
-    array<unsigned char, MAX_BUF_SIZE> ECDH_server_key;
+    //get key
+    vector<unsigned char> ECDH_server_key;
+    ECDH_server_key.insert(ECDH_server_key.begin(), 
+                        recv_buffer.begin() + start_index,
+                        recv_buffer.begin() + start_index + ECDH_key_size);
     /*
     unsigned char *ECDH_srv_key = (unsigned char*)malloc(ECDH_key_size);
     if(!ECDH_key_size)
         handleErrors("Malloc error");
         */
-    memcpy(ECDH_server_key.data(), recv_buffer.data() + start_index, ECDH_key_size);
+    //memcpy(ECDH_server_key.data(), recv_buffer.data() + start_index, ECDH_key_size);
     start_index += ECDH_key_size;
 
     // retrieve digital signature
-    int dig_sign_len = payload_size + NUMERIC_FIELD_SIZE - start_index; //*(unsigned int*)(recv_buffer + start_index);
+    //int dig_sign_len = payload_size + NUMERIC_FIELD_SIZE - start_index; //*(unsigned int*)(recv_buffer + start_index);
+    int dig_sign_len = recv_buffer.size() - start_index;
     if(dig_sign_len <= 0) {
         cerr << "Dig_sign length error " << endl;
-        ECDH_server_key.fill('0');
+        memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
+        ECDH_server_key.clear();
         return false;
     }
 
@@ -375,14 +421,18 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
     if(!dig_sign)
         handleErrors("Malloc error");
         */
-        server_dig_sign.insert(server_dig_sign.begin(), recv_buffer.begin() + start_index, 
-            recv_buffer.begin() + start_index + dig_sign_len);
+    server_dig_sign.insert(server_dig_sign.begin(), 
+                        recv_buffer.begin() + start_index, 
+                        recv_buffer.end());
     //memcpy(server_dig_sign.data(), recv_buffer. + start_index, dig_sign_len);
     start_index += dig_sign_len;
     if(start_index - NUMERIC_FIELD_SIZE != payload_size) {
         cerr << "Received data size error" << endl;
-        ECDH_server_key.fill('0');
+        memset(server_dig_sign.data(), '0', server_dig_sign.size());
+        memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
+        ECDH_server_key.clear();
         server_dig_sign.clear();
+        return false;
     }
     
     // verify digital signature
@@ -396,12 +446,30 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
     // TODO: aggiungere std::vector<unsigned char> signed_msg; al posto di temp_buffer, 
     //  dopo aver sostituito i buffer send e receive con std::array per poter usare gli iterator
     // nonce client
-    memcpy(temp_buffer.data(), active_session->nonce.data(), NONCE_SIZE);
+    if(!buffer.empty())
+        buffer.clear();
+    buffer.insert(buffer.begin(), client_nonce.begin(), client_nonce.end());
+    //memcpy(temp_buffer.data(), client_nonce.data(), NONCE_SIZE);
     start_index = NONCE_SIZE;
     // server ECDH public key
-    memcpy(temp_buffer.data() + start_index, ECDH_server_key.data(), ECDH_key_size);
-    if(!active_session->verifyDigSign(server_dig_sign.data(), dig_sign_len, srv_pubK, temp_buffer.data(), signed_msg_len)) {
+    buffer.insert(buffer.end(), ECDH_server_key.begin(), ECDH_server_key.end());
+    //memcpy(temp_buffer.data() + start_index, ECDH_server_key.data(), ECDH_key_size);
+    bool verified = active_session->verifyDigSign(server_dig_sign.data(), dig_sign_len, srv_pubK, buffer.data(), signed_msg_len);
+    
+    // clear buffer
+    memset(buffer.data(), '0', buffer.size());
+    memset(server_dig_sign.data(), '0', server_dig_sign.size());
+
+    buffer.clear();
+    server_dig_sign.clear();
+
+    if(!verified) {
         cerr << "Digital Signature not verified" << endl;
+
+        // clear buffer key
+        memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
+        ECDH_server_key.clear();
+
         return false;
     }
     cout << " Digital Signature Verified!" << endl;
@@ -411,14 +479,14 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
     return true;
 }
 
-void Client::sendSign(unsigned char* srv_nonce, EVP_PKEY *priv_k) {
+void Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
     unsigned char* ECDH_my_pub_key = NULL;
-    unsigned int ECDH_my_key_size = active_session->serializePubKey(active_session->ECDH_myKey, ECDH_my_pub_key);
+    uint32_t ECDH_my_key_size = active_session->serializePubKey(active_session->ECDH_myKey, ECDH_my_pub_key);
     
     unsigned char* msg_to_sign = (unsigned char*)malloc(NONCE_SIZE + ECDH_my_key_size);
     if(!msg_to_sign)
         handleErrors("Malloc error");
-    memcpy(msg_to_sign, srv_nonce, NONCE_SIZE);
+    memcpy(msg_to_sign, srv_nonce.data(), NONCE_SIZE);
     memcpy(msg_to_sign + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
     unsigned char* signed_msg = NULL;
     int signed_msg_len = active_session->signMsg(msg_to_sign, NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg);
@@ -433,7 +501,7 @@ void Client::sendSign(unsigned char* srv_nonce, EVP_PKEY *priv_k) {
     uint16_t opcode = htons((uint16_t)LOGIN);
     memcpy(send_buffer.data() + start_index, (unsigned char*)&opcode, OPCODE_SIZE);
     start_index += OPCODE_SIZE;
-    memcpy(send_buffer.data() + start_index, srv_nonce, NONCE_SIZE);
+    memcpy(send_buffer.data() + start_index, srv_nonce.data(), NONCE_SIZE);
     start_index += NONCE_SIZE;
     uint32_t ECDH_my_key_size_n = htonl(ECDH_my_key_size);
     memcpy(send_buffer.data() + start_index, (unsigned char*)&ECDH_my_key_size_n, NUMERIC_FIELD_SIZE);

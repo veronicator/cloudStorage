@@ -31,9 +31,9 @@ class Client {
 
 
     // methods invoked during the authentication phase -> never called from outside class -> can be private
-    int sendUsername();
-    bool receiveCertSign(unsigned char* srv_nonce);    // receive (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
-    void sendSign(unsigned char* srv_nonce, EVP_PKEY *priv_k);
+    int sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce);
+    bool receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce, vector<unsigned char> &srv_nonce);    // receive (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
+    void sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k);
 
     // methods invoked by handlerCommand method -> only from inside -> can be private
     void requestFileList();
