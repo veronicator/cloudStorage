@@ -14,6 +14,10 @@
 #define HELP 11
 #define ERROR 12
 
+//Dir Path
+#define FILE_PATH_CL "./users/"
+#define FILE_PATH_SV "./userStorage/"
+
 // whitelist
 #define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"
 #define FILENAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890+-_.!@#$%^&()~"
