@@ -7,8 +7,8 @@ class Client {
 
     //unsigned char *send_buffer;
     //unsigned char *recv_buffer;
-    array<unsigned char, MAX_BUF_SIZE> send_buffer;
-    array<unsigned char, MAX_BUF_SIZE> recv_buffer;
+    vector<unsigned char> send_buffer;
+    vector<unsigned char> recv_buffer;
 
     /********* socket *********/
     int sd; // socket descriptor

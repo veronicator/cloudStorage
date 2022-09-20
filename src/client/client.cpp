@@ -17,12 +17,14 @@ Client::Client(string username, string srv_ip) {
 Client::~Client() {
     username.clear();
     if(!send_buffer.empty()) {
-        send_buffer.fill('0');
+        send_buffer.clear();
+        //send_buffer.fill('0');
         //free(send_buffer);
         //send_buffer = nullptr;
     }
     if(!recv_buffer.empty()) {
-        recv_buffer.fill('0');
+        recv_buffer.clear();
+        //recv_buffer.fill('0');
         //free(recv_buffer);
         //recv_buffer = nullptr;
     }
@@ -52,19 +54,19 @@ int Client::sendMsg(int payload_size) {
     cout << "sendMsg new" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
-        send_buffer.fill('0');
-        //memset(send_buffer, 0, MAX_BUF_SIZE);
+        send_buffer.clear();    //fill('0');
+        memset(send_buffer.data(), '0', MAX_BUF_SIZE);
         return -1;
     }
     payload_size += NUMERIC_FIELD_SIZE;
     if(send(sd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
-        send_buffer.fill('0');
-        //memset(send_buffer, 0, MAX_BUF_SIZE);
+        send_buffer.clear();    //fill('0');
+        memset(send_buffer.data(), '0', MAX_BUF_SIZE);
         return -1;
     }
-    send_buffer.fill('0');
-    //memset(send_buffer, 0, MAX_BUF_SIZE);
+    memset(send_buffer.data(), '0', send_buffer.size());
+    send_buffer.clear();    //fill('0');
 
     return 1;    
  }
@@ -75,12 +77,13 @@ int Client::sendMsg(int payload_size) {
 */
  long Client::receiveMsg() {
     cout << "receiveMsg new" << endl;
-
+    array<unsigned char, MAX_BUF_SIZE> receiver;
     ssize_t msg_size = 0;
 
-    recv_buffer.fill('0');
-    //memset(recv_buffer, 0, MAX_BUF_SIZE);
-    msg_size = recv(sd, recv_buffer.data(), MAX_BUF_SIZE-1, 0);
+    memset(recv_buffer.data(), '0', recv_buffer.size());
+    recv_buffer.clear();    //fill('0');
+
+    msg_size = recv(sd, receiver.data(), MAX_BUF_SIZE-1, 0);
     cout << "received msg size: " << msg_size << endl;
 
     if (msg_size == 0) {
@@ -90,20 +93,24 @@ int Client::sendMsg(int payload_size) {
 
     if (msg_size < 0 || msg_size < (unsigned int)NUMERIC_FIELD_SIZE) {
         perror("Socket error: receive message failed");
-        recv_buffer.fill('0');
+        receiver.fill('0');
         //memset(recv_buffer, 0, MAX_BUF_SIZE);
         return -1;
     }
-    uint32_t payload_n = *(unsigned int*)(recv_buffer.data());
+
+    uint32_t payload_n = *(unsigned int*)(receiver.data());
     uint32_t payload_size = ntohl(payload_n);
     cout << payload_size << " received payload length" << endl;
     //check if received all data
     if (payload_size != msg_size - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
-        recv_buffer.fill('0');
+        receiver.fill('0');
         //memset(recv_buffer, 0, MAX_BUF_SIZE);
         return -1;
     }
+
+    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
+    receiver.fill('0');     // erase content of the temporary receiver buffer
 
     return payload_size;
 
@@ -199,7 +206,10 @@ int Client::sendUsername() {
     int start_index = 0;
     uint32_t payload_size = OPCODE_SIZE + NONCE_SIZE + username.size();
     uint32_t payload_n = htonl(payload_size);
-    send_buffer.fill('0');
+
+    // clear content of the sender buffer
+    memset(send_buffer.data(), '0', send_buffer.size());
+    send_buffer.clear();    //fill('0');
     //memset(send_buffer, 0, MAX_BUF_SIZE);
     active_session->generateNonce();
     // prepare buffer: | payload_size | nonce_client | username |
@@ -241,7 +251,7 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
             cerr << "Received not expected message" << endl;
         }
         
-        recv_buffer.fill('0');
+        recv_buffer.clear();    //fill('0');
         /*
         #pragma optimize("", off);
             memset(recv_buffer, 0, MAX_BUF_SIZE);
@@ -273,7 +283,7 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
         cerr << "Received nonce not valid\n";
         received_nonce.fill('0');
         // deallocare anche gli altri buffer
-        recv_buffer.fill('0');
+        recv_buffer.clear();    //fill('0');
         /*
         #pragma optimize("", off);
             memset(recv_buffer, 0, MAX_BUF_SIZE);
@@ -320,7 +330,7 @@ bool Client::receiveCertSign(unsigned char *srv_nonce) {
     if(!verifyCert(temp_buffer.data(), cert_size, srv_pubK)) {
         cerr << "Server certificate not verified\n";
 
-        recv_buffer.fill('0');
+        recv_buffer.clear();    //fill('0');
         /*
         #pragma optimize("", off);
             memset(recv_buffer, 0, MAX_BUF_SIZE);
@@ -414,7 +424,7 @@ void Client::sendSign(unsigned char* srv_nonce, EVP_PKEY *priv_k) {
     int signed_msg_len = active_session->signMsg(msg_to_sign, NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg);
 
     // prepare send buffer
-    send_buffer.fill('0');
+    send_buffer.clear();    //fill('0');
     //memset(send_buffer, 0, MAX_BUF_SIZE);
     uint32_t payload_size = OPCODE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size + signed_msg_len;
     uint32_t payload_n = htonl(payload_size);
@@ -594,7 +604,7 @@ void Client::requestFileList() {
     cout << "client -> fileList\n";
     // opcode 2
     string msg = "Available files?";
-    send_buffer.fill('0');
+    send_buffer.clear();    //fill('0');
     //memset(send_buffer, 0, MAX_BUF_SIZE);
     int payload_size = active_session->fileList((unsigned char*)msg.c_str(), msg.length(), send_buffer.data());    // prepare msg to send
     sendMsg(payload_size);
