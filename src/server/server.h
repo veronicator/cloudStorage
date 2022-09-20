@@ -9,8 +9,8 @@ struct UserInfo {
     int sockd;
     bool available = false; // true: when online and there is no active chat, false otherwise
     Session* client_session;
-    //unsigned char *send_buffer;
-    //unsigned char *recv_buffer;
+    unsigned char *send_buffer = nullptr;
+    unsigned char *recv_buffer = nullptr;
     //vector<unsigned char> send_buffer;
     //vector<unsigned char> recv_buffer;
 
