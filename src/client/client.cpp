@@ -195,7 +195,6 @@ bool Client::authentication() {
 
     active_session->deriveSecret();     // derive secrete & compute session key
     cout << "active_session -> derive secret " << endl;
-    cout << "authentication -> receive users list" << endl;
     // TODO
     //receive login ack or file list?
     //receiveFileList();
@@ -524,6 +523,14 @@ void Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
     // send msg to server
     cout <<"authentication sendMsg (ecdh pub key)" << endl;
     sendMsg(payload_size);
+
+    // clear buffer
+    memset(msg_to_sign.data(), '0', msg_to_sign.size());
+    memset(signed_msg.data(), '0', signed_msg.size());
+
+    msg_to_sign.clear();
+    signed_msg.clear();
+
     cout << "sendSign end" << endl;
 }
 
