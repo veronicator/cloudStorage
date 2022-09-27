@@ -443,8 +443,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
     if(!signed_msg)
         handleErrors("Malloc error");
         */
-    // TODO: aggiungere std::vector<unsigned char> signed_msg; al posto di temp_buffer, 
-    //  dopo aver sostituito i buffer send e receive con std::array per poter usare gli iterator
+
     // nonce client
     if(!buffer.empty())
         buffer.clear();
@@ -480,35 +479,47 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
 }
 
 void Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
+    cout << "Client -> sendSign " << endl;
     unsigned char* ECDH_my_pub_key = NULL;
     uint32_t ECDH_my_key_size = active_session->serializePubKey(active_session->ECDH_myKey, ECDH_my_pub_key);
-    
-    unsigned char* msg_to_sign = (unsigned char*)malloc(NONCE_SIZE + ECDH_my_key_size);
-    if(!msg_to_sign)
-        handleErrors("Malloc error");
-    memcpy(msg_to_sign, srv_nonce.data(), NONCE_SIZE);
-    memcpy(msg_to_sign + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
-    unsigned char* signed_msg = NULL;
-    int signed_msg_len = active_session->signMsg(msg_to_sign, NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg);
+    vector<unsigned char> msg_to_sign(NONCE_SIZE + ECDH_my_key_size);
+    //unsigned char* msg_to_sign = (unsigned char*)malloc(NONCE_SIZE + ECDH_my_key_size);
+    //if(!msg_to_sign)
+    //    handleErrors("sendSign: malloc return null");
+    msg_to_sign.insert(msg_to_sign.begin(), srv_nonce.begin(), srv_nonce.end());
+    //memcpy(msg_to_sign, srv_nonce.data(), NONCE_SIZE);
+    memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
+
+    vector<unsigned char> signed_msg(EVP_PKEY_size(priv_k));
+    int signed_msg_len = active_session->signMsg(msg_to_sign.data(), NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg.data());
 
     // prepare send buffer
     send_buffer.clear();    //fill('0');
+    send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE + NONCE_SIZE +NUMERIC_FIELD_SIZE + ECDH_my_key_size);
     //memset(send_buffer, 0, MAX_BUF_SIZE);
+
     uint32_t payload_size = OPCODE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size + signed_msg_len;
     uint32_t payload_n = htonl(payload_size);
-    memcpy(send_buffer.data(), (unsigned char*)&payload_n, NUMERIC_FIELD_SIZE);
+    memcpy(send_buffer.data(), &payload_n, NUMERIC_FIELD_SIZE);
     int start_index = NUMERIC_FIELD_SIZE;
+
     uint16_t opcode = htons((uint16_t)LOGIN);
-    memcpy(send_buffer.data() + start_index, (unsigned char*)&opcode, OPCODE_SIZE);
+    memcpy(send_buffer.data() + start_index, &opcode, OPCODE_SIZE);
     start_index += OPCODE_SIZE;
-    memcpy(send_buffer.data() + start_index, srv_nonce.data(), NONCE_SIZE);
+
+    send_buffer.insert(send_buffer.begin() + start_index, srv_nonce.begin(), srv_nonce.end());
+    //memcpy(send_buffer.data() + start_index, srv_nonce.data(), NONCE_SIZE);
     start_index += NONCE_SIZE;
+
     uint32_t ECDH_my_key_size_n = htonl(ECDH_my_key_size);
-    memcpy(send_buffer.data() + start_index, (unsigned char*)&ECDH_my_key_size_n, NUMERIC_FIELD_SIZE);
+    memcpy(send_buffer.data() + start_index, &ECDH_my_key_size_n, NUMERIC_FIELD_SIZE);    
     start_index += NUMERIC_FIELD_SIZE;
+
     memcpy(send_buffer.data() + start_index, ECDH_my_pub_key, ECDH_my_key_size);
     start_index += ECDH_my_key_size;
-    memcpy(send_buffer.data() + start_index, signed_msg, signed_msg_len);
+    
+    send_buffer.insert(send_buffer.end(), signed_msg.begin(), signed_msg.end());
+    //memcpy(send_buffer.data() + start_index, signed_msg, signed_msg_len);
 
     // send msg to server
     cout <<"authentication sendMsg (ecdh pub key)" << endl;
