@@ -252,7 +252,7 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
     usr.client_session->generateNonce();
     usr.client_session->generateECDHKey();
     unsigned char* ECDH_srv_pub_key = NULL;
-    unsigned int ECDH_srv_key_size = usr.client_session->serializePubKey(usr.client_session->ECDH_myKey, ECDH_srv_pub_key);
+    uint32_t ECDH_srv_key_size = usr.client_session->serializePubKey(usr.client_session->ECDH_myKey, ECDH_srv_pub_key);
     BIO_dump_fp(stdout, (const char*)ECDH_srv_pub_key, ECDH_srv_key_size);
     // cout << "after serialize pub" << endl;
     // prepare message to sign
@@ -289,8 +289,9 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
     msg_to_send.insert(msg_to_send.begin(), buffer.begin(), buffer.begin() + OPCODE_SIZE);    // insert opcode
     payload_size = OPCODE_SIZE + NONCE_SIZE + NONCE_SIZE;
     // status msg_to_send: | OP | Nc | Ns | ECDH_srv_pubK |
-
-    memcpy(buffer.data(), &cert_size, NUMERIC_FIELD_SIZE);
+    
+    uint32_t cert_size_n = htonl(cert_size);
+    memcpy(buffer.data(), &cert_size_n, NUMERIC_FIELD_SIZE);
     msg_to_send.insert(msg_to_send.begin() + payload_size, buffer.begin(), buffer.begin() + NUMERIC_FIELD_SIZE);    // insert cert_size
     payload_size += NUMERIC_FIELD_SIZE;
     // status msg_to_send: | OP | Nc | Ns | cert_size | ECDH_srv_pubK |
