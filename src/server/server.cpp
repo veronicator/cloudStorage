@@ -90,8 +90,10 @@ void* Server::client_thread_code(void* arg) {
 }
 */
 
+/********************************************************************/
+
 void Server::client_thread_code(int sd) {
-    cout << "client thread code\n";
+    cout << "client thread code -> run()\n";
     cout << "thread socket " << sd << endl;
     /*
     pthread_mutex_lock(&mutex);
@@ -103,7 +105,7 @@ void Server::client_thread_code(int sd) {
     */
     vector<unsigned char> recv_buf;
     int payload_size;
-    int received_size = receiveMsg(payload_size, sd, recv_buf);
+    int received_size = receiveMsg(sd, recv_buf);
 
     uint16_t opcode = *(unsigned short*)recv_buf.data();  //recv_buf.at(0);
     if(opcode != LOGIN) {
@@ -170,49 +172,104 @@ void Server::client_thread_code(int sd) {
     
 }
 
-void Server::sendMsg(int payload_size, int sockd, vector<unsigned char>& send_buf) {
-    cout << payload_size << " send payload" << endl;
-    if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE)
-        handleErrors("Message to send too big", sockd);
+
+/********************************************************************/
+
+/**
+ * send a message through the specific socket
+ * @payload_size: body lenght of the message to send
+ * @sockd: socket descriptor through which send the message to the corresponding client
+ * @send_buf: sending buffer containing the message to send, associated to a specific client
+ * @return: 1 on success, 0 or -1 on error
+ */
+int Server::sendMsg(int payload_size, int sockd, vector<unsigned char>& send_buf) {
+    cout << payload_size << " sendMsg: payload size" << endl;
+    if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
+        cerr << "Message to send too big" << endl;
+        send_buf.assign(send_buf.size(), '0');
+        send_buf.clear();    //fill('0');
+        //close(sockd);
+        return -1;
+        //handleErrors("Message to send too big", sockd);
+    }
 
     payload_size += NUMERIC_FIELD_SIZE;
-    if(send(sockd, send_buf.data(), payload_size, 0) < payload_size) 
-        handleErrors("Send error", sockd);
+    if(send(sockd, send_buf.data(), payload_size, 0) < payload_size) {
+        perror("Socker error: send message failed");
+        send_buf.assign(send_buf.size(), '0');
+        send_buf.clear();    //fill('0');
+        //close(sockd);
+        return -1;
+        //handleErrors("Send error", sockd);
+    }
 
-    send_buf.assign(MAX_BUF_SIZE, 0);
+    send_buf.assign(send_buf.size(), '0');
     send_buf.clear();
 //    memset(send_buf.data(), 0, MAX_BUF_SIZE);
+    return 1;
 }
 
-int Server::receiveMsg(int& payload_size, int sockd, vector<unsigned char>& recv_buf) {
+/**
+ * receive message from a client, associated to a specific socket 
+ * @sockd: socket descriptor through which the client is connected
+ * @recv_buf: vector buffer where save the message received
+ * @return: return the payload length of the received message, or 0 or -1 on error
+*/
+long Server::receiveMsg(int sockd, vector<unsigned char>& recv_buf) {
 
     int msg_size = 0;
     //user->recv_buffer.clear();
-    array<unsigned char, MAX_BUF_SIZE> recv_data;
+    array<unsigned char, MAX_BUF_SIZE> receiver;
     //memset(user->recv_buffer, 0, MAX_BUF_SIZE);
-    msg_size = recv(sockd, recv_data.data(), MAX_BUF_SIZE-1, 0);
+    msg_size = recv(sockd, receiver.data(), MAX_BUF_SIZE-1, 0);
     cout << "msg size: " << msg_size << endl;
+    
+    if (msg_size == 0) {
+        cerr << "The connection with the socket " << sockd << " has been closed" << endl;
+        return 0;
+    }
 
-    if(msg_size < (int)(NUMERIC_FIELD_SIZE + OPCODE_SIZE))
-        handleErrors("Socket receive error", sockd);
+    if (msg_size < 0 || msg_size < (unsigned int)NUMERIC_FIELD_SIZE + OPCODE_SIZE) {
+        perror("Socket error: receive message failed");
+        receiver.fill('0');
+        //memset(recv_buffer, 0, MAX_BUF_SIZE);
+        return -1;
+    }
 
     //recv_buf.assign(MAX_BUF_SIZE, 0);
-    recv_buf.insert(recv_buf.begin(), recv_data.begin(), recv_data.begin() + msg_size);
-    payload_size = *(int*)recv_buf.data();
+    uint32_t payload_size_n = *(uint32_t*)receiver.data();
+    uint32_t payload_size = ntohl(payload_size_n);
     //cout << "payload size received " << payload_size << endl;
-    recv_data.fill('0');
 
     //check if received all data
-    if(payload_size != msg_size - (int)NUMERIC_FIELD_SIZE)
-        handleErrors("recv_buffer size error", sockd);
+    if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
+        cerr << "Error: Data received too short (malformed message?)" << endl;
+        receiver.fill('0');
+        //close(sockd);
+        //memset(recv_buffer, 0, MAX_BUF_SIZE);
+        return -1;
+    }
 
     // TODO: trovare soluzione alternativa invece di cancellare gli elementi dal vector ?
-    // remove the first field of the message, containing the payload size
-    recv_buf.erase(recv_buf.begin(), recv_buf.begin() + NUMERIC_FIELD_SIZE);
+    // remove the first field of the message, containing the payload size ?
+    recv_buf.insert(recv_buf.begin(), receiver.begin(), receiver.begin() + msg_size);
+    receiver.fill('0');
+    //recv_buf.erase(recv_buf.begin(), recv_buf.begin() + NUMERIC_FIELD_SIZE);
     cout << "recv size buf: " << recv_buf.size() << endl;
 
     return msg_size;
 }
+
+
+/********************************************************************/
+
+bool Server::authenticateClient(int sockd) {
+
+    return true;
+}
+
+
+/********************************************************************/
 
 void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int sockd) {
     cout << "server->sendCertSign" << endl;
@@ -262,7 +319,8 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
 
     msg_to_send.insert(msg_to_send.begin(), clt_nonce.begin(), clt_nonce.end());
     cout << "insert 1\n";
-    msg_to_send.insert(msg_to_send.end(),usr.client_session->nonce.begin(), usr.client_session->nonce.end());
+    // todo: fix
+    //msg_to_send.insert(msg_to_send.end(),usr.client_session->nonce.begin(), usr.client_session->nonce.end());
     cout << "insert 2" << endl;
 /*
     memcpy(buffer.data(), cert_buf, cert_size);
@@ -331,8 +389,7 @@ bool Server::receiveSign(int sd, string username, vector<unsigned char>& recv_bu
     /* receive and verify client digital signature */
     cout << "server->receiveSign" << endl;
     //vector<unsigned char> recv_buf;
-    int payload_size;
-    int received_size = receiveMsg(payload_size, sd, recv_buf);
+    int payload_size = receiveMsg(sd, recv_buf);
 
     uint16_t opcode = *(unsigned short*)recv_buf.data();  //recv_buf.at(0);
     if(opcode != LOGIN) {
