@@ -17,12 +17,14 @@ Client::Client(string username, string srv_ip) {
 Client::~Client() {
     username.clear();
     if(!send_buffer.empty()) {
+        send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
         //send_buffer.fill('0');
         //free(send_buffer);
         //send_buffer = nullptr;
     }
     if(!recv_buffer.empty()) {
+        recv_buffer.assign(recv_buffer.size(), '0');
         recv_buffer.clear();
         //recv_buffer.fill('0');
         //free(recv_buffer);
@@ -54,18 +56,18 @@ int Client::sendMsg(int payload_size) {
     cout << "sendMsg new" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
+        send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();    //fill('0');
-        memset(send_buffer.data(), '0', MAX_BUF_SIZE);
         return -1;
     }
     payload_size += NUMERIC_FIELD_SIZE;
     if(send(sd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
+        send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();    //fill('0');
-        memset(send_buffer.data(), '0', MAX_BUF_SIZE);
         return -1;
     }
-    memset(send_buffer.data(), '0', send_buffer.size());
+    send_buffer.assign(send_buffer.size(), '0');
     send_buffer.clear();    //fill('0');
 
     return 1;    
@@ -80,7 +82,7 @@ int Client::sendMsg(int payload_size) {
     array<unsigned char, MAX_BUF_SIZE> receiver;
     ssize_t msg_size = 0;
 
-    memset(recv_buffer.data(), '0', recv_buffer.size());
+    recv_buffer.assign(recv_buffer.size(), '0');
     recv_buffer.clear();    //fill('0');
 
     msg_size = recv(sd, receiver.data(), MAX_BUF_SIZE-1, 0);
@@ -91,7 +93,7 @@ int Client::sendMsg(int payload_size) {
         return 0;
     }
 
-    if (msg_size < 0 || msg_size < (unsigned int)NUMERIC_FIELD_SIZE) {
+    if (msg_size < 0 || msg_size < (uint)NUMERIC_FIELD_SIZE + (uint)OPCODE_SIZE) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
         //memset(recv_buffer, 0, MAX_BUF_SIZE);
@@ -102,7 +104,7 @@ int Client::sendMsg(int payload_size) {
     uint32_t payload_size = ntohl(payload_n);
     cout << payload_size << " received payload length" << endl;
     //check if received all data
-    if (payload_size != msg_size - NUMERIC_FIELD_SIZE) {
+    if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         //memset(recv_buffer, 0, MAX_BUF_SIZE);
@@ -213,7 +215,7 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     active_session->generateNonce(client_nonce.data());
 
     // clear content of the sender buffer
-    memset(send_buffer.data(), '0', send_buffer.size());
+    send_buffer.assign(send_buffer.size(), '0');
     send_buffer.clear();    //fill('0');
     //memset(send_buffer, 0, MAX_BUF_SIZE);
 
@@ -268,7 +270,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
             cerr << "Received not expected message" << endl;
         }
         
-        memset(recv_buffer.data(), '0', recv_buffer.size());
+        recv_buffer.assign(recv_buffer.size(), '0');
         recv_buffer.clear();    //fill('0');
         /*
         #pragma optimize("", off);
@@ -306,7 +308,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
         received_nonce.clear();
         client_nonce.fill('0');
         // deallocare tutti i buffer utilizzati
-        memset(recv_buffer.data(), '0', recv_buffer.size());
+        recv_buffer.assign(recv_buffer.size(), '0');
         recv_buffer.clear();    //fill('0');
         /*
         #pragma optimize("", off);
@@ -363,8 +365,9 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
     if(!verifyCert(buffer.data(), cert_size, srv_pubK)) {
         cerr << "Server certificate not verified\n";
 
-        memset(buffer.data(), '0', buffer.size());
-        memset(recv_buffer.data(), '0', recv_buffer.size());
+        //memset(buffer.data(), '0', buffer.size());
+        buffer.assign(buffer.size(), '0');
+        recv_buffer.assign(recv_buffer.size(), '0');
 
         buffer.clear();
         recv_buffer.clear();    //fill('0');
@@ -382,7 +385,8 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
         return false;
     }
     cout << "Server certificate verified!" << endl;
-    memset(buffer.data(), '0', buffer.size());
+    //memset(buffer.data(), '0', buffer.size());
+    buffer.assign(buffer.size(), '0');
     buffer.clear();
     //temp_buffer.fill('0');   //once verified, the certificate can be deleted -> array "reset"
 
@@ -408,7 +412,8 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
     int dig_sign_len = recv_buffer.size() - start_index;
     if(dig_sign_len <= 0) {
         cerr << "Dig_sign length error " << endl;
-        memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
+        //memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
+        ECDH_server_key.assign(ECDH_server_key.size(), '0');
         ECDH_server_key.clear();
         return false;
     }
@@ -427,8 +432,10 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
     start_index += dig_sign_len;
     if(start_index - NUMERIC_FIELD_SIZE != payload_size) {
         cerr << "Received data size error" << endl;
-        memset(server_dig_sign.data(), '0', server_dig_sign.size());
-        memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
+        //memset(server_dig_sign.data(), '0', server_dig_sign.size());
+        server_dig_sign.assign(server_dig_sign.size(), '0');
+        //memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
+        ECDH_server_key.assign(ECDH_server_key.size(), '0');
         ECDH_server_key.clear();
         server_dig_sign.clear();
         return false;
@@ -455,8 +462,10 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
     bool verified = active_session->verifyDigSign(server_dig_sign.data(), dig_sign_len, srv_pubK, buffer.data(), signed_msg_len);
     
     // clear buffer
-    memset(buffer.data(), '0', buffer.size());
-    memset(server_dig_sign.data(), '0', server_dig_sign.size());
+    //memset(buffer.data(), '0', buffer.size());
+    //memset(server_dig_sign.data(), '0', server_dig_sign.size());
+    buffer.assign(buffer.size(), '0');
+    server_dig_sign.assign(server_dig_sign.size(), '0');
 
     buffer.clear();
     server_dig_sign.clear();
@@ -465,7 +474,8 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
         cerr << "Digital Signature not verified" << endl;
 
         // clear buffer key
-        memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
+        ECDH_server_key.assign(ECDH_server_key.size(), '0');
+        //memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
         ECDH_server_key.clear();
 
         return false;
@@ -525,8 +535,10 @@ void Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
     sendMsg(payload_size);
 
     // clear buffer
-    memset(msg_to_sign.data(), '0', msg_to_sign.size());
-    memset(signed_msg.data(), '0', signed_msg.size());
+    //memset(msg_to_sign.data(), '0', msg_to_sign.size());
+    //memset(signed_msg.data(), '0', signed_msg.size());
+    msg_to_sign.assign(msg_to_sign.size(), '0');
+    signed_msg.assign(signed_msg.size(), '0');
 
     msg_to_sign.clear();
     signed_msg.clear();
