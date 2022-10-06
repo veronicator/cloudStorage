@@ -543,28 +543,27 @@ uint64_t Client::searchFile(string filename){
 void Client::uploadFile(){
     string filename;
     uint64_t filedimension;
-    unsigned char* aad;
-    unsigned char* plaintext;
-    unsigned char* cyphertext; //to be allocated with malloc of the right size
+    uint32_t payload_size;
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    array<unsigned char, MAX_BUF_SIZE> output; //to be allocated with malloc of the right size
 
-    aad = (unsigned char*)malloc(AAD_SIZE); //to be changed in AAD_UPLOAD_SIZE if filename.length must be sent in AAD
     cout<<"****************************************"<<endl;
     cout<<"*********     Upload File      *********"<<endl;
     cout<<"****************************************"<<endl;
 
-    readFilenameInput(filename, "Insert file name:");
-    plaintext = (unsigned char*)malloc(filename.length() + sizeof(uint64_t));
-    copy(filename.begin(), filename.end(), plaintext);
-    filedimension = searchFile(filename);
-    memcpy(plaintext, (unsigned char*)filedimension, sizeof(uint64_t));
-    this->active_session->encryptMsg(plaintext, sizeof(plaintext), aad, AAD_SIZE, cyphertext);
+    readFilenameInput(filename, "Insert file name: ");
+    filedimension = htonl(searchFile(filename));
+    memcpy(plaintext.data(), &filedimension, FILE_SIZE_FIELD);
+    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
+    this->active_session->createAAD(aad.data(), UPLOAD_REQ);
 
     //send the basic information of the upload operation
-    //to be sent: <count_cs, op_code=1, {fileName, fileSize}_Kcs>
+    //to be sent: payload_size | IV | opcode | count_cs | {output}_Kcs | TAG
 
-    this->active_session->createAAD(aad, UPLOAD_REQ);
-    this->active_session->encryptMsg(plaintext, strlen((char*)plaintext), aad, strlen((char*)aad), cyphertext);
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
 
+    
     //server response: <count_sc, op_code=1, {ResponseMsg}_Kcs>
 
     //start of the upload

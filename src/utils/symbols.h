@@ -34,7 +34,7 @@
 //
 #define NUMERIC_FIELD_SIZE sizeof(uint32_t)   // size (in bytes) of fields containing dimension
 #define OPCODE_SIZE sizeof(uint16_t)
-#define AAD_SIZE (sizeof(uint32_t) + sizeof(uint16_t))
+#define FILE_SIZE_FIELD sizeof(uint64_t)
 
 #define NONCE_SIZE 4
 

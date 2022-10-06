@@ -28,9 +28,11 @@ void readFilenameInput(string& input, string msg = "") {
     do{
         cout<<msg<<endl;
         getline(std::cin, input);
-        if(input.empty()) return;
+        if(input.empty()) continue;
         const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
         string_ok = regex_match(input, re);
+        if(!string_ok)
+            cout<<"! FILE NAME HAS A WRONG FORMAT !"<<endl;
     }
     while(!string_ok);
 }
