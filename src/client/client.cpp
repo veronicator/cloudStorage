@@ -759,7 +759,7 @@ void Client::sendErrorMsg(string errorMsg) {
 }
 
 uint64_t Client::searchFile(string filename){
-    string path = "./users/" + this->username + "/upload/" + filename;
+    string path = "./users/" + this->username +"/" + filename;
     struct stat buffer;
     if(stat(path.c_str(), &buffer) != 0){
         cout<<"File not present"<<endl;
@@ -770,6 +770,38 @@ uint64_t Client::searchFile(string filename){
         return -1;
     }
     return buffer.st_size;
+}
+
+uint32_t Client::sendMsgChunks(string filename){
+    string path = "./users/" + this->username + "/" + filename;
+    FILE* file = fopen(path.c_str(), "rb");
+    if(!file){
+        cout<<"Error during file opening";
+        return -1;
+    }
+
+    struct stat buf;
+    if(stat(path.c_str(), &buf) != 0){
+        cout<<filename + "doesn't exist in " + this->username + "folder" <<endl;
+        return -1;
+    }
+
+    size_t tot_chunks = ceil((float)buf.st_size / FRAGM_SIZE);
+    array<unsigned char, FRAGM_SIZE> frag_buffer;
+    frag_buffer.fill('0');
+    size_t to_send;
+    int ret;
+
+    for(int i = 0; i < tot_chunks; i++){
+        if(i == tot_chunks - 1)
+            to_send = buf.st_size - i * FRAGM_SIZE;
+        else
+            to_send = FRAGM_SIZE;
+
+        ret = fread(frag_buffer.data(), sizeof(char), to_send, file);
+
+        //continua
+    }
 }
 
 void Client::uploadFile(){
@@ -809,11 +841,35 @@ void Client::uploadFile(){
 
     if(sendMsg(payload_size) != 1){
         cout<<"Error during send phase (C->S)"<<endl;
+        return;
     }
 
+    //receive from the server the response to the upload request
+    //received_len:  lenght of the message received from the server
+    //server_response: message from the server containing the response to the request
+
+    uint64_t received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1){
+        cout<<"Error during receive phase (S->C)"<<endl;
+        return;
+    }
+
+    int aad_len;
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+    uint32_t ptlen = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+    string server_response((char*)plaintext.data());
+    if(server_response != MESSAGE_OK){       
+        cout<<"File not accepted. "<<server_response<<endl;
+        return;
+    }
     //server response: <count_sc, op_code=1, {ResponseMsg}_Kcs>
 
     //start of the upload
+    cout<<"        -------- uploading --------";
+    sendMsgChunks(filename);
+    cout<<"        ---- upload terminated ----";
+
     //to be sent: <count_cs, op_code=5, {chunk_i}_Kcs>
 
     //server response: <count_sc, op_code=5, {ResponseMsg}_Kcs>

@@ -43,6 +43,7 @@ class Client {
         // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
     uint64_t searchFile(string filename);
     void uploadFile();
+    uint32_t sendMsgChunks(string filename);
     void downloadFile();
     void renameFile();
     void deleteFile();
