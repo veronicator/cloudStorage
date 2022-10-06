@@ -79,7 +79,7 @@ void Session::incrementCounter(uint32_t& counter) {
 unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     cout << "session->createAAD" << endl;
     int aad_len = 0;
-    cout << sizeof(uint16_t) << " sizeof " << endl;
+    //cout << sizeof(uint16_t) << " sizeof " << endl;
     memcpy(aad, (unsigned char*)&send_counter, NUMERIC_FIELD_SIZE);
     aad_len += NUMERIC_FIELD_SIZE;
     incrementCounter(send_counter);

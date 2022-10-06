@@ -774,8 +774,7 @@ uint64_t Client::searchFile(string filename){
 
 void Client::uploadFile(){
     string filename;
-    uint64_t filedimension;
-    uint32_t payload_size;
+    uint32_t filedimension, payload_size, payload_size_n;
     vector<unsigned char> aad;
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);
     array<unsigned char, MAX_BUF_SIZE> output; //to be allocated with malloc of the right size
@@ -794,8 +793,24 @@ void Client::uploadFile(){
     //to be sent: payload_size | IV | opcode | count_cs | {output}_Kcs | TAG
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    output.fill('0');
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
 
-    
+    payload_size_n = htonl(payload_size);
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.end(), output.begin(), output.begin() + payload_size);
+
+
+    if(sendMsg(payload_size) != 1){
+        cout<<"Error during send phase (C->S)"<<endl;
+    }
+
     //server response: <count_sc, op_code=1, {ResponseMsg}_Kcs>
 
     //start of the upload
