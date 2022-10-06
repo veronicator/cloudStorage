@@ -23,6 +23,20 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
+void readFilenameInput(string& input, string msg = "") {
+    bool string_ok = false;
+    do{
+        cout<<msg<<endl;
+        getline(std::cin, input);
+        if(input.empty()) continue;
+        const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+        string_ok = regex_match(input, re);
+        if(!string_ok)
+            cout<<"! FILE NAME HAS A WRONG FORMAT !"<<endl;
+    }
+    while(!string_ok);
+}
+
 
 void readInput(string& input, const int MAX_SIZE, string msg = "") {
     string ok_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!";
@@ -65,7 +79,7 @@ void Session::incrementCounter(uint32_t& counter) {
 unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     cout << "session->createAAD" << endl;
     int aad_len = 0;
-    cout << sizeof(uint16_t) << " sizeof " << endl;
+    //cout << sizeof(uint16_t) << " sizeof " << endl;
     memcpy(aad, (unsigned char*)&send_counter, NUMERIC_FIELD_SIZE);
     aad_len += NUMERIC_FIELD_SIZE;
     incrementCounter(send_counter);
@@ -140,15 +154,15 @@ void Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msgDi
     EVP_MD_CTX_free(hCtx);
 }
 
-unsigned int Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char*& dig_sign) {
+unsigned int Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign) {
     cout << "session->signMsg" << endl;
     // create the signature context
     EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
     if(!md_ctx) { cerr << "Error: EVP_MD_CTX_new returned NULL\n"; exit(1); }
 
     // allocate buffer for signature
-    dig_sign = (unsigned char*)malloc(EVP_PKEY_size(privK));
-    if(!dig_sign) { cerr << "Error: malloc returned NULL (signature too big?)\n"; exit(1); }
+    //dig_sign = (unsigned char*)malloc(EVP_PKEY_size(privK));
+    //if(!dig_sign) { cerr << "Error: malloc returned NULL (signature too big?)\n"; exit(1); }
 
     // sign the pt
     // perform a single update on the whole pt, assuming that the pt is not huge
@@ -192,15 +206,19 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 /********************************************************************/
 
 
-void Session::generateNonce() {
+/*void Session::generateNonce() {
+    generateRandomValue(nonce.data(), NONCE_SIZE);    
+}*/
+
+void Session::generateNonce(unsigned char *nonce) {
     /*nonce = (unsigned char*)malloc(NONCE_SIZE);
     if(!nonce)
         handleErrors("Malloc error");*/
-    generateRandomValue(nonce.data(), NONCE_SIZE);    
+    generateRandomValue(nonce, NONCE_SIZE);    
 }
 
-bool Session::checkNonce(unsigned char* received_nonce) {
-    return memcmp(received_nonce, nonce.data(), NONCE_SIZE) == 0;
+bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonce) {
+    return memcmp(received_nonce, sent_nonce, NONCE_SIZE) == 0;
 }
 
 void Session::generateECDHKey() {
@@ -274,7 +292,7 @@ void Session::deriveSecret() {
 
     free(shared_secret);
     // free(nonce);
-    nonce.fill('0');
+    //nonce.fill('0');
 }
 
 /********************************************************************/
@@ -614,7 +632,7 @@ Session::~Session(){
     free(session_key);
     EVP_PKEY_free(ECDH_myKey);
     EVP_PKEY_free(ECDH_peerKey);
-    nonce.fill('0');
+    //nonce.fill('0');
     //free(nonce);
     //free(iv);
 }

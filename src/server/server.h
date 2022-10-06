@@ -7,12 +7,12 @@
 struct UserInfo {
     string username;    // client username
     int sockd;
-    bool available = false; // true: when online and there is no active chat, false otherwise
+    //bool available = false; // true: when online and there is no active chat, false otherwise
     Session* client_session;
-    unsigned char *send_buffer = nullptr;
-    unsigned char *recv_buffer = nullptr;
-    //vector<unsigned char> send_buffer;
-    //vector<unsigned char> recv_buffer;
+    //unsigned char *send_buffer = nullptr;
+    //unsigned char *recv_buffer = nullptr;
+    vector<unsigned char> send_buffer;
+    vector<unsigned char> recv_buffer;
 
     UserInfo(int sd, string name);
     //UserInfo();
@@ -22,6 +22,7 @@ class Server {
     //static Server* server;
 
     // vector<Session> activeSessions;
+    //todo: fare un unica mappa <int sockID, UserInfo> ?
     map<string, UserInfo> connectedClient;    // client username, session
     map<int, string> socketClient;      //socket descriptor, client username        // togliere sockd da UserInfo ?
     //map<int, UserInfo> connectedClient;     // client_socket descriptor, userInfo struct
@@ -58,10 +59,12 @@ class Server {
         int acceptConnection();
         int getListener();
         //void* client_thread_code(void *arg);  // friend?
-        void client_thread_code(int sd);     
+        void client_thread_code(int sd);
 
-        void sendMsg(int payload_size, int sockd, vector<unsigned char>& send_buf);       //dopo invio: deallocare buffer
-        int receiveMsg(int& payload_size, int sockd, vector<unsigned char>& recv_buf);    // restituisce lunghezza totale messaggio ricevuto, msg_size
+        bool authenticateClient(int sockd);
+
+        int sendMsg(int payload_size, int sockd, vector<unsigned char>& send_buf);       //dopo invio: deallocare buffer
+        long receiveMsg(int sockd, vector<unsigned char>& recv_buf);    // restituisce lunghezza totale messaggio ricevuto, msg_size
         void receiveUsername(int sockd);
         void sendCertSign(vector<unsigned char> clt_nonce, string username, int sockd);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
         bool receiveSign(int sd, string username, vector<unsigned char>& recv_buf);
