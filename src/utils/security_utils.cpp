@@ -154,15 +154,15 @@ void Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msgDi
     EVP_MD_CTX_free(hCtx);
 }
 
-unsigned int Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char*& dig_sign) {
+unsigned int Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign) {
     cout << "session->signMsg" << endl;
     // create the signature context
     EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
     if(!md_ctx) { cerr << "Error: EVP_MD_CTX_new returned NULL\n"; exit(1); }
 
     // allocate buffer for signature
-    dig_sign = (unsigned char*)malloc(EVP_PKEY_size(privK));
-    if(!dig_sign) { cerr << "Error: malloc returned NULL (signature too big?)\n"; exit(1); }
+    //dig_sign = (unsigned char*)malloc(EVP_PKEY_size(privK));
+    //if(!dig_sign) { cerr << "Error: malloc returned NULL (signature too big?)\n"; exit(1); }
 
     // sign the pt
     // perform a single update on the whole pt, assuming that the pt is not huge
@@ -205,15 +205,20 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 
 /********************************************************************/
 
-void Session::generateNonce() {
+
+/*void Session::generateNonce() {
+    generateRandomValue(nonce.data(), NONCE_SIZE);    
+}*/
+
+void Session::generateNonce(unsigned char *nonce) {
     /*nonce = (unsigned char*)malloc(NONCE_SIZE);
     if(!nonce)
         handleErrors("Malloc error");*/
-    generateRandomValue(nonce.data(), NONCE_SIZE);    
+    generateRandomValue(nonce, NONCE_SIZE);    
 }
 
-bool Session::checkNonce(unsigned char* received_nonce) {
-    return memcmp(received_nonce, nonce.data(), NONCE_SIZE) == 0;
+bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonce) {
+    return memcmp(received_nonce, sent_nonce, NONCE_SIZE) == 0;
 }
 
 void Session::generateECDHKey() {
@@ -287,7 +292,7 @@ void Session::deriveSecret() {
 
     free(shared_secret);
     // free(nonce);
-    nonce.fill('0');
+    //nonce.fill('0');
 }
 
 /********************************************************************/
@@ -591,7 +596,7 @@ unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsi
 
 /********************************************************************/
 
-int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char*& output_buf) {
+int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf) {
     unsigned char *aad = (unsigned char*)malloc(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
     if(!aad)
         handleErrors("Malloc error");
@@ -625,7 +630,9 @@ int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char*& outp
 
 Session::~Session(){
     free(session_key);
-    nonce.fill('0');
+    EVP_PKEY_free(ECDH_myKey);
+    EVP_PKEY_free(ECDH_peerKey);
+    //nonce.fill('0');
     //free(nonce);
     //free(iv);
 }
