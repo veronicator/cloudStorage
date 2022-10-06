@@ -29,7 +29,7 @@
 // to check/decide size
 #define MAX_MSG_SIZE 10000
 #define MAX_BUF_SIZE 20000
-#define FRAGM_SIZE 16384  // 16 KiB - dimensione frammento del file da inviare
+#define FRAGM_SIZE 8192  // 8 KiB - dimensione frammento del file da inviare
 //
 #define NUMERIC_FIELD_SIZE sizeof(uint32_t)   // size (in bytes) of fields containing dimension
 #define OPCODE_SIZE sizeof(uint16_t)

@@ -72,7 +72,8 @@ unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     // cout << "session->createAAD2 " << sizeof(*aad) << endl;
     
-    memcpy(aad + aad_len, (unsigned char*)&opcode, OPCODE_SIZE);
+    uint16_t opcode_n = htons(opcode);
+    memcpy(aad + aad_len, (unsigned char*)&opcode_n, OPCODE_SIZE);
     aad_len += OPCODE_SIZE;
     // cout << "session->createAAD3" << endl;
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
