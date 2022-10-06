@@ -222,7 +222,7 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     // prepare buffer: | payload_size | opcode_LOGIN | nonce_client | username |
     //memcpy(vec.data(), &p, NUMERIC_FIELD_SIZE);
     send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
-    memcpy(send_buffer.data(), (unsigned char*)&payload_n, NUMERIC_FIELD_SIZE);
+    memcpy(send_buffer.data(), &payload_n, NUMERIC_FIELD_SIZE);
     start_index += NUMERIC_FIELD_SIZE;
 
     uint16_t opcode = htons((uint16_t)LOGIN);
