@@ -20,25 +20,31 @@ int main() {
 
     // thread
     list<pthread_t> threads;
-    while(true) {
-        read_set = master;
-        int new_sd = server->acceptConnection();
-        if(new_sd < 0)
-            continue;
-        pthread_t client_thread;
-        ThreadArgs* args = new ThreadArgs(server, new_sd);
-        cout << "pthread_create" << endl;
-        if(pthread_create(&client_thread, NULL, &client_thread_code, (void*)args) != 0)
-            handleErrors("thread_create failed");
-        cout << "new pthread_created" << endl;
-        threads.push_back(client_thread);
-        pthread_detach(client_thread);  // con detach non serve fare il join finale (controllare funzioni bene)
-        /*cout << threads.size() << " empty" << endl;
-        void* retval;
-        if(pthread_join(client_thread, &retval) != 0) {
-            //printf("retval %s\n", *(char*)retval);
-            cout << " terminato" << endl;
-        }*/
+    try {
+        while(true) {
+            read_set = master;
+            int new_sd = server->acceptConnection();
+            if(new_sd < 0)
+                continue;
+            pthread_t client_thread;
+            ThreadArgs* args = new ThreadArgs(server, new_sd);
+            cout << "pthread_create" << endl;
+            if(pthread_create(&client_thread, NULL, &client_thread_code, (void*)args) != 0)
+                handleErrors("thread_create failed");
+            cout << "new pthread_created" << endl;
+            threads.push_back(client_thread);
+            pthread_detach(client_thread);  // con detach non serve fare il join finale (controllare funzioni bene)
+            /*cout << threads.size() << " empty" << endl;
+            void* retval;
+            if(pthread_join(client_thread, &retval) != 0) {
+                //printf("retval %s\n", *(char*)retval);
+                cout << " terminato" << endl;
+            }*/
+        }
+    } catch (const exception &e) {
+        cout << "Exit due to an error:\n" << endl;
+        cerr << e.what() << endl;
+        return 0;
     }
 
     //server->joinThread();
