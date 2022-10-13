@@ -15,7 +15,8 @@
 #define ERROR 12
 
 //responses
-#define MESSAGE_OK "correct_msg"
+#define MESSAGE_OK "ack_upload_req"
+#define UPLOAD_TERMINATED "ack_upload_term"
 
 // whitelist
 #define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"
