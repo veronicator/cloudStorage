@@ -80,7 +80,7 @@ class Server {
 
         // TODO: modificare come serve 
         // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
-        void uploadFile();
+        int uploadFile(int sockd, vector<unsigned char> plaintext);
         void downloadFile();
         void renameFile();
         void deleteFile();

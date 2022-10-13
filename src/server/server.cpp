@@ -515,8 +515,39 @@ void Server::joinThread() {
 }*/
 
 // TODO
-void Server::uploadFile() {
+int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
+    uint32_t filedimension;
+    string filename;
+    string ack_msg;
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext;
+    array<unsigned char, MAX_BUF_SIZE> output;
+    bool file_ok = true;
+    cout<<"****************************************"<<endl;
+    cout<<"***********   RECEIVING FILE   *********"<<endl;
+    cout<<"****************************************"<<endl;
 
+    filedimension = ntohl(*(uint32_t*)(plaintext.data()));
+    filename = string(plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.end());
+
+    const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+    file_ok = regex_match(filename, re);
+
+    if(!file_ok){
+        cout<<"file not correct! Reception of the file terminated"<<endl;
+        ack_msg = "Filename not correct";
+    }
+    else
+        ack_msg = MESSAGE_OK;
+    
+    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+
+    // accedi alla map connected client con il sockd (id socket) e recupera UserInfo
+    //UserInfo ui = connectedClient.at(sockd);
+    //ui->client_session->createAAD(...);
+    //ui->client_session->encryptMsg(...);
+
+    cout<<"****************************************"<<endl;
 }
 
 void Server::downloadFile() {
