@@ -773,28 +773,29 @@ uint64_t Client::searchFile(string filename){
 }
 
 uint32_t Client::sendMsgChunks(string filename){
-    string path = "./users/" + this->username + "/" + filename;
-    FILE* file = fopen(path.c_str(), "rb");
+    string path = "./users/" + this->username + "/" + filename;                         //where to find the file
+    FILE* file = fopen(path.c_str(), "rb");                                             //opened file
+    struct stat buf;
 
     if(!file){
         cout<<"Error during file opening";
         return -1;
     }
 
-    struct stat buf;
     if(stat(path.c_str(), &buf) != 0){
         cout<<filename + "doesn't exist in " + this->username + "folder" <<endl;
         return -1;
     }
 
-    size_t tot_chunks = ceil((float)buf.st_size / FRAGM_SIZE);
-    array<unsigned char, FRAGM_SIZE> frag_buffer;
-    vector<unsigned char> aad;
-    array<unsigned char, MAX_BUF_SIZE> output;
+    size_t tot_chunks = ceil((float)buf.st_size / FRAGM_SIZE);                          //total number of chunks needed form the upload
+    size_t to_send;                                                                     //number of byte to send in the specific msg
+    uint32_t payload_size, payload_size_n;                                              //size of the msg payload both in host and network format
+    uint32_t ret;                                                                       //bytes read by the fread function
+    vector<unsigned char> aad;                                                          //aad of the msg
+    array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
+    array<unsigned char, MAX_BUF_SIZE> output;                                          //encrypted text
+
     frag_buffer.fill('0');
-    size_t to_send;
-    uint32_t ret, payload_size, payload_size_n;
-    
 
     for(int i = 0; i < tot_chunks; i++){
         if(i == tot_chunks - 1)
@@ -811,16 +812,20 @@ uint32_t Client::sendMsgChunks(string filename){
 
         this->active_session->createAAD(aad.data(), UPLOAD);
         payload_size = this->active_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), aad.size(), output.data());
+        
         aad.assign(aad.size(), '0');
         aad.clear();
         frag_buffer.fill('0');
 
         payload_size_n = htonl(payload_size);
+
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
         send_buffer.resize(NUMERIC_FIELD_SIZE);
+
         memcpy(send_buffer.data(), &payload_size_n, sizeof(uint32_t));
         send_buffer.insert(send_buffer.end(), output.begin(), output.begin() + payload_size);
+
         output.fill('0');
 
         if(sendMsg(payload_size) != 1){
@@ -831,37 +836,41 @@ uint32_t Client::sendMsgChunks(string filename){
 }
 
 void Client::uploadFile(){
-    string filename;
-    uint32_t filedimension, payload_size, payload_size_n, ret;
-    vector<unsigned char> aad;
-    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
-    array<unsigned char, MAX_BUF_SIZE> output; 
+    uint32_t filedimension;                                                 //dimension (in byte) of the file to upload
+    uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
+    string filename;                                                        //name of the file to upload
+    vector<unsigned char> aad;                                              //aad of the msg
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
+    array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
 
     cout<<"****************************************"<<endl;
     cout<<"*********     Upload File      *********"<<endl;
-    cout<<"****************************************"<<endl;
+    cout<<"****************************************"<<endl<<endl;
 
-    readFilenameInput(filename, "Insert file name: ");
+    readFilenameInput(filename, "Insert file name: ");                      
     filedimension = htonl(searchFile(filename));
     memcpy(plaintext.data(), &filedimension, FILE_SIZE_FIELD);
-    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
-    this->active_session->createAAD(aad.data(), UPLOAD_REQ);
+    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());  
+
+    this->active_session->createAAD(aad.data(), UPLOAD_REQ);                
 
     //send the basic information of the upload operation
     //to be sent: payload_size | IV | opcode | count_cs | {output}_Kcs | TAG
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+
     aad.assign(aad.size(), '0');
     aad.clear();
     plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-
-    payload_size_n = htonl(payload_size);
+    plaintext.clear();    
     send_buffer.assign(send_buffer.size(), '0');
     send_buffer.clear();
     send_buffer.resize(NUMERIC_FIELD_SIZE);
+
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.end(), output.begin(), output.begin() + payload_size);
+
     output.fill('0');
 
     if(sendMsg(payload_size) != 1){
@@ -872,40 +881,48 @@ void Client::uploadFile(){
     //receive from the server the response to the upload request
     //received_len:  legnht of the message received from the server
     //server_response: message from the server containing the response to the request
+    int aad_len;                                                          //
+    uint16_t opcode;
+    uint32_t pt_len;
+    uint32_t ret;  
+    uint64_t received_len;
+    string server_response;
 
-    uint64_t received_len = receiveMsg();
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    received_len = receiveMsg();
     if(received_len == 0 || received_len == -1){
         cout<<"Error during receive phase (S->C)"<<endl;
         return;
     }
 
-    int aad_len;
-    uint16_t opcode;
-    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
-    plaintext.resize(MAX_BUF_SIZE);
-    uint32_t pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
-    opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
+    pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+    
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
     if(opcode != UPLOAD_REQ){
         cout<<"Error! Exiting upload request phase"<<endl;
     }
-    //check counter e check
-    string server_response((char*)plaintext.data());
+    
+    server_response = ((char*)plaintext.data());
     if(server_response != MESSAGE_OK){       
         cout<<"File not accepted. "<<server_response<<endl;
         return;
     }
-    //server response: <count_sc, op_code=1, {ResponseMsg}_Kcs>
-
+   
     //start of the upload
     cout<<"        -------- UPLOADING --------";
+
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+
     ret = sendMsgChunks(filename);
+
     if(ret != -1){
-        aad.assign(aad.size(), '0');
-        aad.clear();
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
-            opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
+        opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
         if(opcode != UPLOAD){
             cout<<"Error! Exiting upload phase"<<endl;
         }
@@ -914,11 +931,13 @@ void Client::uploadFile(){
             return;
         }
     }
-    cout<<"        ---- UPLOAD TERMINATED ----";
+    cout<<"        ---- UPLOAD TERMINATED ----"<<endl<<endl;
 
     if(ret == -1){
         cout<<"Error! Exiting upload phase"<<endl;
     }
+
+    cout<<"****************************************"<<endl<<endl;
 }
 
 void Client::downloadFile(){}
