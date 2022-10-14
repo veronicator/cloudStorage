@@ -23,6 +23,20 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
+void readFilenameInput(string& input, string msg = "") {
+    bool string_ok = false;
+    do{
+        cout<<msg<<endl;
+        getline(std::cin, input);
+        if(input.empty()) continue;
+        const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+        string_ok = regex_match(input, re);
+        if(!string_ok)
+            cout<<"! FILE NAME HAS A WRONG FORMAT !"<<endl;
+    }
+    while(!string_ok);
+}
+
 
 void readInput(string& input, const int MAX_SIZE, string msg = "") {
     string ok_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!";
@@ -65,7 +79,7 @@ void Session::incrementCounter(uint32_t& counter) {
 unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     cout << "session->createAAD" << endl;
     int aad_len = 0;
-    cout << sizeof(uint16_t) << " sizeof " << endl;
+    //cout << sizeof(uint16_t) << " sizeof " << endl;
     memcpy(aad, (unsigned char*)&send_counter, NUMERIC_FIELD_SIZE);
     aad_len += NUMERIC_FIELD_SIZE;
     incrementCounter(send_counter);

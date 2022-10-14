@@ -1,7 +1,7 @@
 // TODO: ADD WHITELIST (FOR FILENAME)
 // Operation codes
 #define LOGIN 0
-#define UPLOADE_REQ 1
+#define UPLOAD_REQ 1
 #define DOWNLOAD_REQ 2
 #define RENAME_REQ 3
 #define DELETE_REQ 4
@@ -13,6 +13,10 @@
 #define LOGOUT 10
 #define HELP 11
 #define ERROR 12
+
+//Dir Path
+#define FILE_PATH_CL "./users/"
+#define FILE_PATH_SV "./userStorage/"
 
 // whitelist
 #define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"
@@ -30,9 +34,12 @@
 #define MAX_MSG_SIZE 10000
 #define MAX_BUF_SIZE 20000
 #define FRAGM_SIZE 8192  // 8 KiB - dimensione frammento del file da inviare
+#define MAX_FILE_DIMENSION 4294967296
+
 //
 #define NUMERIC_FIELD_SIZE sizeof(uint32_t)   // size (in bytes) of fields containing dimension
 #define OPCODE_SIZE sizeof(uint16_t)
+#define FILE_SIZE_FIELD sizeof(uint64_t)
 
 #define NONCE_SIZE 4
 

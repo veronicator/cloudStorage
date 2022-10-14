@@ -758,10 +758,82 @@ void Client::sendErrorMsg(string errorMsg) {
 
 }
 
-void Client::uploadFile(){}
+uint64_t Client::searchFile(string filename){
+    string path = "./users/" + this->username + "/upload/" + filename;
+    struct stat buffer;
+    if(stat(path.c_str(), &buffer) != 0){
+        cout<<"File not present"<<endl;
+        return -1;
+    }
+    if(buffer.st_size > MAX_FILE_DIMENSION){
+        cout<<"File too big"<<endl;
+        return -1;
+    }
+    return buffer.st_size;
+}
+
+void Client::uploadFile(){
+    string filename;
+    uint32_t filedimension, payload_size, payload_size_n;
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    array<unsigned char, MAX_BUF_SIZE> output; //to be allocated with malloc of the right size
+
+    cout<<"****************************************"<<endl;
+    cout<<"*********     Upload File      *********"<<endl;
+    cout<<"****************************************"<<endl;
+
+    readFilenameInput(filename, "Insert file name: ");
+    filedimension = htonl(searchFile(filename));
+    memcpy(plaintext.data(), &filedimension, FILE_SIZE_FIELD);
+    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
+    this->active_session->createAAD(aad.data(), UPLOAD_REQ);
+
+    //send the basic information of the upload operation
+    //to be sent: payload_size | IV | opcode | count_cs | {output}_Kcs | TAG
+
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    output.fill('0');
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+
+    payload_size_n = htonl(payload_size);
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.end(), output.begin(), output.begin() + payload_size);
+
+
+    if(sendMsg(payload_size) != 1){
+        cout<<"Error during send phase (C->S)"<<endl;
+    }
+
+    //server response: <count_sc, op_code=1, {ResponseMsg}_Kcs>
+
+    //start of the upload
+    //to be sent: <count_cs, op_code=5, {chunk_i}_Kcs>
+
+    //server response: <count_sc, op_code=5, {ResponseMsg}_Kcs>
+}
 
 void Client::downloadFile(){}
 
-void Client::renameFile(){}
+void Client::renameFile(){
+    string old_filename, new_filename;
+    cout<<"****************************************"<<endl;
+    cout<<"*********     Rename File      *********"<<endl;
+    cout<<"****************************************"<<endl;
+
+    readInput(old_filename, MAX_NAME_SIZE, "Insert the name of the file to be changed");
+    readInput(new_filename, MAX_NAME_SIZE, "Insert the new name of the file ");
+
+    //send the information of the rename operation
+    //to be sent: <count_cs, opcode=3, {old_filename, new_filename}_Kcs>
+
+    //server response: <count_sc, op_code=3, {ResponseMsg}_Kcs>
+}
 
 void Client::deleteFile(){}
