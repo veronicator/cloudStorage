@@ -11,25 +11,31 @@ int main(int argc, char* argv[]) {
     // socket: server ip
 
     string usr;
-    // readUsername(usr);
-    readInput(usr, MAX_NAME_SIZE, "Please, insert your username: ");
-    Client* client = new Client(usr, argv[1]);
-    if(!client->authentication())
-        handleErrors("Authentication failed");
-    // stampa lista utenti
+    try {
+        // readUsername(usr);
+        readInput(usr, MAX_NAME_SIZE, "Please, insert your username: ");
+        Client* client = new Client(usr, argv[1]);
+        if(!client->authentication())
+            handleErrors("Authentication failed");
+        // stampa lista utenti
 
-    string msg_input;
-    bool ok = false;
-    
-    do {
-        client->showCommands();
-        readInput(msg_input, MAX_COMMAND_SIZE, "Insert command"); 
-        if(msg_input[0] != command) 
-            cout << "Command not recognized" << endl;
-        else
-            ok = client->handlerCommand(msg_input);
-    } while(msg_input[0] != command || !ok);
-    // per ogni digital signature, legge la chiave privata ?
-    // cerca file usr.pem -> se non esiste => exit/return
-    
+        string msg_input;
+        bool ok = false;
+        
+        do {
+            client->showCommands();
+            readInput(msg_input, MAX_COMMAND_SIZE, "Insert command"); 
+            if(msg_input[0] != command) 
+                cout << "Command not recognized" << endl;
+            else
+                ok = client->handlerCommand(msg_input);
+        } while(msg_input[0] != command || !ok);
+        // per ogni digital signature, legge la chiave privata ?
+        // cerca file usr.pem -> se non esiste => exit/return
+    } catch (const exception &e) {
+        cout << "Exit due to an error:\n" << endl;
+        cerr << e.what() << endl;
+        return 0;
+    }
+        
 }
