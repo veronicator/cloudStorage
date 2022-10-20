@@ -15,8 +15,11 @@ UserInfo::UserInfo(int sd, string name) {
 }
 
 Server::Server() {
-    if(pthread_mutex_init(&mutex, NULL) != 0)
-        handleErrors("mutex init failed");
+    if(pthread_mutex_init(&mutex_client_list, NULL) != 0) {
+        cerr << "mutex init failed " << endl;
+        exit(1);
+        //handleErrors("mutex init failed");
+    }
     createSrvSocket();
 }
 /*
@@ -92,89 +95,6 @@ void* Server::client_thread_code(void* arg) {
 
 /********************************************************************/
 
-void Server::client_thread_code(int sd) {
-    cout << "client thread code -> run()\n";
-    cout << "thread socket " << sd << endl;
-    /*
-    pthread_mutex_lock(&mutex);
-    if(connectedClient.find(sd) == connectedClient.end()) {
-        handleErrors("socket descriptor not found");
-    }
-    UserInfo usr = connectedClient.at(sd);
-    pthread_mutex_unlock(&mutex);
-    */
-    vector<unsigned char> recv_buf;
-    int payload_size;
-    int received_size = receiveMsg(sd, recv_buf);
-
-    uint16_t opcode = *(unsigned short*)recv_buf.data();  //recv_buf.at(0);
-    if(opcode != LOGIN) {
-        handleErrors("Opcode error", sd);
-        return;
-    }
-    recv_buf.erase(recv_buf.begin(), recv_buf.begin() + OPCODE_SIZE);
-    if(recv_buf.size() <= NONCE_SIZE) {
-        handleErrors("Received msg size error", sd);
-    }
-    vector<unsigned char> client_nonce;
-    client_nonce.insert(client_nonce.begin(), recv_buf.begin(), recv_buf.begin() + NONCE_SIZE);
-    string username = string(recv_buf.begin() + NONCE_SIZE, recv_buf.end());
-    cout << "user " << username << endl;
-
-    recv_buf.clear();
-
-
-    pthread_mutex_lock(&mutex);     // mutex on client list
-    // check if user already present on server
-    if(connectedClient.find(username) != connectedClient.end()) {
-        string errorMsg = "User already connected";
-        //cerr << errorMsg << endl;
-
-        // inviare mess errore al client
-        int payload_size = OPCODE_SIZE + errorMsg.size();
-        vector<unsigned char> send_buf(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
-        memcpy(send_buf.data(), &payload_size, NUMERIC_FIELD_SIZE);
-        uint16_t op = ERROR;
-        memcpy(send_buf.data() + NUMERIC_FIELD_SIZE, &op, OPCODE_SIZE);
-        send_buf.insert(send_buf.end(), errorMsg.begin(), errorMsg.end());
-        
-        sendMsg(payload_size, sd, send_buf);
-        
-        handleErrors(errorMsg.c_str(), sd);
-
-        return;
-    }
-
-    UserInfo new_usr(sd, username);
-    //connectedClient.insert(pair<int, UserInfo>(new_sd, new_usr));
-    connectedClient.insert({username, new_usr});
-    cout << "connected size " << connectedClient.size() << endl;
-
-/*    if(connectedClient.find(username) == connectedClient.end())
-        handleErrors("username not found", sd);
-       
-    UserInfo usr = connectedClient.at(username);
-*/ 
-    pthread_mutex_unlock(&mutex);
-
-    sendCertSign(client_nonce, username, sd);
-    
-    receiveSign(sd, username, recv_buf);
-    
-    /* 
-    verifica firma
-    invia lista utenti online
-    -> end authentication */
-
-    pthread_mutex_lock(&mutex);
-    connectedClient.erase(username);
-    pthread_mutex_unlock(&mutex);
-    
-}
-
-
-/********************************************************************/
-
 /**
  * send a message through the specific socket
  * @payload_size: body lenght of the message to send
@@ -182,29 +102,29 @@ void Server::client_thread_code(int sd) {
  * @send_buf: sending buffer containing the message to send, associated to a specific client
  * @return: 1 on success, 0 or -1 on error
  */
-int Server::sendMsg(int payload_size, int sockd, vector<unsigned char>& send_buf) {
+int Server::sendMsg(int payload_size, int sockd, vector<unsigned char> &send_buffer) {
     cout << payload_size << " sendMsg: payload size" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
-        send_buf.assign(send_buf.size(), '0');
-        send_buf.clear();    //fill('0');
+        send_buffer.assign(send_buffer.size(), '0');
+        send_buffer.clear();    //fill('0');
         //close(sockd);
         return -1;
         //handleErrors("Message to send too big", sockd);
     }
 
     payload_size += NUMERIC_FIELD_SIZE;
-    if(send(sockd, send_buf.data(), payload_size, 0) < payload_size) {
+    if(send(sockd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
-        send_buf.assign(send_buf.size(), '0');
-        send_buf.clear();    //fill('0');
+        send_buffer.assign(send_buffer.size(), '0');
+        send_buffer.clear();    //fill('0');
         //close(sockd);
         return -1;
         //handleErrors("Send error", sockd);
     }
 
-    send_buf.assign(send_buf.size(), '0');
-    send_buf.clear();
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
 //    memset(send_buf.data(), 0, MAX_BUF_SIZE);
     return 1;
 }
@@ -212,10 +132,9 @@ int Server::sendMsg(int payload_size, int sockd, vector<unsigned char>& send_buf
 /**
  * receive message from a client, associated to a specific socket 
  * @sockd: socket descriptor through which the client is connected
- * @recv_buf: vector buffer where save the message received
  * @return: return the payload length of the received message, or 0 or -1 on error
 */
-long Server::receiveMsg(int sockd, vector<unsigned char>& recv_buf) {
+long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     int msg_size = 0;
     //user->recv_buffer.clear();
@@ -250,33 +169,162 @@ long Server::receiveMsg(int sockd, vector<unsigned char>& recv_buf) {
         return -1;
     }
 
-    // TODO: trovare soluzione alternativa invece di cancellare gli elementi dal vector ?
-    // remove the first field of the message, containing the payload size ?
-    recv_buf.insert(recv_buf.begin(), receiver.begin(), receiver.begin() + msg_size);
+    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
     receiver.fill('0');
-    //recv_buf.erase(recv_buf.begin(), recv_buf.begin() + NUMERIC_FIELD_SIZE);
-    cout << "recv size buf: " << recv_buf.size() << endl;
+    cout << "recv size buf: " << recv_buffer.size() << endl;
 
-    return msg_size;
+    return payload_size;
+}
+
+/********************************************************************/
+
+void Server::client_thread_code(int sockd) {
+    cout << "client thread code (inside the server) -> run()\n";
+    cout << "thread socket " << sockd << endl;
+    /*
+    pthread_mutex_lock(&mutex);
+    if(connectedClient.find(sd) == connectedClient.end()) {
+        handleErrors("socket descriptor not found");
+    }
+    UserInfo usr = connectedClient.at(sd);
+    pthread_mutex_unlock(&mutex);
+    */
+    long ret;
+    vector<unsigned char> recv_buffer;
+    // Authentication M1
+    long payload_size = receiveMsg(sockd, recv_buffer);
+    if(payload_size <= 0) {
+        recv_buffer.assign(recv_buffer.size(), '0');
+        cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
+        close(sockd);
+        recv_buffer.clear();
+        pthread_exit(NULL); 
+    }
+    int start_index = NUMERIC_FIELD_SIZE;
+    if(payload_size > recv_buffer.size() - start_index - (int)OPCODE_SIZE) {
+        cerr << "Received msg size error on socket: " << sockd << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        close(sockd);
+        recv_buffer.clear();
+        pthread_exit(NULL); 
+        return;
+    }
+
+    uint16_t opcode_n = *(uint16_t*)(recv_buffer.data() + start_index);  //recv_buf.at(0);
+    uint16_t opcode = ntohs(opcode_n);
+    start_index += OPCODE_SIZE;
+    if(opcode != LOGIN) {
+        //handleErrors("Opcode error", sockd);
+        cerr << "Received message not expected on socket: " << sockd << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        close(sockd);
+        recv_buffer.clear();
+        pthread_exit(NULL); 
+        return;
+    }
+
+    //recv_buffer.erase(recv_buffer.begin(), recv_buf.begin() + OPCODE_SIZE);
+    if(recv_buffer.size() <= start_index + NONCE_SIZE) {
+        //handleErrors("Received msg size error", sockd);
+        cerr << "Received msg size error on socket: " << sockd << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        close(sockd);
+        recv_buffer.clear();
+        pthread_exit(NULL); 
+        return;
+    }
+    vector<unsigned char> client_nonce;
+    client_nonce.insert(client_nonce.begin(), recv_buffer.begin(), recv_buffer.begin() + NONCE_SIZE);
+    string username = string(recv_buffer.begin() + NONCE_SIZE, recv_buffer.end());
+    cout << "username " << username << endl;
+
+    recv_buffer.assign(recv_buffer.size(), '0');
+    recv_buffer.clear();
+
+    /*
+    pthread_mutex_lock(&mutex_socket_list);     // mutex on socket client list
+    // check if user already connected to the server
+    if(socketClient.find(username) != socketClient.end()) {
+        string errorMsg = "User already connected";
+        //cerr << errorMsg << endl;
+
+        // inviare mess errore al client
+        uint32_t payload_size = ntohl((uint16_t)(OPCODE_SIZE) + errorMsg.size());
+        vector<unsigned char> send_buf(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+        memcpy(send_buf.data(), &payload_size, NUMERIC_FIELD_SIZE);
+        opcode_n = htons((uint16_t)ERROR);
+        memcpy(send_buf.data() + NUMERIC_FIELD_SIZE, &opcode_n, OPCODE_SIZE);
+        send_buf.insert(send_buf.end(), errorMsg.begin(), errorMsg.end());
+        
+        ret = sendMsg(payload_size, sockd, send_buf);
+        if(ret != 1) {
+            send_buf.assign(send_buf.size(), '0');
+            send_buf.clear();
+            cerr << "Error sending -> close connection with client on socket: " << sockd << endl;
+            close(sockd);
+            pthread_exit(NULL);
+            //handleErrors(errorMsg.c_str(), sockd);
+        }
+        
+        pthread_mutex_unlock(&mutex_socket_list);
+
+        return;
+    }
+
+    socketClient.insert({username, sockd});
+    */
+    pthread_mutex_lock(&mutex_client_list);
+    if(connectedClient.find(sockd) != connectedClient.end()) {
+        cerr << "Error on socket: " << sockd << " \nConnection already present\n"
+        << "Closing the socket and this thread" << pthread_self() << endl;
+        close(sockd);
+        pthread_exit(NULL);
+        return;
+    }
+    UserInfo new_usr(sockd, username);
+    //connectedClient.insert(pair<int, UserInfo>(new_sd, new_usr));
+    connectedClient.insert({sockd, new_usr});
+    cout << "connected size " << connectedClient.size() << endl;
+
+/*    if(connectedClient.find(username) == connectedClient.end())
+        handleErrors("username not found", sd);
+       
+    UserInfo usr = connectedClient.at(username);
+*/ 
+    pthread_mutex_unlock(&mutex_client_list);
+    //pthread_mutex_unlock(&mutex_socket_list);
+
+    sendCertSign(client_nonce, username, sockd);
+    
+    receiveSign(sockd, username, recv_buffer);
+    
+    /* 
+    verifica firma
+    invia lista utenti online
+    -> end authentication */
+
+    pthread_mutex_lock(&mutex_client_list);
+    connectedClient.erase(sockd);
+    //todo: add also the erase on che socket_list map
+    pthread_mutex_unlock(&mutex_client_list);
+    
 }
 
 
 /********************************************************************/
-
-bool Server::authenticateClient(int sockd) {
-
-    return true;
-}
-
-
+/* DONE: modificate send e receive -> fare metodo di autenticazione con tutte le chiamate corrette 
+    e i vari messaggi da ricevere/inviare
+*/
 /********************************************************************/
 
+/*
 void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int sockd) {
     cout << "server->sendCertSign" << endl;
     // recupera certificato, serializza cert, copia nel buffer, genera nonce, genera ECDH key, firma, invia
     // retrieve user structure
+    // TODO: modificare gestione, senza passare dalla lista di username, ma direttamente dal sockd
     pthread_mutex_lock(&mutex);
-    if(connectedClient.find(username) == connectedClient.end())
+    if(socketClient.find(username) == connectedClient.end())
         handleErrors("username not found", sockd);
         
     UserInfo usr = connectedClient.at(username);
@@ -320,16 +368,9 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
     msg_to_send.insert(msg_to_send.begin(), clt_nonce.begin(), clt_nonce.end());
     cout << "insert 1\n";
     // todo: fix
-    //msg_to_send.insert(msg_to_send.end(),usr.client_session->nonce.begin(), usr.client_session->nonce.end());
+    msg_to_send.insert(msg_to_send.end(),usr.client_session->nonce.begin(), usr.client_session->nonce.end());
     cout << "insert 2" << endl;
-/*
-    memcpy(buffer.data(), cert_buf, cert_size);
-    cout << "memcpy 1" << endl;
-    msg_to_send.insert(msg_to_send.end(), buffer.begin(), buffer.begin() + cert_size);
-    cout << "insert 3" << endl;
-    buffer.fill('0');
-    cout << "fill 1\n";
-    */
+
     memcpy(buffer.data(), ECDH_srv_pub_key, ECDH_srv_key_size);
     cout << "memcpy 2" << endl;
     msg_to_send.insert(msg_to_send.end(), buffer.begin(), buffer.begin() + ECDH_srv_key_size);
@@ -384,27 +425,36 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
     msg_to_send.assign(msg_to_send.size(), 0);
     
 }   // send (nonce, ecdh_key, cert, dig_sign)
+*/
 
-bool Server::receiveSign(int sd, string username, vector<unsigned char>& recv_buf) {
-    /* receive and verify client digital signature */
+//HERE
+/*
+bool Server::receiveSign(int sockd, string username, vector<unsigned char>& recv_buf) {
+    // receive and verify client digital signature 
     cout << "server->receiveSign" << endl;
     //vector<unsigned char> recv_buf;
-    int payload_size = receiveMsg(sd, recv_buf);
+    int payload_size = receiveMsg(sockd, recv_buf);
+    if(payload_size <= 0) {
+        cerr << "Error on Receive -> close connection with client on socket: " << sockd << endl;
+        close(sockd);
+        pthread_exit(NULL);
+        return false;
+    }
 
     uint16_t opcode = *(unsigned short*)recv_buf.data();  //recv_buf.at(0);
     if(opcode != LOGIN) {
-        handleErrors("Opcode error", sd);
+        handleErrors("Opcode error", sockd);
         return false;
     }
     recv_buf.erase(recv_buf.begin(), recv_buf.begin() + OPCODE_SIZE);
     if(recv_buf.size() <= NONCE_SIZE) {
-        handleErrors("Received msg size error", sd);
+        handleErrors("Received msg size error", sockd);
         return false;
     }
 
     pthread_mutex_lock(&mutex);
     if(connectedClient.find(username) == connectedClient.end())
-        handleErrors("username not found", sd);
+        handleErrors("username not found", sockd);
         
     UserInfo usr = connectedClient.at(username);
     pthread_mutex_unlock(&mutex);
@@ -412,70 +462,21 @@ bool Server::receiveSign(int sd, string username, vector<unsigned char>& recv_bu
     vector<unsigned char> server_nonce;
     server_nonce.insert(server_nonce.begin(), recv_buf.begin(), recv_buf.begin() + NONCE_SIZE);
     if(!usr.client_session->checkNonce(server_nonce.data())) {
-        sendErrorMsg(sd, "Received nonce not verified");
+        sendErrorMsg(sockd, "Received nonce not verified");
         
         pthread_mutex_lock(&mutex);
         connectedClient.erase(username);
         pthread_mutex_unlock(&mutex);
-        handleErrors("Received server nonce not verified", sd);
+        handleErrors("Received server nonce not verified", sockd);
     }
 
 
     return true;
 }
+*/
 /*
 bool Server::authenticationClient(int sd) {
-    cout << "server->authenticationClient" << endl;
-    vector<unsigned char> recv_buf;
-    int payload_size;
-    int received_size = receiveMsg(payload_size, sd, recv_buf);
-
-    uint16_t opcode = *(unsigned short*)recv_buf.data();  //recv_buf.at(0);
-    if(opcode != LOGIN) {
-        handleErrors("Opcode error", sd);
-        return false;
-    }
-    recv_buf.erase(recv_buf.begin(), recv_buf.begin() + OPCODE_SIZE);
-    if(recv_buf.size() <= NONCE_SIZE) {
-        handleErrors("Received msg size error", sd);
-        return false;
-    }
-    vector<unsigned char> client_nonce;
-    client_nonce.insert(client_nonce.begin(), recv_buf.begin(), recv_buf.begin() + NONCE_SIZE);
-    string username = string(recv_buf.begin() + NONCE_SIZE, recv_buf.end());
-    cout << "user " << username << endl;
-
-
-    pthread_mutex_lock(&mutex);     // mutex on client list
-    // check if user already present on server
-    if(connectedClient.find(username) != connectedClient.end()) {
-        string errorMsg = "User already connected";
-        //cerr << errorMsg << endl;
-
-        // inviare mess errore al client
-        int payload_size = OPCODE_SIZE + errorMsg.size();
-        vector<unsigned char> send_buf(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
-        memcpy(send_buf.data(), &payload_size, NUMERIC_FIELD_SIZE);
-        uint16_t op = ERROR;
-        memcpy(send_buf.data() + NUMERIC_FIELD_SIZE, &op, OPCODE_SIZE);
-        send_buf.insert(send_buf.end(), errorMsg.begin(), errorMsg.end());
-        
-        sendMsg(payload_size, sd, send_buf);
-        
-        handleErrors(errorMsg.c_str(), sd);
-
-        return false;
-    }
-
-    UserInfo new_usr(sd, username);
-    //connectedClient.insert(pair<int, UserInfo>(new_sd, new_usr));
-    connectedClient.insert({username, new_usr});
-    cout << "connected size " << connectedClient.size() << endl;
     
-    pthread_mutex_unlock(&mutex);
-
-    sendCertSign(client_nonce, username, sd);
-
     return true;
 }  // call session.generatenonce & sendMsg
 */
@@ -492,7 +493,7 @@ void Server::logoutClient(int sockd) {
 
 }
 
-void Server::sendErrorMsg(int sd, string errorMsg) {
+void Server::sendErrorMsg(int sockd, string errorMsg) {
         //cerr << errorMsg << endl;
 
         // inviare mess errore al client
@@ -503,7 +504,7 @@ void Server::sendErrorMsg(int sd, string errorMsg) {
         memcpy(send_buf.data() + NUMERIC_FIELD_SIZE, &op, OPCODE_SIZE);
         send_buf.insert(send_buf.end(), errorMsg.begin(), errorMsg.end());
         
-        sendMsg(payload_size, sd, send_buf);
+        sendMsg(payload_size, sockd, send_buf);
 
 }
 /*
