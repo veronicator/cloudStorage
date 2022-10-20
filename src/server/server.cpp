@@ -181,122 +181,16 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 void Server::client_thread_code(int sockd) {
     cout << "client thread code (inside the server) -> run()\n";
     cout << "thread socket " << sockd << endl;
-    /*
-    pthread_mutex_lock(&mutex);
-    if(connectedClient.find(sd) == connectedClient.end()) {
-        handleErrors("socket descriptor not found");
-    }
-    UserInfo usr = connectedClient.at(sd);
-    pthread_mutex_unlock(&mutex);
-    */
+
+    bool retb = authenticationClient(sockd);
     long ret;
-    vector<unsigned char> recv_buffer;
-    // Authentication M1
-    long payload_size = receiveMsg(sockd, recv_buffer);
-    if(payload_size <= 0) {
-        recv_buffer.assign(recv_buffer.size(), '0');
-        cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
-        close(sockd);
-        recv_buffer.clear();
-        pthread_exit(NULL); 
-    }
-    int start_index = NUMERIC_FIELD_SIZE;
-    if(payload_size > recv_buffer.size() - start_index - (int)OPCODE_SIZE) {
-        cerr << "Received msg size error on socket: " << sockd << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        close(sockd);
-        recv_buffer.clear();
-        pthread_exit(NULL); 
+
+    if(!retb) {
+        cerr << "authentication failed\n"
+            << "Closing socket: " << sockd << endl;
+        //pthread_exit(NULL); 
         return;
     }
-
-    uint16_t opcode_n = *(uint16_t*)(recv_buffer.data() + start_index);  //recv_buf.at(0);
-    uint16_t opcode = ntohs(opcode_n);
-    start_index += OPCODE_SIZE;
-    if(opcode != LOGIN) {
-        //handleErrors("Opcode error", sockd);
-        cerr << "Received message not expected on socket: " << sockd << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        close(sockd);
-        recv_buffer.clear();
-        pthread_exit(NULL); 
-        return;
-    }
-
-    //recv_buffer.erase(recv_buffer.begin(), recv_buf.begin() + OPCODE_SIZE);
-    if(recv_buffer.size() <= start_index + NONCE_SIZE) {
-        //handleErrors("Received msg size error", sockd);
-        cerr << "Received msg size error on socket: " << sockd << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        close(sockd);
-        recv_buffer.clear();
-        pthread_exit(NULL); 
-        return;
-    }
-    vector<unsigned char> client_nonce;
-    client_nonce.insert(client_nonce.begin(), recv_buffer.begin(), recv_buffer.begin() + NONCE_SIZE);
-    string username = string(recv_buffer.begin() + NONCE_SIZE, recv_buffer.end());
-    cout << "username " << username << endl;
-
-    recv_buffer.assign(recv_buffer.size(), '0');
-    recv_buffer.clear();
-
-    /*
-    pthread_mutex_lock(&mutex_socket_list);     // mutex on socket client list
-    // check if user already connected to the server
-    if(socketClient.find(username) != socketClient.end()) {
-        string errorMsg = "User already connected";
-        //cerr << errorMsg << endl;
-
-        // inviare mess errore al client
-        uint32_t payload_size = ntohl((uint16_t)(OPCODE_SIZE) + errorMsg.size());
-        vector<unsigned char> send_buf(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
-        memcpy(send_buf.data(), &payload_size, NUMERIC_FIELD_SIZE);
-        opcode_n = htons((uint16_t)ERROR);
-        memcpy(send_buf.data() + NUMERIC_FIELD_SIZE, &opcode_n, OPCODE_SIZE);
-        send_buf.insert(send_buf.end(), errorMsg.begin(), errorMsg.end());
-        
-        ret = sendMsg(payload_size, sockd, send_buf);
-        if(ret != 1) {
-            send_buf.assign(send_buf.size(), '0');
-            send_buf.clear();
-            cerr << "Error sending -> close connection with client on socket: " << sockd << endl;
-            close(sockd);
-            pthread_exit(NULL);
-            //handleErrors(errorMsg.c_str(), sockd);
-        }
-        
-        pthread_mutex_unlock(&mutex_socket_list);
-
-        return;
-    }
-
-    socketClient.insert({username, sockd});
-    */
-    pthread_mutex_lock(&mutex_client_list);
-    if(connectedClient.find(sockd) != connectedClient.end()) {
-        cerr << "Error on socket: " << sockd << " \nConnection already present\n"
-        << "Closing the socket and this thread" << pthread_self() << endl;
-        close(sockd);
-        pthread_exit(NULL);
-        return;
-    }
-    UserInfo new_usr(sockd, username);
-    //connectedClient.insert(pair<int, UserInfo>(new_sd, new_usr));
-    connectedClient.insert({sockd, new_usr});
-    cout << "connected size " << connectedClient.size() << endl;
-
-/*    if(connectedClient.find(username) == connectedClient.end())
-        handleErrors("username not found", sd);
-       
-    UserInfo usr = connectedClient.at(username);
-*/ 
-    pthread_mutex_unlock(&mutex_client_list);
-    //pthread_mutex_unlock(&mutex_socket_list);
-
-    sendCertSign(client_nonce, username, sockd);
-    
-    receiveSign(sockd, username, recv_buffer);
     
     /* 
     verifica firma
@@ -312,27 +206,131 @@ void Server::client_thread_code(int sockd) {
 
 
 /********************************************************************/
+
+
+bool Server::authenticationClient(int sockd) {
+    cout << "authenticationClient" << endl;
+    bool retb;
+    long ret;
+
+    if(!receiveUsername(sockd)) {
+        cerr << "receiveUsername failed" << endl;
+        return false;
+    }
+
+    //sendCertSign(client_nonce, username, sockd);
+    
+    //receiveSign(sockd, username, recv_buffer);
+    
+    return true;
+}  // call session.generatenonce & sendMsg
+
+
+/********************************************************************/
+
+bool Server::receiveUsername(int sockd) {
+    long ret;
+    vector<unsigned char> recv_buffer;
+    // Authentication M1
+    long payload_size = receiveMsg(sockd, recv_buffer);
+    if(payload_size <= 0) {
+        recv_buffer.assign(recv_buffer.size(), '0');
+        cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
+        close(sockd);
+        recv_buffer.clear();
+        return false;
+    }
+    
+    int start_index = NUMERIC_FIELD_SIZE;
+    if(payload_size > recv_buffer.size() - start_index - (int)OPCODE_SIZE) {
+        cerr << "Received msg size error on socket: " << sockd << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        close(sockd);
+        recv_buffer.clear();
+        return false;
+    }
+
+    uint16_t opcode_n = *(uint16_t*)(recv_buffer.data() + start_index);  //recv_buf.at(0);
+    uint16_t opcode = ntohs(opcode_n);
+    start_index += OPCODE_SIZE;
+    if(opcode != LOGIN) {
+        //handleErrors("Opcode error", sockd);
+        cerr << "Received message not expected on socket: " << sockd << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        close(sockd);
+        recv_buffer.clear();
+        return false;
+    }
+
+    //recv_buffer.erase(recv_buffer.begin(), recv_buf.begin() + OPCODE_SIZE);
+    if(recv_buffer.size() <= start_index + NONCE_SIZE) {
+        //handleErrors("Received msg size error", sockd);
+        cerr << "Received msg size error on socket: " << sockd << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        close(sockd);
+        recv_buffer.clear();
+        return false;
+    }
+    vector<unsigned char> client_nonce;
+    client_nonce.insert(client_nonce.begin(), recv_buffer.begin(), recv_buffer.begin() + NONCE_SIZE);
+    string username = string(recv_buffer.begin() + NONCE_SIZE, recv_buffer.end());
+    cout << "username " << username << endl;
+
+    recv_buffer.assign(recv_buffer.size(), '0');
+    recv_buffer.clear();
+    
+    pthread_mutex_lock(&mutex_client_list);
+    if(connectedClient.find(sockd) != connectedClient.end()) {
+        cerr << "Error on socket: " << sockd << " \nConnection already present\n"
+        << "Closing the socket and this thread" << pthread_self() << endl;
+        close(sockd);
+        return false;
+    }
+    UserInfo* new_usr = new UserInfo(sockd, username);
+    //connectedClient.insert(pair<int, UserInfo>(new_sd, new_usr));
+    connectedClient.insert({sockd, new_usr});
+    cout << "connected size " << connectedClient.size() << endl;
+
+    pthread_mutex_unlock(&mutex_client_list);
+
+    return true;
+}
+
+
+
+/********************************************************************/
 /* DONE: modificate send e receive -> fare metodo di autenticazione con tutte le chiamate corrette 
     e i vari messaggi da ricevere/inviare
 */
 /********************************************************************/
 
-/*
-void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int sockd) {
+
+bool Server::sendCertSign(vector<unsigned char> &clt_nonce, string &username, int sockd) {
     cout << "server->sendCertSign" << endl;
     // recupera certificato, serializza cert, copia nel buffer, genera nonce, genera ECDH key, firma, invia
     // retrieve user structure
     // TODO: modificare gestione, senza passare dalla lista di username, ma direttamente dal sockd
-    pthread_mutex_lock(&mutex);
-    if(socketClient.find(username) == connectedClient.end())
-        handleErrors("username not found", sockd);
+    pthread_mutex_lock(&mutex_client_list);
+    if(connectedClient.find(sockd) == connectedClient.end()) {
         
-    UserInfo usr = connectedClient.at(username);
-    pthread_mutex_unlock(&mutex);
+        handleErrors("username not found", sockd);
+        return false;
+    }
+
+    UserInfo *usr;
+
+    try {
+		usr = connectedClient.at(sockd);
+	}
+	catch (const out_of_range& ex) {
+		return false;
+	}
+    
+    pthread_mutex_unlock(&mutex_client_list);
 
     // retrieve server private key
     EVP_PKEY* srv_priv_k;
-    usr.client_session->retrievePrivKey("./server/Server_key.pem", srv_priv_k);
+    usr->client_session->retrievePrivKey("./server/Server_key.pem", srv_priv_k);
 
     // retrieve e serialize server certificate
     string cert_file_name = "./server/Server_cert.pem";
@@ -354,10 +352,10 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
     cout << "serialize cert" << endl;
 
     // generete and serialize ecdh key
-    usr.client_session->generateNonce();
-    usr.client_session->generateECDHKey();
+    usr->client_session->generateNonce();
+    usr->client_session->generateECDHKey();
     unsigned char* ECDH_srv_pub_key = NULL;
-    uint32_t ECDH_srv_key_size = usr.client_session->serializePubKey(usr.client_session->ECDH_myKey, ECDH_srv_pub_key);
+    uint32_t ECDH_srv_key_size = usr->client_session->serializePubKey(usr->client_session->ECDH_myKey, ECDH_srv_pub_key);
     BIO_dump_fp(stdout, (const char*)ECDH_srv_pub_key, ECDH_srv_key_size);
     // cout << "after serialize pub" << endl;
     // prepare message to sign
@@ -368,7 +366,7 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
     msg_to_send.insert(msg_to_send.begin(), clt_nonce.begin(), clt_nonce.end());
     cout << "insert 1\n";
     // todo: fix
-    msg_to_send.insert(msg_to_send.end(),usr.client_session->nonce.begin(), usr.client_session->nonce.end());
+    //msg_to_send.insert(msg_to_send.end(),usr->client_session->nonce.begin(), usr->client_session->nonce.end());
     cout << "insert 2" << endl;
 
     memcpy(buffer.data(), ECDH_srv_pub_key, ECDH_srv_key_size);
@@ -378,7 +376,7 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
     buffer.fill('0');
 
     unsigned char* signed_msg = NULL;
-    int signed_msg_len = usr.client_session->signMsg(msg_to_send.data(), msg_to_send.size(), srv_priv_k, signed_msg);
+    int signed_msg_len = usr->client_session->signMsg(msg_to_send.data(), msg_to_send.size(), srv_priv_k, signed_msg);
 
     // prepare send buffer
     // status msg_to_send: | Nc | Ns | ECDH_srv_pubK |
@@ -424,8 +422,10 @@ void Server::sendCertSign(vector<unsigned char> clt_nonce, string username, int 
 
     msg_to_send.assign(msg_to_send.size(), 0);
     
+    return true;
+
 }   // send (nonce, ecdh_key, cert, dig_sign)
-*/
+
 
 //HERE
 /*
@@ -474,12 +474,6 @@ bool Server::receiveSign(int sockd, string username, vector<unsigned char>& recv
     return true;
 }
 */
-/*
-bool Server::authenticationClient(int sd) {
-    
-    return true;
-}  // call session.generatenonce & sendMsg
-*/
 
 void Server::requestFileList() {
 
@@ -493,7 +487,7 @@ void Server::logoutClient(int sockd) {
 
 }
 
-void Server::sendErrorMsg(int sockd, string errorMsg) {
+void Server::sendErrorMsg(int sockd, string &errorMsg) {
         //cerr << errorMsg << endl;
 
         // inviare mess errore al client

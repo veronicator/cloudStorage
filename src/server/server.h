@@ -23,7 +23,7 @@ class Server {
 
     // vector<Session> activeSessions;
     //todo: fare un unica mappa <int sockID, UserInfo> ?
-    unordered_map<int, UserInfo> connectedClient;    // client sockd, session
+    unordered_map<int, UserInfo*> connectedClient;    // client sockd, session
     //unordered_map<string, int> socketClient;      // client username, socket descriptor -> to find if a client is already connected and what is his sockd
     //map<int, UserInfo> connectedClient;     // client_socket descriptor, userInfo struct
     //unordered_map<string, UserInfo> activeChats;  // client username, data about chat
@@ -64,16 +64,17 @@ class Server {
 
         int sendMsg(int payload_size, int sockd, vector<unsigned char> &send_buffer);       //dopo invio: deallocare buffer
         long receiveMsg(int sockd, vector<unsigned char> &recv_buffer);    // restituisce lunghezza totale messaggio ricevuto, msg_size
-        void receiveUsername(int sockd);
-        void sendCertSign(vector<unsigned char> clt_nonce, string username, int sockd);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
-        bool receiveSign(int sd, string username, vector<unsigned char>& recv_buf);
+
+        bool receiveUsername(int sockd);
+        bool sendCertSign(vector<unsigned char> &clt_nonce, string &username, int sockd);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
+        bool receiveSign(int sd, string &username, vector<unsigned char> &recv_buf);
         bool authenticationClient(int sockd);  // call session.generatenonce & sendMsg
         
         void requestFileList();
         void sendFileList();
         void logoutClient(int sockd); 
 
-        void sendErrorMsg(int sd, string errorMsg);
+        void sendErrorMsg(int sd, string &errorMsg);
 
         void joinThread();
 
