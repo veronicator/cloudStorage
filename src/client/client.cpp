@@ -52,7 +52,7 @@ void Client::createSocket(string srv_ip) {
  * @payload_size: body lenght of the message to send
  * @return: 1 on success, 0 or -1 on error
  */
-int Client::sendMsg(int payload_size) {
+int Client::sendMsg(uint32_t payload_size) {
     cout << "sendMsg new" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
@@ -124,6 +124,7 @@ int Client::sendMsg(int payload_size) {
 bool Client::authentication() {
     cout << "Client->autentication\n";
     
+    int ret;
     array<unsigned char, NONCE_SIZE> client_nonce;
     vector<unsigned char> server_nonce(NONCE_SIZE);
 
@@ -132,33 +133,6 @@ bool Client::authentication() {
         cerr << "Authentication failed" << endl;
     }
     
-    /*
-    int start_index = 0;
-    uint32_t payload_size = OPCODE_SIZE + NONCE_SIZE + username.size();
-
-    memset(send_buffer, 0, MAX_BUF_SIZE);
-    active_session->generateNonce();
-    // prepare buffer: | payload_size | opcode | nonce_client | username |
-    uint32_t payload_n = htonl(payload_size);
-    memcpy(send_buffer, (unsigned char*)&payload_n, NUMERIC_FIELD_SIZE);
-    start_index += NUMERIC_FIELD_SIZE;
-    uint16_t opcode = htons((uint16_t)LOGIN);
-    memcpy(send_buffer + start_index, (unsigned char*)&opcode, OPCODE_SIZE);
-    start_index += OPCODE_SIZE;
-    memcpy(send_buffer + start_index, active_session->nonce.data(), NONCE_SIZE);
-    start_index += NONCE_SIZE;
-    memcpy(send_buffer + start_index, username.c_str(), username.size());
-    start_index += username.size();
-    //sendMsg
-    cout << "authentication->sendMsg (nonce, usr)" << endl;
-    sendMsg(payload_size);     // dimensione del messaggio da inviare -> solo payload, l'header viene aggiunto in sendMsg
-    */
-    /*BIO_dump_fp(stdout, (const char*)send_buffer, start_index);    // stampa in esadecimale
-    cout << payload_size << " buffer len" << strlen((char*)send_buffer) << endl;
-    for(int i=0; i<start_index; i++) {
-        cout << send_buffer[i];
-    }
-    cout << endl;*/
 
     // M2: receive server cert e ECDH_server_key
     cout << "authentication->receiveMsg" << endl;
@@ -187,9 +161,14 @@ bool Client::authentication() {
     EVP_PKEY *my_priv_key;
     active_session->retrievePrivKey("./client/users/" + username + "/" + username + "_key.pem", my_priv_key);
     active_session->generateECDHKey();
-    sendSign(server_nonce, my_priv_key);
+    ret = sendSign(server_nonce, my_priv_key);
     cout << "sendsign serv nonce" << endl;
     server_nonce.clear();
+    if(ret != 1) {
+        cerr << "sendSign failed " << endl;
+        EVP_PKEY_free(my_priv_key);
+        return false;
+    }
     /*
     unsigned char* ECDH_my_pub_key = NULL;
     unsigned int ECDH_my_key_size = active_session->serializeKey(active_session->ECDH_myKey, ECDH_my_pub_key);
@@ -251,10 +230,13 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
                             vector<unsigned char> &srv_nonce) {
     cout << "receiveCertSign\n";
 
-    int start_index = 0;
     int payload_size =  receiveMsg();
+    if(payload_size <= 0) {
+        cerr << "Error on the receiveMsg -> closing connection..." << endl;
+        return false;
+    }
 
-    start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
+    int start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
 
     // check opcode
     uint16_t opcode_n = *(uint16_t*)(recv_buffer.data() + start_index);
@@ -487,7 +469,13 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
     return true;
 }
 
-void Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
+/**
+ * send client digital signature
+ * @srv_nonce: vector containing the nonce sent by the server, to re-send to the server
+ * @priv_k: client private key needed to sign the message
+ * @return: 1 on success, 0 or -1 on error (return of sendMsg())
+*/
+int Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
     cout << "Client -> sendSign " << endl;
     unsigned char* ECDH_my_pub_key = NULL;
     uint32_t ECDH_my_key_size = active_session->serializePubKey(active_session->ECDH_myKey, ECDH_my_pub_key);
@@ -532,7 +520,7 @@ void Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
 
     // send msg to server
     cout <<"authentication sendMsg (ecdh pub key)" << endl;
-    sendMsg(payload_size);
+    int ret = sendMsg(payload_size);
 
     // clear buffer
     //memset(msg_to_sign.data(), '0', msg_to_sign.size());
@@ -544,6 +532,8 @@ void Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
     signed_msg.clear();
 
     cout << "sendSign end" << endl;
+
+    return ret;
 }
 
 
@@ -705,7 +695,12 @@ void Client::requestFileList() {
     send_buffer.clear();    //fill('0');
     //memset(send_buffer, 0, MAX_BUF_SIZE);
     int payload_size = active_session->fileList((unsigned char*)msg.c_str(), msg.length(), send_buffer.data());    // prepare msg to send
-    sendMsg(payload_size);
+    int ret = sendMsg(payload_size);
+    if(ret != 1) {
+        cerr << "send requestFileList failed" << endl;
+        // todo: clear buffer
+        return;
+    }
 
     receiveFileList();
 }
@@ -715,6 +710,10 @@ void Client::receiveFileList() {
     unsigned char *aad, *user_list;
     int aad_len;
     int payload_size = receiveMsg();
+    if(payload_size <= 0) {
+        cerr << "Error on the receiveMsg -> closing connection..." << endl;
+        return;
+    }
     //int received_size = receiveMsg(payload_size);
     int list_len = active_session->decryptMsg(recv_buffer.data() + NUMERIC_FIELD_SIZE, payload_size, aad, aad_len, user_list);
     uint16_t opcode_n = *(unsigned short*)(aad + NUMERIC_FIELD_SIZE);
