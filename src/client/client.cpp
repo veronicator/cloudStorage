@@ -137,13 +137,7 @@ bool Client::authentication() {
     // M2: receive server cert e ECDH_server_key
     cout << "authentication->receiveMsg" << endl;
     vector<unsigned char> server_nonce(NONCE_SIZE);
-    /*unsigned char* srv_nonce = (unsigned char*)malloc(NONCE_SIZE);
-    if(!srv_nonce) {
-        cerr << "Malloc failed " << endl;
-        
-        return false;
-    }
-    */
+
     // receive M2
     if(!receiveCertSign(client_nonce, server_nonce)) {
         cerr << "receiveVerifyCert failed" << endl;
@@ -187,7 +181,7 @@ bool Client::authentication() {
 // Message M1
 int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     cout << "sendUsername\n";
-    int start_index = 0;
+    uint start_index = 0;
     uint32_t payload_size = OPCODE_SIZE + NONCE_SIZE + username.size();
     uint32_t payload_n = htonl(payload_size);
 
@@ -236,7 +230,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
         return false;
     }
 
-    int start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
+    uint start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
 
     // check opcode
     uint16_t opcode_n = *(uint16_t*)(recv_buffer.data() + start_index);
@@ -477,8 +471,9 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce,
 */
 int Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
     cout << "Client -> sendSign " << endl;
-    unsigned char* ECDH_my_pub_key = NULL;
-    uint32_t ECDH_my_key_size = active_session->serializePubKey(active_session->ECDH_myKey, ECDH_my_pub_key);
+    unsigned char* ECDH_my_pub_key = nullptr;
+    uint32_t ECDH_my_key_size = active_session->serializePubKey(
+                                    active_session->ECDH_myKey, ECDH_my_pub_key);
     vector<unsigned char> msg_to_sign(NONCE_SIZE + ECDH_my_key_size);
     //unsigned char* msg_to_sign = (unsigned char*)malloc(NONCE_SIZE + ECDH_my_key_size);
     //if(!msg_to_sign)
@@ -488,7 +483,7 @@ int Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
 
     vector<unsigned char> signed_msg(EVP_PKEY_size(priv_k));
-    int signed_msg_len = active_session->signMsg(msg_to_sign.data(), NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg.data());
+    uint signed_msg_len = active_session->signMsg(msg_to_sign.data(), NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg.data());
 
     // prepare send buffer
     send_buffer.clear();    //fill('0');
@@ -498,7 +493,7 @@ int Client::sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k) {
     uint32_t payload_size = OPCODE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size + signed_msg_len;
     uint32_t payload_n = htonl(payload_size);
     memcpy(send_buffer.data(), &payload_n, NUMERIC_FIELD_SIZE);
-    int start_index = NUMERIC_FIELD_SIZE;
+    uint start_index = NUMERIC_FIELD_SIZE;
 
     uint16_t opcode = htons((uint16_t)LOGIN);
     memcpy(send_buffer.data() + start_index, &opcode, OPCODE_SIZE);
