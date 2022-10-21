@@ -206,11 +206,6 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 
 /********************************************************************/
 
-
-/*void Session::generateNonce() {
-    generateRandomValue(nonce.data(), NONCE_SIZE);    
-}*/
-
 void Session::generateNonce(unsigned char *nonce) {
     /*nonce = (unsigned char*)malloc(NONCE_SIZE);
     if(!nonce)
