@@ -102,7 +102,7 @@ void* Server::client_thread_code(void* arg) {
  * @send_buf: sending buffer containing the message to send, associated to a specific client
  * @return: 1 on success, 0 or -1 on error
  */
-int Server::sendMsg(int payload_size, int sockd, vector<unsigned char> &send_buffer) {
+int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer) {
     cout << payload_size << " sendMsg: payload size" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
@@ -182,20 +182,22 @@ void Server::client_thread_code(int sockd) {
     cout << "client thread code (inside the server) -> run()\n";
     cout << "thread socket " << sockd << endl;
 
-    bool retb = authenticationClient(sockd);
     long ret;
+    bool retb;
+
+    retb = authenticationClient(sockd);
 
     if(!retb) {
         cerr << "authentication failed\n"
             << "Closing socket: " << sockd << endl;
+        
+        // TODO: erase the client from the map
+        
+        close(sockd);
         //pthread_exit(NULL); 
         return;
     }
     
-    /* 
-    verifica firma
-    invia lista utenti online
-    -> end authentication */
 
     pthread_mutex_lock(&mutex_client_list);
     connectedClient.erase(sockd);
@@ -221,22 +223,31 @@ bool Server::authenticationClient(int sockd) {
     //sendCertSign(client_nonce, username, sockd);
     
     //receiveSign(sockd, username, recv_buffer);
-    
+        /* 
+    verifica firma
+    invia lista utenti online
+    -> end authentication */
+
     return true;
 }  // call session.generatenonce & sendMsg
 
 
 /********************************************************************/
 
+
+/** receive the first message from a client to establish a connection
+ * @sockd: descriptor of the socket from which the request arrives
+ * @return: true on success, false otherwise
+*/
 bool Server::receiveUsername(int sockd) {
-    long ret;
+    // M1 (Authentication)
     vector<unsigned char> recv_buffer;
     // Authentication M1
     long payload_size = receiveMsg(sockd, recv_buffer);
     if(payload_size <= 0) {
         recv_buffer.assign(recv_buffer.size(), '0');
         cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
-        close(sockd);
+        //close(sockd);
         recv_buffer.clear();
         return false;
     }
@@ -245,7 +256,7 @@ bool Server::receiveUsername(int sockd) {
     if(payload_size > recv_buffer.size() - start_index - (int)OPCODE_SIZE) {
         cerr << "Received msg size error on socket: " << sockd << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
-        close(sockd);
+        //close(sockd);
         recv_buffer.clear();
         return false;
     }
@@ -257,21 +268,22 @@ bool Server::receiveUsername(int sockd) {
         //handleErrors("Opcode error", sockd);
         cerr << "Received message not expected on socket: " << sockd << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
-        close(sockd);
+        //close(sockd);
+        recv_buffer.clear();
+        return false;
+    }
+    
+    if(start_index >= recv_buffer.size() - (int)NONCE_SIZE) {
+            // if it is equal => there is no username in the message -> error
+        //handleErrors("Received msg size error", sockd);
+        cerr << "Received msg size error on socket: " << sockd << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        //close(sockd);
         recv_buffer.clear();
         return false;
     }
 
-    //recv_buffer.erase(recv_buffer.begin(), recv_buf.begin() + OPCODE_SIZE);
-    if(recv_buffer.size() <= start_index + NONCE_SIZE) {
-        //handleErrors("Received msg size error", sockd);
-        cerr << "Received msg size error on socket: " << sockd << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        close(sockd);
-        recv_buffer.clear();
-        return false;
-    }
-    vector<unsigned char> client_nonce;
+    vector<unsigned char> client_nonce(NONCE_SIZE);
     client_nonce.insert(client_nonce.begin(), recv_buffer.begin(), recv_buffer.begin() + NONCE_SIZE);
     string username = string(recv_buffer.begin() + NONCE_SIZE, recv_buffer.end());
     cout << "username " << username << endl;
@@ -281,147 +293,179 @@ bool Server::receiveUsername(int sockd) {
     
     pthread_mutex_lock(&mutex_client_list);
     if(connectedClient.find(sockd) != connectedClient.end()) {
-        cerr << "Error on socket: " << sockd << " \nConnection already present\n"
-        << "Closing the socket and this thread" << pthread_self() << endl;
-        close(sockd);
+        cerr << "Error on socket: " << sockd << " \nConnection already present\n" << endl;
         return false;
     }
     UserInfo* new_usr = new UserInfo(sockd, username);
     //connectedClient.insert(pair<int, UserInfo>(new_sd, new_usr));
-    connectedClient.insert({sockd, new_usr});
+    auto ret = connectedClient.insert({sockd, new_usr});
     cout << "connected size " << connectedClient.size() << endl;
 
     pthread_mutex_unlock(&mutex_client_list);
 
-    return true;
+    return ret.second;
 }
 
 
-
 /********************************************************************/
-/* DONE: modificate send e receive -> fare metodo di autenticazione con tutte le chiamate corrette 
-    e i vari messaggi da ricevere/inviare
+
+/** method to sent the server certificate and its digital signature 
+ * to the client requesting the connection to the cloud
+ * @clt_nonce: nonce received in the firt message from the client, 
+ *             to re-send signed, to the same client
+ * @sockd: socket descriptor
+ * @return: true on success, false otherwise
 */
-/********************************************************************/
-
-
-bool Server::sendCertSign(vector<unsigned char> &clt_nonce, string &username, int sockd) {
-    cout << "server->sendCertSign" << endl;
+bool Server::sendCertSign(vector<unsigned char> &clt_nonce, int sockd) {
     // recupera certificato, serializza cert, copia nel buffer, genera nonce, genera ECDH key, firma, invia
+
+    // M2 (Authentication)
+    cout << "server->sendCertSign" << endl;
+    
+    //array<unsigned char, MAX_BUF_SIZE> buffer_temp;  // support array
+    array<unsigned char, NONCE_SIZE> srv_nonce;
+    uint32_t payload_size = 0;
+    uint32_t start_index = 0;
+
+    UserInfo *usr = nullptr;
+
+    unsigned char* cert_buf = nullptr;
+    EVP_PKEY* srv_priv_k = nullptr;
+    unsigned char* ECDH_srv_pub_key = nullptr;
+    uint32_t ECDH_srv_key_size = 0;
+    vector<unsigned char> msg_to_sign;
+    uint32_t signed_msg_len = 0;
+    array<unsigned char, MAX_BUF_SIZE> signed_msg;  
+    
     // retrieve user structure
-    // TODO: modificare gestione, senza passare dalla lista di username, ma direttamente dal sockd
     pthread_mutex_lock(&mutex_client_list);
-    if(connectedClient.find(sockd) == connectedClient.end()) {
-        
-        handleErrors("username not found", sockd);
-        return false;
-    }
-
-    UserInfo *usr;
-
     try {
 		usr = connectedClient.at(sockd);
-	}
-	catch (const out_of_range& ex) {
+	} catch (const out_of_range& ex) {
 		return false;
 	}
-    
     pthread_mutex_unlock(&mutex_client_list);
 
     // retrieve server private key
-    EVP_PKEY* srv_priv_k;
     usr->client_session->retrievePrivKey("./server/Server_key.pem", srv_priv_k);
 
     // retrieve e serialize server certificate
     string cert_file_name = "./server/Server_cert.pem";
     FILE* cert_file = fopen(cert_file_name.c_str(), "r");
     if(!cert_file) { 
-        handleErrors("Server_cert file doesn't exist", sockd);
+        //handleErrors("Server_cert file doesn't exist", sockd);
+        cerr << "Server_cert file does not exist\n" << endl;
+        return false;
     }
     X509* cert = PEM_read_X509(cert_file, NULL, NULL, NULL);
     fclose(cert_file);
-    if(!cert)
-        handleErrors("PEM_read_X509 (cert) returned NULL", sockd);
+    if(!cert) {
+        //handleErrors("PEM_read_X509 (cert) returned NULL", sockd);
+        cerr << "PEM_read_X509 (cert) returned NULL\n" << endl;
+        return false;
+    }
 
-    unsigned char* cert_buf = NULL;
     int cert_size = i2d_X509(cert, &cert_buf);
-    if(cert_size < 0)
-        handleErrors("Server cert serialization error, i2d_X509 failed", sockd);
+    if(cert_size < 0) {
+        //handleErrors("Server cert serialization error, i2d_X509 failed", sockd);
+        cerr << "Server cert serialization error, i2d_X509 failed" << endl;
+        return false;
+    }
     // clean
     X509_free(cert);
     cout << "serialize cert" << endl;
 
     // generete and serialize ecdh key
-    usr->client_session->generateNonce();
+    usr->client_session->generateNonce(srv_nonce.data());
     usr->client_session->generateECDHKey();
-    unsigned char* ECDH_srv_pub_key = NULL;
-    uint32_t ECDH_srv_key_size = usr->client_session->serializePubKey(usr->client_session->ECDH_myKey, ECDH_srv_pub_key);
+
+    ECDH_srv_key_size = usr->client_session->serializePubKey (
+                                    usr->client_session->ECDH_myKey, ECDH_srv_pub_key);
     BIO_dump_fp(stdout, (const char*)ECDH_srv_pub_key, ECDH_srv_key_size);
     // cout << "after serialize pub" << endl;
+
     // prepare message to sign
-    array<unsigned char, MAX_BUF_SIZE> buffer;  // support array
-    vector<unsigned char> msg_to_send;      // buffer to sign and send
-    //vector<unsigned char> send_buf;
+    msg_to_sign.reserve(NONCE_SIZE + ECDH_srv_key_size);
+    msg_to_sign.resize(ECDH_srv_key_size);
 
-    msg_to_send.insert(msg_to_send.begin(), clt_nonce.begin(), clt_nonce.end());
-    cout << "insert 1\n";
-    // todo: fix
-    //msg_to_send.insert(msg_to_send.end(),usr->client_session->nonce.begin(), usr->client_session->nonce.end());
-    cout << "insert 2" << endl;
+    // fields to sign: client nonce + ECDH server key
+    // -> insert client nonce
+    msg_to_sign.insert(msg_to_sign.begin(), clt_nonce.begin(), clt_nonce.end());
+    // -> insert ECDH server key 
+    memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_srv_pub_key, ECDH_srv_key_size);
+    cout << "client nonce inserted\n";
 
-    memcpy(buffer.data(), ECDH_srv_pub_key, ECDH_srv_key_size);
-    cout << "memcpy 2" << endl;
-    msg_to_send.insert(msg_to_send.end(), buffer.begin(), buffer.begin() + ECDH_srv_key_size);
-    cout << " insert 4" << endl;
-    buffer.fill('0');
+    signed_msg_len = usr->client_session->signMsg(msg_to_sign.data(), 
+                                    msg_to_sign.size(), srv_priv_k, signed_msg.data());
 
-    unsigned char* signed_msg = NULL;
-    int signed_msg_len = usr->client_session->signMsg(msg_to_send.data(), msg_to_send.size(), srv_priv_k, signed_msg);
-
-    // prepare send buffer
-    // status msg_to_send: | Nc | Ns | ECDH_srv_pubK |
-    int payload_size;
-    uint16_t op = LOGIN;
-    memcpy(buffer.data(), &op, OPCODE_SIZE);
-    msg_to_send.insert(msg_to_send.begin(), buffer.begin(), buffer.begin() + OPCODE_SIZE);    // insert opcode
-    payload_size = OPCODE_SIZE + NONCE_SIZE + NONCE_SIZE;
-    // status msg_to_send: | OP | Nc | Ns | ECDH_srv_pubK |
+    // prepare send buffer    
+    payload_size = OPCODE_SIZE + NONCE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE 
+                + cert_size + NUMERIC_FIELD_SIZE + ECDH_srv_key_size + signed_msg_len;
     
-    uint32_t cert_size_n = htonl(cert_size);
-    memcpy(buffer.data(), &cert_size_n, NUMERIC_FIELD_SIZE);
-    msg_to_send.insert(msg_to_send.begin() + payload_size, buffer.begin(), buffer.begin() + NUMERIC_FIELD_SIZE);    // insert cert_size
-    payload_size += NUMERIC_FIELD_SIZE;
-    // status msg_to_send: | OP | Nc | Ns | cert_size | ECDH_srv_pubK |
+    // fields to insert with the memcpy in the vector
+    uint32_t temp_size = NUMERIC_FIELD_SIZE + OPCODE_SIZE + NUMERIC_FIELD_SIZE 
+                            + NUMERIC_FIELD_SIZE + cert_size + ECDH_srv_key_size;
+    usr->send_buffer.resize(temp_size);
 
-    memcpy(buffer.data(), cert_buf, cert_size);
-    cout << "memcpy 1" << endl;
-    msg_to_send.insert(msg_to_send.begin() + payload_size, buffer.begin(), buffer.begin() + cert_size);
-    payload_size += cert_size;
-    cout << "insert 3" << endl;
-    buffer.fill('0');
-    cout << "fill 1\n";
-    // status msg_to_send: | OP | Nc | Ns | cert_size | server_cert | ECDH_srv_pubK |
+    if(usr->send_buffer.size() < temp_size) {
+        cerr << "vector.resize error " << endl;
+        //TODO: clear all buffer -> cercare come deallocare tutto correttamente
 
-    memcpy(buffer.data(), &ECDH_srv_key_size, NUMERIC_FIELD_SIZE);
-    msg_to_send.insert(msg_to_send.begin() + payload_size, buffer.begin(), buffer.begin() + NUMERIC_FIELD_SIZE);    // insert key_size
-    // status msg_to_send: | OP | Nc | Ns | cert_size | server_cert | ECDH_key_size | ECDH_srv_pubK |
+        signed_msg.fill('0');
+        msg_to_sign.assign(msg_to_sign.size(), '0');
+        EVP_PKEY_free(srv_priv_k);
+        OPENSSL_free(cert_buf);
+        free(ECDH_srv_pub_key); // TODO: check if it is correct
+
+        return false;
+    }
+
+    // msg: | pay_size | op | Nonce_c | Nonce_S | cert_size | cert | ECDH_size | ECDH | DigSign |
+    // payload_size
+    uint32_t payload_size_n = htonl(payload_size);
+    memcpy(usr->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    start_index = NUMERIC_FIELD_SIZE;
+    // opcode        
+    uint16_t opcode = htons((uint16_t)LOGIN);
+    memcpy(usr->send_buffer.data() + start_index, &opcode, OPCODE_SIZE);
+    start_index += OPCODE_SIZE;
+    // nonce_client
+    usr->send_buffer.insert(usr->send_buffer.begin() + start_index, clt_nonce.begin(), clt_nonce.end());
+    start_index += NONCE_SIZE;
+    // nonce_server
+    usr->send_buffer.insert(usr->send_buffer.begin() + start_index, srv_nonce.begin(), srv_nonce.end());
+    start_index += NONCE_SIZE;
+    // cert_size
+    cert_size = htonl(cert_size);
+    memcpy(usr->send_buffer.data() + start_index, &cert_size, NUMERIC_FIELD_SIZE);
+    start_index += NUMERIC_FIELD_SIZE;
+    // cert_server
+    memcpy(usr->send_buffer.data() + start_index, cert_buf, cert_size);
+    start_index += cert_size;
+    // ECDH_size
+    ECDH_srv_key_size = htonl(ECDH_srv_key_size);
+    memcpy(usr->send_buffer.data() + start_index, &ECDH_srv_key_size, NUMERIC_FIELD_SIZE);
+    start_index += NUMERIC_FIELD_SIZE;
+    // ECDH_server_pubK
+    memcpy(usr->send_buffer.data() + start_index, ECDH_srv_pub_key, ECDH_srv_key_size);
+    start_index += ECDH_srv_key_size;
+    // digital_sign
+    usr->send_buffer.insert(usr->send_buffer.end(), signed_msg.begin(), signed_msg.begin() + signed_msg_len);
+
+    // clear buffers
+    signed_msg.fill('0');
+    msg_to_sign.assign(msg_to_sign.size(), '0');
+    EVP_PKEY_free(srv_priv_k);
+    OPENSSL_free(cert_buf);
+    free(ECDH_srv_pub_key); // TODO: check if it is correct
+
+    if(sendMsg(payload_size, sockd, usr->send_buffer) != 1) {
+        cerr << "sendCertSize failed " << endl;
+        //delete usr;
+        return false;
+    }
     
-    // copy signed_msg in support array
-    memcpy(buffer.data(), signed_msg, signed_msg_len);
-    msg_to_send.insert(msg_to_send.end(), buffer.begin(), buffer.begin() + signed_msg_len); // insert digital signature at the end
-    // status msg_to_send: | OP | Nc | Ns | cert_size | server_cert | ECDH_key_size | ECDH_srv_pubK | Dig_sign |
-
-    payload_size = msg_to_send.size();
-
-    memcpy(buffer.data(), &payload_size, NUMERIC_FIELD_SIZE);
-    msg_to_send.insert(msg_to_send.begin(), buffer.begin(), buffer.begin() + NUMERIC_FIELD_SIZE);   // insert payload_size
-    // status msg_to_send: | payload_size | OP | Nc | Ns | cert_size | server_cert | ECDH_key_size | ECDH_srv_pubK | Dig_sign |
-    
-    buffer.fill('0');
-    sendMsg(payload_size, sockd, msg_to_send);
-
-    msg_to_send.assign(msg_to_send.size(), 0);
-    
+    //delete usr;
     return true;
 
 }   // send (nonce, ecdh_key, cert, dig_sign)
@@ -541,7 +585,7 @@ void* client_thread_code(void *arg) {
     Server* serv = args->server;
     int sockd = args->sockd;
     serv->client_thread_code(sockd);
-    cout<< "exit1 \n";
+    cout<< "exit thread \n";
     pthread_exit(NULL);
     return NULL;
 }
