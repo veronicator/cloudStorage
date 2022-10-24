@@ -58,7 +58,7 @@ class Server {
 
     bool receiveUsername(int sockd);
     bool sendCertSign(vector<unsigned char> &clt_nonce, int sockd);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
-    bool receiveSign(int sd, string &username, vector<unsigned char> &recv_buf);
+    bool receiveSign(int sd, vector<unsigned char> &recv_buf);
     bool authenticationClient(int sockd);  // call session.generatenonce & sendMsg
 
     // TODO: modificare come serve 

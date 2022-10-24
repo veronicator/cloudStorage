@@ -252,8 +252,8 @@ bool Server::receiveUsername(int sockd) {
         return false;
     }
     
-    int start_index = NUMERIC_FIELD_SIZE;
-    if(payload_size > recv_buffer.size() - start_index - (int)OPCODE_SIZE) {
+    uint32_t start_index = NUMERIC_FIELD_SIZE;
+    if(payload_size > recv_buffer.size() - start_index - (uint)OPCODE_SIZE) {
         cerr << "Received msg size error on socket: " << sockd << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
         //close(sockd);
@@ -273,7 +273,7 @@ bool Server::receiveUsername(int sockd) {
         return false;
     }
     
-    if(start_index >= recv_buffer.size() - (int)NONCE_SIZE) {
+    if(start_index >= recv_buffer.size() - (uint)NONCE_SIZE) {
             // if it is equal => there is no username in the message -> error
         //handleErrors("Received msg size error", sockd);
         cerr << "Received msg size error on socket: " << sockd << endl;
@@ -472,40 +472,65 @@ bool Server::sendCertSign(vector<unsigned char> &clt_nonce, int sockd) {
 
 
 //HERE
-/*
-bool Server::receiveSign(int sockd, string username, vector<unsigned char>& recv_buf) {
+
+bool Server::receiveSign(int sockd, vector<unsigned char>& recv_buf) {
+    // M3 Authentication
     // receive and verify client digital signature 
     cout << "server->receiveSign" << endl;
     //vector<unsigned char> recv_buf;
     int payload_size = receiveMsg(sockd, recv_buf);
     if(payload_size <= 0) {
-        cerr << "Error on Receive -> close connection with client on socket: " << sockd << endl;
-        close(sockd);
-        pthread_exit(NULL);
+        recv_buf.assign(recv_buf.size(), '0');
+        cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
+        //close(sockd);
+        recv_buf.clear();
+        //close(sockd);
+        //pthread_exit(NULL);
         return false;
     }
-
-    uint16_t opcode = *(unsigned short*)recv_buf.data();  //recv_buf.at(0);
-    if(opcode != LOGIN) {
-        handleErrors("Opcode error", sockd);
-        return false;
-    }
-    recv_buf.erase(recv_buf.begin(), recv_buf.begin() + OPCODE_SIZE);
-    if(recv_buf.size() <= NONCE_SIZE) {
-        handleErrors("Received msg size error", sockd);
-        return false;
-    }
-
-    pthread_mutex_lock(&mutex);
-    if(connectedClient.find(username) == connectedClient.end())
-        handleErrors("username not found", sockd);
         
-    UserInfo usr = connectedClient.at(username);
-    pthread_mutex_unlock(&mutex);
+    uint32_t start_index = NUMERIC_FIELD_SIZE;
+    if(payload_size > recv_buf.size() - start_index - (uint)OPCODE_SIZE) {
+        cerr << "Received msg size error on socket: " << sockd << endl;
+        recv_buf.assign(recv_buf.size(), '0');
+        //close(sockd);
+        recv_buf.clear();
+        return false;
+    }
 
+    uint16_t opcode_n = *(uint16_t*)(recv_buf.data() + start_index);  //recv_buf.at(0);
+    uint16_t opcode = ntohs(opcode_n);
+    start_index += OPCODE_SIZE;
+
+    if(opcode != LOGIN) {
+        cerr << "Received message not expected on socket: " << sockd << endl;
+        recv_buf.assign(recv_buf.size(), '0');
+        recv_buf.clear();
+        return false;
+    }
+    //start_index >= recv_buffer.size() - (int)NONCE_SIZE
+    //if(recv_buf.size() <= NONCE_SIZE) {
+    if(start_index >= recv_buf.size() - (uint)NONCE_SIZE) {
+        cerr << "Received msg size error on socket: " << sockd << endl;
+        recv_buf.assign(recv_buf.size(), '0');
+        recv_buf.clear();
+        return false;
+    }
+
+    UserInfo *usr = nullptr;
+    
+    // retrieve user structure
+    pthread_mutex_lock(&mutex_client_list);
+    try {
+		usr = connectedClient.at(sockd);
+	} catch (const out_of_range& ex) {
+		return false;
+	}
+    pthread_mutex_unlock(&mutex_client_list);
+/*
     vector<unsigned char> server_nonce;
-    server_nonce.insert(server_nonce.begin(), recv_buf.begin(), recv_buf.begin() + NONCE_SIZE);
-    if(!usr.client_session->checkNonce(server_nonce.data())) {
+    server_nonce.insert(server_nonce.begin(), recv_buf.begin() + start_index, recv_buf.begin() + NONCE_SIZE);
+    if(!usr->client_session->checkNonce(server_nonce.data())) {
         sendErrorMsg(sockd, "Received nonce not verified");
         
         pthread_mutex_lock(&mutex);
@@ -513,11 +538,11 @@ bool Server::receiveSign(int sockd, string username, vector<unsigned char>& recv
         pthread_mutex_unlock(&mutex);
         handleErrors("Received server nonce not verified", sockd);
     }
-
+*/
 
     return true;
 }
-*/
+
 
 void Server::requestFileList() {
 
