@@ -56,9 +56,9 @@ class Server {
     int sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer);       //dopo invio: deallocare buffer
     long receiveMsg(int sockd, vector<unsigned char> &recv_buffer);    // restituisce lunghezza totale messaggio ricevuto, msg_size
 
-    bool receiveUsername(int sockd);
-    bool sendCertSign(vector<unsigned char> &clt_nonce, int sockd);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
-    bool receiveSign(int sd, vector<unsigned char> &recv_buf);
+    bool receiveUsername(int sockd, vector<unsigned char> &clt_nonce);
+    bool sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<unsigned char, NONCE_SIZE> &srv_nonce);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
+    bool receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce);
     bool authenticationClient(int sockd);  // call session.generatenonce & sendMsg
 
     // TODO: modificare come serve 
@@ -72,7 +72,7 @@ class Server {
     void sendFileList();
     void logoutClient(int sockd); 
 
-    void sendErrorMsg(int sd, string &errorMsg);
+    void sendErrorMsg(int sockd, string errorMsg);
 
     
     /****************************************************/
