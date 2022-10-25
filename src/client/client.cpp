@@ -798,10 +798,14 @@ uint32_t Client::sendMsgChunks(string filename){
     frag_buffer.fill('0');
 
     for(int i = 0; i < tot_chunks; i++){
-        if(i == tot_chunks - 1)
+        if(i == tot_chunks - 1){
             to_send = buf.st_size - i * FRAGM_SIZE;
-        else
+            this->active_session->createAAD(aad.data(), END_OP);                        //last chunk -> END_OP opcode sent to server
+        }
+        else{
             to_send = FRAGM_SIZE;
+            this->active_session->createAAD(aad.data(), UPLOAD);                        //intermediate chunks
+        }
 
         ret = fread(frag_buffer.data(), sizeof(char), to_send, file);
 
@@ -810,7 +814,6 @@ uint32_t Client::sendMsgChunks(string filename){
             return -1;
         }
 
-        this->active_session->createAAD(aad.data(), UPLOAD);
         payload_size = this->active_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), aad.size(), output.data());
         
         aad.assign(aad.size(), '0');
@@ -863,7 +866,7 @@ int Client::uploadFile(){
     this->active_session->createAAD(aad.data(), UPLOAD_REQ);                
 
     //send the basic information of the upload operation
-    //to be sent: payload_size | IV | opcode | count_cs | {output}_Kcs | TAG
+    //to be sent: payload_size | IV | count_cs | opcode | {output}_Kcs | TAG
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     payload_size_n = htonl(payload_size);
@@ -889,7 +892,7 @@ int Client::uploadFile(){
     //receive from the server the response to the upload request
     //received_len:  legnht of the message received from the server
     //server_response: message from the server containing the response to the request
-    int aad_len;                                                          //
+    int aad_len;                                                          
     uint16_t opcode;
     uint32_t pt_len;
     uint32_t ret;  
