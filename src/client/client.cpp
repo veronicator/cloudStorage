@@ -789,7 +789,8 @@ uint32_t Client::sendMsgChunks(string filename){
 
     size_t tot_chunks = ceil((float)buf.st_size / FRAGM_SIZE);                          //total number of chunks needed form the upload
     size_t to_send;                                                                     //number of byte to send in the specific msg
-    uint32_t payload_size, payload_size_n;                                              //size of the msg payload both in host and network format
+    uint32_t payload_size;                                                              //size of the msg payload both in host and network format
+    string str_payload_size_n;
     uint32_t ret;                                                                       //bytes read by the fread function
     vector<unsigned char> aad;                                                          //aad of the msg
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
@@ -820,14 +821,14 @@ uint32_t Client::sendMsgChunks(string filename){
         aad.clear();
         frag_buffer.fill('0');
 
-        payload_size_n = htonl(payload_size);
+        str_payload_size_n = to_string(htonl(payload_size));
 
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
         send_buffer.resize(NUMERIC_FIELD_SIZE);
 
-        memcpy(send_buffer.data(), &payload_size_n, sizeof(uint32_t));
-        send_buffer.insert(send_buffer.end(), output.begin(), output.begin() + payload_size);
+        send_buffer.insert(send_buffer.begin(), str_payload_size_n.begin(), str_payload_size_n.end());
+        send_buffer.insert(send_buffer.begin() + str_payload_size_n.size(), output.begin(), output.begin() + payload_size);
 
         output.fill('0');
 
@@ -840,9 +841,8 @@ uint32_t Client::sendMsgChunks(string filename){
 
 int Client::uploadFile(){
     uint64_t filedimension;                                                 //dimension (in byte) of the file to upload
-    uint32_t filedimension_n;
-    uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
-    string filename;                                                        //name of the file to upload
+    uint32_t payload_size;                                                  //size of the msg payload both in host and network format
+    string str_filedimension_n, str_payload_size_n, filename;               //name of the file to upload
     vector<unsigned char> aad;                                              //aad of the msg
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
@@ -858,10 +858,10 @@ int Client::uploadFile(){
         cout << "File is too big! Upload terminated"<<endl;
         return -1;
     }                      
-    filedimension_n = htonl((uint32_t)filedimension);
+    str_filedimension_n = to_string(htonl((uint32_t)filedimension));
 
-    memcpy(plaintext.data(), &filedimension_n, FILE_SIZE_FIELD);
-    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());  
+    plaintext.insert(plaintext.begin(), str_filedimension_n.begin(), str_filedimension_n.end());
+    plaintext.insert(plaintext.begin() + str_filedimension_n.size(), filename.begin(), filename.end());  
 
     this->active_session->createAAD(aad.data(), UPLOAD_REQ);                
 
@@ -869,7 +869,7 @@ int Client::uploadFile(){
     //to be sent: payload_size | IV | count_cs | opcode | {output}_Kcs | TAG
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
-    payload_size_n = htonl(payload_size);
+    str_payload_size_n = to_string(htonl(payload_size));
 
     aad.assign(aad.size(), '0');
     aad.clear();
@@ -879,8 +879,8 @@ int Client::uploadFile(){
     send_buffer.clear();
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
-    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    send_buffer.insert(send_buffer.end(), output.begin(), output.begin() + payload_size);
+    plaintext.insert(send_buffer.begin(), str_payload_size_n.begin(), str_payload_size_n.end());
+    send_buffer.insert(send_buffer.begin() + str_payload_size_n.size(), output.begin(), output.begin() + payload_size);
 
     output.fill('0');
 
