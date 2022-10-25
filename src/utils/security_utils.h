@@ -88,12 +88,11 @@ class Session {
 
         void retrievePrivKey(string path, EVP_PKEY*& key);  // retrieve its own private key from pem file
         void computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);
-        unsigned int signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign);   // return dig sign length
+        long signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign);   // return dig sign length
         bool verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, EVP_PKEY* pub_key, unsigned char* msg_buf, unsigned int msg_len);
 
         //void generateNonce();
         void generateNonce(unsigned char *nonce);
-        bool checkNonce(unsigned char *received_nonce);
         bool checkNonce(unsigned char *received_nonce, unsigned char *sent_nonce);
 
         void generateECDHKey();    //generate ECDH key pair and return the public key

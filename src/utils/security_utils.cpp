@@ -155,11 +155,15 @@ void Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msgDi
     EVP_MD_CTX_free(hCtx);
 }
 
-unsigned int Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign) {
+long Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign) {
     cout << "session->signMsg" << endl;
     // create the signature context
     EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
-    if(!md_ctx) { cerr << "Error: EVP_MD_CTX_new returned NULL\n"; exit(1); }
+    if(!md_ctx) { 
+        cerr << "Error: EVP_MD_CTX_new returned NULL\n"; 
+        //exit(1); 
+        return -1;
+    }
 
     // allocate buffer for signature
     //dig_sign = (unsigned char*)malloc(EVP_PKEY_size(privK));
