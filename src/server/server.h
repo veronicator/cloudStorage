@@ -56,6 +56,8 @@ class Server {
     int sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer);       //dopo invio: deallocare buffer
     long receiveMsg(int sockd, vector<unsigned char> &recv_buffer);    // restituisce lunghezza totale messaggio ricevuto, msg_size
 
+    EVP_PKEY* getPeerKey(string username);
+
     bool receiveUsername(int sockd, vector<unsigned char> &clt_nonce);
     bool sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<unsigned char, NONCE_SIZE> &srv_nonce);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
     bool receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce);

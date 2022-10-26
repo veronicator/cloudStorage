@@ -98,7 +98,7 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
 }
 
 /**
- * receive message from a client, associated to a specific socket 
+ * receive message from a client associated to a specific socket 
  * @sockd: socket descriptor through which the client is connected
  * @return: return the payload length of the received message, or 0 or -1 on error
 */
@@ -174,6 +174,35 @@ void Server::client_thread_code(int sockd) {
     
 }
 
+
+/********************************************************************/
+
+/** retrieve the public key of the client with the given username
+ * @username: username of the client for who get the key
+ * @return: client public key on success, NULL otherwise
+*/
+EVP_PKEY* Server::getPeerKey(string username) {
+    // TODO
+    /** check username -> to avoid a directory traversal attack
+     * 
+    */
+
+    string path = "./server/userStorage/" + username + "/" + username + "_pub.pem";
+    FILE* pubK_file = fopen(path.c_str(), "r");
+    if(!pubK_file) {
+        cerr << "Cannot open pub key pem file for client " << username << endl;
+        return nullptr;
+    }
+
+    EVP_PKEY* peerKey = PEM_read_PUBKEY(pubK_file, NULL, NULL, NULL);
+    fclose(pubK_file);
+    if(!peerKey) {
+        cerr << "PEM_read_PUBKEY returned NULL" << endl;
+        return nullptr;
+    }
+
+    return peerKey;
+}
 
 /********************************************************************/
 
@@ -602,6 +631,19 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     
     // verify digital signature : nonce + ECDH_key
     signed_msg_len = NONCE_SIZE + ECDH_key_size;
+
+    // retrieve client pub key
+    client_pubK = getPeerKey(usr->username);
+    if(!client_pubK) {
+        cerr << "get_peerKey failed " << endl;
+        // clear buffers and return
+        ECDH_client_key.assign(ECDH_client_key.size(), '0');
+        usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
+        ECDH_client_key.clear();
+        usr->recv_buffer.clear();
+
+        return false;
+    }
 
     if(!temp_buf.empty())
         temp_buf.clear();
