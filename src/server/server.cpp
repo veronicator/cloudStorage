@@ -124,7 +124,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     }
 
     //recv_buf.assign(MAX_BUF_SIZE, 0);
-    payload_size = *(uint32_t*)receiver.data();
+    payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
     //cout << "payload size received " << payload_size << endl;
 
@@ -279,9 +279,9 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         return false;
     }
     
-    start_index = NUMERIC_FIELD_SIZE;
-    if(payload_size > recv_buffer.size() - start_index - (uint)OPCODE_SIZE) {
-        cerr << "Received msg size error on socket: " << sockd << endl;
+    start_index = NUMERIC_FIELD_SIZE;   // payload field
+    if(payload_size > recv_buffer.size() - start_index) {   // - (uint)OPCODE_SIZE
+        cerr << "284Received msg size error on socket: " << sockd << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
         //close(sockd);
         recv_buffer.clear();
@@ -311,7 +311,8 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     }
 
     client_nonce.insert(client_nonce.begin(), recv_buffer.begin(), recv_buffer.begin() + NONCE_SIZE);
-    username = string(recv_buffer.begin() + NONCE_SIZE, recv_buffer.end());
+    start_index += NONCE_SIZE;
+    username = string(recv_buffer.begin() + start_index, recv_buffer.end());
     cout << "username " << username << endl;
 
     recv_buffer.assign(recv_buffer.size(), '0');
@@ -328,7 +329,6 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     cout << "connected size " << connectedClient.size() << endl;
 
     pthread_mutex_unlock(&mutex_client_list);
-
     return ret.second;
 }
 

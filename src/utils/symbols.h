@@ -15,8 +15,8 @@
 #define ERROR 12
 
 //Dir Path
-#define FILE_PATH_CL "./users/"
-#define FILE_PATH_SV "./userStorage/"
+#define FILE_PATH_CLT "./users/"
+#define FILE_PATH_SVR "./userStorage/"
 
 // whitelist
 #define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"

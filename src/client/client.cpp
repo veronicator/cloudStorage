@@ -737,7 +737,7 @@ void Client::receiveFileList() {
     }
     //int received_size = receiveMsg(payload_size);
     int list_len = active_session->decryptMsg(recv_buffer.data() + NUMERIC_FIELD_SIZE, payload_size, aad, aad_len, user_list);
-    uint16_t opcode_n = *(unsigned short*)(aad + NUMERIC_FIELD_SIZE);
+    uint16_t opcode_n = *(uint16_t*)(aad + NUMERIC_FIELD_SIZE);
     uint16_t opcode = ntohs(opcode_n);
     if(opcode == ERROR) {
         string errorMsg((const char*)user_list, strlen((char*)user_list));
