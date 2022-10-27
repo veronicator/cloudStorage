@@ -527,6 +527,8 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     cout<<"***********   RECEIVING FILE   *********"<<endl;
     cout<<"****************************************"<<endl;
 
+    //the plaintext has format: filedimension | filename
+
     filedimension = ntohl(*(uint32_t*)(plaintext.data()));
     filename = string(plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.end());
 

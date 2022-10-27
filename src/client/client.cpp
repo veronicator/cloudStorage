@@ -858,6 +858,9 @@ int Client::uploadFile(){
         cout << "File is too big! Upload terminated"<<endl;
         return -1;
     }                      
+
+    //change the insert -> for the int is not correct 
+    //change htonl -> doesn't work for 64bit 
     str_filedimension_n = to_string(htonl((uint32_t)filedimension));
 
     plaintext.insert(plaintext.begin(), str_filedimension_n.begin(), str_filedimension_n.end());
