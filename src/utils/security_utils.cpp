@@ -497,7 +497,7 @@ unsigned int Session::decryptMsg(unsigned char *ciphertext, int ct_len, int aad_
    }
 }
 */
-unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *&aad, int &aad_len, unsigned char *&plaintext) {
+unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, int &aad_len, unsigned char *plaintext) {
     cout << "session->decryptMsg" << endl;
     EVP_CIPHER_CTX *ctx;
     int ct_len; // va calcolata dopo aver letto aad_len -> ct_len = msg_size - IV_LEN - aad_len - TAG_SIZE

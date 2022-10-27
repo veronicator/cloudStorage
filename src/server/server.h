@@ -62,10 +62,10 @@ class Server {
     bool sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<unsigned char, NONCE_SIZE> &srv_nonce);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
     bool receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce);
     bool authenticationClient(int sockd);  // call session.generatenonce & sendMsg
-
+ 
     // TODO: modificare come serve 
     // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
-    void uploadFile();
+    int uploadFile(int sockd, vector<unsigned char> plaintext);
     void downloadFile();
     void renameFile();
     void deleteFile();
@@ -78,8 +78,6 @@ class Server {
 
     
     /****************************************************/
-
-
 
     public:
         Server();

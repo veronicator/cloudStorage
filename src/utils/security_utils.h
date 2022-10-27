@@ -24,6 +24,7 @@
 #include <condition_variable>
 #include <regex.h>
 #include <regex>
+#include <cmath>
 #include "symbols.h"
 
 using namespace std;
@@ -107,7 +108,7 @@ class Session {
 
         unsigned int encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, int aad_len, unsigned char *output);  // encrypt message to send and return message length
         //unsigned int decryptMsg(unsigned char *ciphertext, int ct_len, int aad_len, unsigned char *plaintext, unsigned char *rcv_iv, unsigned char *tag);  // dencrypt received message and return message (pt) length
-        unsigned int decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *&aad, int &aad_len, unsigned char *&plaintext);  // dencrypt received message and return message (pt) length
+        unsigned int decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, int &aad_len, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
         
         int fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf);    // return payload size
         //encrypt/decrypt()
