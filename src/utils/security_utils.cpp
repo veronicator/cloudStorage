@@ -86,7 +86,8 @@ unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     // cout << "session->createAAD2 " << sizeof(*aad) << endl;
     
-    memcpy(aad + aad_len, (unsigned char*)&opcode, OPCODE_SIZE);
+    uint16_t opcode_n = htons(opcode);
+    memcpy(aad + aad_len, (unsigned char*)&opcode_n, OPCODE_SIZE);
     aad_len += OPCODE_SIZE;
     // cout << "session->createAAD3" << endl;
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
@@ -154,11 +155,15 @@ void Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msgDi
     EVP_MD_CTX_free(hCtx);
 }
 
-unsigned int Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign) {
+long Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign) {
     cout << "session->signMsg" << endl;
     // create the signature context
     EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
-    if(!md_ctx) { cerr << "Error: EVP_MD_CTX_new returned NULL\n"; exit(1); }
+    if(!md_ctx) { 
+        cerr << "Error: EVP_MD_CTX_new returned NULL\n"; 
+        //exit(1); 
+        return -1;
+    }
 
     // allocate buffer for signature
     //dig_sign = (unsigned char*)malloc(EVP_PKEY_size(privK));
@@ -204,11 +209,6 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 }
 
 /********************************************************************/
-
-
-/*void Session::generateNonce() {
-    generateRandomValue(nonce.data(), NONCE_SIZE);    
-}*/
 
 void Session::generateNonce(unsigned char *nonce) {
     /*nonce = (unsigned char*)malloc(NONCE_SIZE);

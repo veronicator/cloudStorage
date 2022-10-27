@@ -23,8 +23,8 @@ class Server {
 
     // vector<Session> activeSessions;
     //todo: fare un unica mappa <int sockID, UserInfo> ?
-    map<string, UserInfo> connectedClient;    // client username, session
-    map<int, string> socketClient;      //socket descriptor, client username        // togliere sockd da UserInfo ?
+    unordered_map<int, UserInfo*> connectedClient;    // client sockd, session
+    //unordered_map<string, int> socketClient;      // client username, socket descriptor -> to find if a client is already connected and what is his sockd
     //map<int, UserInfo> connectedClient;     // client_socket descriptor, userInfo struct
     //unordered_map<string, UserInfo> activeChats;  // client username, data about chat
     // vector/list/map di int socket e username ?
@@ -42,18 +42,45 @@ class Server {
 
     void createSrvSocket();
     
-    /***********************/
+    /****************************************************/
+    //pthread_t client_thread;
+    pthread_mutex_t mutex_client_list;
+    //pthread_mutex_t mutex_socket_list;
+
+    //list<thread> threads;
+    //std::mutex mtx;
+
+
+    /****************************************************/
+
+    int sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer);       //dopo invio: deallocare buffer
+    long receiveMsg(int sockd, vector<unsigned char> &recv_buffer);    // restituisce lunghezza totale messaggio ricevuto, msg_size
+
+    EVP_PKEY* getPeerKey(string username);
+
+    bool receiveUsername(int sockd, vector<unsigned char> &clt_nonce);
+    bool sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<unsigned char, NONCE_SIZE> &srv_nonce);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
+    bool receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce);
+    bool authenticationClient(int sockd);  // call session.generatenonce & sendMsg
+ 
+    // TODO: modificare come serve 
+    // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
+    int uploadFile(int sockd, vector<unsigned char> plaintext);
+    void downloadFile();
+    void renameFile();
+    void deleteFile();
+
+    void requestFileList();
+    void sendFileList();
+    void logoutClient(int sockd); 
+
+    void sendErrorMsg(int sockd, string errorMsg);
+
+    
+    /****************************************************/
 
     public:
         Server();
-        //static Server* getServer();
-
-        //pthread_t client_thread;
-        pthread_mutex_t mutex;
-
-        //list<thread> threads;
-        std::mutex mtx;
-
 
         // socket
         int acceptConnection();
@@ -61,31 +88,7 @@ class Server {
         //void* client_thread_code(void *arg);  // friend?
         void client_thread_code(int sd);
 
-        bool authenticateClient(int sockd);
-
-        int sendMsg(int payload_size, int sockd, vector<unsigned char>& send_buf);       //dopo invio: deallocare buffer
-        long receiveMsg(int sockd, vector<unsigned char>& recv_buf);    // restituisce lunghezza totale messaggio ricevuto, msg_size
-        void receiveUsername(int sockd);
-        void sendCertSign(vector<unsigned char> clt_nonce, string username, int sockd);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
-        bool receiveSign(int sd, string username, vector<unsigned char>& recv_buf);
-        bool authenticationClient(int sd);  // call session.generatenonce & sendMsg
-        
-        void requestFileList();
-        void sendFileList();
-        void logoutClient(int sockd); 
-
-        void sendErrorMsg(int sd, string errorMsg);
-
         void joinThread();
-
-        // TODO: modificare come serve 
-        // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
-        int uploadFile(int sockd, vector<unsigned char> plaintext);
-        void downloadFile();
-        void renameFile();
-        void deleteFile();
-
-
 
     //test
 };

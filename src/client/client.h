@@ -20,20 +20,20 @@ class Client {
     /***** utility methods *****/
 
     // new sed/receive
-    int sendMsg(int payload_size);
+    int sendMsg(uint32_t payload_size);
     long receiveMsg();
 
 
     void sendErrorMsg(string errorMsg);
     
     bool verifyCert(unsigned char* buffer_cert, long cert_size, EVP_PKEY*& srv_pubK); // verify certificate -> build store -> load cert&crl -> extract pubK
-    void buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& new_store);
+    bool buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& new_store);
 
 
     // methods invoked during the authentication phase -> never called from outside class -> can be private
     int sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce);
-    bool receiveCertSign(array<unsigned char, NONCE_SIZE> client_nonce, vector<unsigned char> &srv_nonce);    // receive (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
-    void sendSign(vector<unsigned char> srv_nonce, EVP_PKEY *priv_k);
+    bool receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce, vector<unsigned char> &srv_nonce);    // receive (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
+    int sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *priv_k);
 
     // methods invoked by handlerCommand method -> only from inside -> can be private
     void requestFileList();
