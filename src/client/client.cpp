@@ -840,9 +840,10 @@ uint32_t Client::sendMsgChunks(string filename){
 }
 
 int Client::uploadFile(){
-    uint64_t filedimension;                                                 //dimension (in byte) of the file to upload
+    uint64_t file_dim;                                                      //dimension (in byte) of the file to upload
     uint32_t payload_size;                                                  //size of the msg payload both in host and network format
-    string str_filedimension_n, str_payload_size_n, filename;               //name of the file to upload
+    uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
+    string str_payload_size_n, filename;                                    //name of the file to upload
     vector<unsigned char> aad;                                              //aad of the msg
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
@@ -852,19 +853,20 @@ int Client::uploadFile(){
     cout<<"****************************************"<<endl<<endl;
 
     readFilenameInput(filename, "Insert file name: ");
-    filedimension = searchFile(filename);
+    file_dim = searchFile(filename);
 
-    if(filedimension >= MAX_FILE_DIMENSION){
+    if(file_dim >= MAX_FILE_DIMENSION){
         cout << "File is too big! Upload terminated"<<endl;
         return -1;
     }                      
 
     //change the insert -> for the int is not correct 
     //change htonl -> doesn't work for 64bit 
-    str_filedimension_n = to_string(htonl((uint32_t)filedimension));
-
-    plaintext.insert(plaintext.begin(), str_filedimension_n.begin(), str_filedimension_n.end());
-    plaintext.insert(plaintext.begin() + str_filedimension_n.size(), filename.begin(), filename.end());  
+    file_dim_h_n = htonl((uint32_t) (file_dim >> 32));
+    file_dim_l_n = htonl((uint32_t) (file_dim));
+    memcpy(plaintext.data(), &file_dim_h_n, NUMERIC_FIELD_SIZE);
+    memcpy(plaintext.data() + NUMERIC_FIELD_SIZE, &file_dim_l_n, NUMERIC_FIELD_SIZE);
+    plaintext.insert(plaintext.begin() + FILE_SIZE_FIELD, filename.begin(), filename.end());  
 
     this->active_session->createAAD(aad.data(), UPLOAD_REQ);                
 
@@ -936,6 +938,7 @@ int Client::uploadFile(){
     ret = sendMsgChunks(filename);
 
     if(ret != -1){
+        //TODO: receive server response to check if file was saved
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
         if(opcode != UPLOAD){
