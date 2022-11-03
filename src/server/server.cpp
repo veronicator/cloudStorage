@@ -721,11 +721,51 @@ void Server::joinThread() {
     }
 }*/
 
-// TODO
+int Server::receiveMsgChunks(UserInfo* ui, uint32_t filedimension, string filename){
+    string path = path_file + ui->username + "/" + filename;
+    std::ofstream outfile(path);
+
+    size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
+    size_t to_receive;
+    int received_len, pt_len, aad_len;
+    uint32_t opcode;
+    vector<unsigned char> aad;
+    array<unsigned char, MAX_BUF_SIZE> plaintext;
+
+    plaintext.fill('0');
+
+    for(int i = 0; i < tot_chunks; i++){
+        if(i == tot_chunks - 1)
+            to_receive = filedimension- i* FRAGM_SIZE;
+        else
+            to_receive = FRAGM_SIZE;
+
+        received_len = receiveMsg(ui->sockd, ui->recv_buffer);
+        if(received_len == -1 || received_len == 0){
+            cerr<<"Error! Exiting receive phase"<<endl;
+            return -1;
+        }
+
+        pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+        opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+        if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
+            outfile.close();
+            cerr << "Wrong message format. Exiting"<<endl;
+            if(remove(path.c_str()) != 0){
+                cerr << "File not correctly cancelled"<<endl;
+            }
+            return -1;
+        }
+
+        outfile << plaintext.data();
+    }
+}
+
 int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     uint32_t filedimension;
     string filename;
     string ack_msg;
+    uint32_t payload_size, payload_size_n;
     vector<unsigned char> aad;
     vector<unsigned char> plaintext;
     array<unsigned char, MAX_BUF_SIZE> output;
@@ -735,15 +775,17 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     cout<<"****************************************"<<endl;
 
     //the plaintext has format: filedimension | filename
-
+    //TODO: probabilmente questo msg deve essere ricevuto all'interno della funzione che gestisce le richieste
     filedimension = ntohl(*(uint32_t*)(plaintext.data()));
     filename = string(plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.end());
+
+    //CHECK IF FILENAME IS ALREADY PRESENT !
 
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
     file_ok = regex_match(filename, re);
 
     if(!file_ok){
-        cout<<"file not correct! Reception of the file terminated"<<endl;
+        cerr<<"file not correct! Reception of the file terminated"<<endl;
         ack_msg = "Filename not correct";
     }
     else
@@ -751,10 +793,27 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
 
-    // accedi alla map connected client con il sockd (id socket) e recupera UserInfo
-    //UserInfo ui = connectedClient.at(sockd);
-    //ui->client_session->createAAD(...);
-    //ui->client_session->encryptMsg(...);
+    // retrive UserInfo relative to the client
+    UserInfo* ui = connectedClient.at(sockd);
+    ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+    payload_size_n = htonl(payload_size);
+    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+    output.fill('0');
+
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok){
+        cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
+        return -1;
+    }
+
+    cout << "       -------- RECEIVING FILE --------"<<endl;
+
+    int ret = receiveMsgChunks(ui, filedimension, filename);
 
     cout<<"****************************************"<<endl;
 }
