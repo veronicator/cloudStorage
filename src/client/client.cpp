@@ -783,11 +783,11 @@ uint64_t Client::searchFile(string filename){
     string path = "./users/" + this->username +"/" + filename;
     struct stat buffer;
     if(stat(path.c_str(), &buffer) != 0){
-        cout<<"File not present"<<endl;
+        cerr<<"File not present"<<endl;
         return -1;
     }
     if(buffer.st_size > MAX_FILE_DIMENSION){
-        cout<<"File too big"<<endl;
+        cerr<<"File too big"<<endl;
         return -1;
     }
     return buffer.st_size;
@@ -799,12 +799,12 @@ uint32_t Client::sendMsgChunks(string filename){
     struct stat buf;
 
     if(!file){
-        cout<<"Error during file opening";
+        cerr<<"Error during file opening";
         return -1;
     }
 
     if(stat(path.c_str(), &buf) != 0){
-        cout<<filename + "doesn't exist in " + this->username + "folder" <<endl;
+        cerr<<filename + "doesn't exist in " + this->username + "folder" <<endl;
         return -1;
     }
 
@@ -812,7 +812,7 @@ uint32_t Client::sendMsgChunks(string filename){
     size_t to_send;                                                                     //number of byte to send in the specific msg
     uint32_t payload_size;                                                              //size of the msg payload both in host and network format
     string str_payload_size_n;
-    uint32_t ret;                                                                       //bytes read by the fread function
+    int ret;                                                                       //bytes read by the fread function
     vector<unsigned char> aad;                                                          //aad of the msg
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                                          //encrypted text
@@ -832,7 +832,7 @@ uint32_t Client::sendMsgChunks(string filename){
         ret = fread(frag_buffer.data(), sizeof(char), to_send, file);
 
         if(ferror(file) != 0 || ret != to_send){
-            cout<<"ERROR while reading file"<<endl;
+            cerr<<"ERROR while reading file"<<endl;
             return -1;
         }
 
@@ -854,17 +854,18 @@ uint32_t Client::sendMsgChunks(string filename){
         output.fill('0');
 
         if(sendMsg(payload_size) != 1){
-            cout<<"Error during send phase (C->S) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
+            cerr<<"Error during send phase (C->S) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
             return -1;
         }
     }
 }
 
+//TODO cambia i cout di errore in cerr
 int Client::uploadFile(){
     uint64_t file_dim;                                                      //dimension (in byte) of the file to upload
-    uint32_t payload_size;                                                  //size of the msg payload both in host and network format
+    uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
     uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
-    string str_payload_size_n, filename;                                    //name of the file to upload
+    string filename;                                                        //name of the file to upload
     vector<unsigned char> aad;                                              //aad of the msg
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
@@ -881,8 +882,7 @@ int Client::uploadFile(){
         return -1;
     }                      
 
-    //change the insert -> for the int is not correct 
-    //change htonl -> doesn't work for 64bit 
+    //insert in the plaintext filedimension and filename
     file_dim_h_n = htonl((uint32_t) (file_dim >> 32));
     file_dim_l_n = htonl((uint32_t) (file_dim));
     memcpy(plaintext.data(), &file_dim_h_n, NUMERIC_FIELD_SIZE);
@@ -895,7 +895,7 @@ int Client::uploadFile(){
     //to be sent: payload_size | IV | count_cs | opcode | {output}_Kcs | TAG
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
-    str_payload_size_n = to_string(htonl(payload_size));
+    payload_size_n = htonl(payload_size);
 
     aad.assign(aad.size(), '0');
     aad.clear();
@@ -905,8 +905,8 @@ int Client::uploadFile(){
     send_buffer.clear();
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
-    plaintext.insert(send_buffer.begin(), str_payload_size_n.begin(), str_payload_size_n.end());
-    send_buffer.insert(send_buffer.begin() + str_payload_size_n.size(), output.begin(), output.begin() + payload_size);
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
     output.fill('0');
 
@@ -918,9 +918,8 @@ int Client::uploadFile(){
     //receive from the server the response to the upload request
     //received_len:  legnht of the message received from the server
     //server_response: message from the server containing the response to the request
-    int aad_len;                                                          
+    int aad_len, pt_len;                                                          
     uint16_t opcode;
-    uint32_t pt_len;
     uint32_t ret;  
     uint64_t received_len;
     string server_response;
@@ -930,7 +929,7 @@ int Client::uploadFile(){
 
     received_len = receiveMsg();
     if(received_len == 0 || received_len == -1){
-        cout<<"Error during receive phase (S->C)"<<endl;
+        cerr<<"Error during receive phase (S->C)"<<endl;
         return -1;
     }
 
@@ -938,18 +937,18 @@ int Client::uploadFile(){
     
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
     if(opcode != UPLOAD_REQ){
-        cout<<"Error! Exiting upload request phase"<<endl;
+        cerr<<"Error! Exiting upload request phase"<<endl;
         return -1;
     }
     
     server_response = ((char*)plaintext.data());
     if(server_response != MESSAGE_OK){       
-        cout<<"File not accepted. "<<server_response<<endl;
+        cerr<<"File not accepted. "<<server_response<<endl;
         return -1;
     }
    
     //start of the upload
-    cout<<"        -------- UPLOADING --------";
+    cout<<"        -------- UPLOADING --------"<<endl;
 
     aad.assign(aad.size(), '0');
     aad.clear();
@@ -963,18 +962,18 @@ int Client::uploadFile(){
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
         if(opcode != UPLOAD){
-            cout<<"Error! Exiting upload phase"<<endl;
+            cerr<<"Error! Exiting upload phase"<<endl;
             return -1;
         }
         if(server_response != UPLOAD_TERMINATED){
-            cout<<"Upload not correcty terminated. "<<server_response<<endl;
+            cerr<<"Upload not correcty terminated. "<<server_response<<endl;
             return -1;
         }
     }
     cout<<"        ---- UPLOAD TERMINATED ----"<<endl<<endl;
 
     if(ret == -1){
-        cout<<"Error! Exiting upload phase"<<endl;
+        cerr<<"Error! Exiting upload phase"<<endl;
         return -1;
     }
 
