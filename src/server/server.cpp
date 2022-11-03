@@ -723,7 +723,11 @@ void Server::joinThread() {
 
 int Server::receiveMsgChunks(UserInfo* ui, uint32_t filedimension, string filename){
     string path = path_file + ui->username + "/" + filename;
-    std::ofstream outfile(path);
+    std::ofstream outfile(path, std::ofstream::binary);
+    if(!outfile.is_open()){
+        cout<<"It was not possible to create or open the new file"<<endl;
+        return -1;
+    }
 
     size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
     size_t to_receive;
@@ -758,6 +762,9 @@ int Server::receiveMsgChunks(UserInfo* ui, uint32_t filedimension, string filena
         }
 
         outfile << plaintext.data();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        plaintext.fill('0');
     }
 }
 
@@ -804,17 +811,36 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    output.fill('0');
-
     if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok){
         cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
         return -1;
     }
+        
+    output.fill('0');
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     cout << "       -------- RECEIVING FILE --------"<<endl;
 
     int ret = receiveMsgChunks(ui, filedimension, filename);
+    if(ret == -1){
+        cerr<<"Error! Something went wrong while receiving the file"<<endl;
+        return -1;
+    }
 
+    ui->client_session->createAAD(aad.data(), END_OP);
+    ack_msg = UPLOAD_TERMINATED;
+    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+    
     cout<<"****************************************"<<endl;
 }
 

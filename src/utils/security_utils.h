@@ -50,7 +50,7 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 
 void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 
-void readFilenameInput(string& input, string msg);  
+void readFilenameInput(string& input);  
 
 //int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
 /*

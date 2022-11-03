@@ -874,7 +874,7 @@ int Client::uploadFile(){
     cout<<"*********     UPLOAD FILE      *********"<<endl;
     cout<<"****************************************"<<endl<<endl;
 
-    readFilenameInput(filename, "Insert file name: ");
+    readFilenameInput(filename);
     file_dim = searchFile(filename);
 
     if(file_dim >= MAX_FILE_DIMENSION){
@@ -908,12 +908,15 @@ int Client::uploadFile(){
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    output.fill('0');
-
     if(sendMsg(payload_size) != 1){
         cout<<"Error during send phase (C->S | Upload Request Phase)"<<endl;
         return -1;
     }
+
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+    output.fill('0');
 
     //receive from the server the response to the upload request
     //received_len:  legnht of the message received from the server
@@ -961,7 +964,7 @@ int Client::uploadFile(){
         //TODO: receive server response to check if file was saved
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
-        if(opcode != UPLOAD){
+        if(opcode != END_OP){
             cerr<<"Error! Exiting upload phase"<<endl;
             return -1;
         }

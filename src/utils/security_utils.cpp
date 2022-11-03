@@ -23,10 +23,10 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
-void readFilenameInput(string& input, string msg = "") {
+void readFilenameInput(string& input) {
     bool string_ok = false;
     do{
-        cout<<msg<<endl;
+        cout<<"Insert filename: "<<endl;
         getline(std::cin, input);
         if(input.empty()) continue;
         const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
