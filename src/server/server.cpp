@@ -801,7 +801,14 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
 
     // retrive UserInfo relative to the client
-    UserInfo* ui = connectedClient.at(sockd);
+    UserInfo* ui;
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        return -1;
+    }
     ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
