@@ -26,7 +26,6 @@ void Server::createSrvSocket() {
     if(setsockopt(listener_sd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != 0)
         handleErrors("set reuse socket error");
 
-
     // creation server address
     memset(&my_addr, 0, sizeof(my_addr));
     my_addr.sin_family = AF_INET;
@@ -765,6 +764,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint32_t filedimension, string filena
         aad.assign(aad.size(), '0');
         aad.clear();
         plaintext.fill('0');
+        outfile.flush();
     }
 
     outfile.close();
@@ -784,10 +784,10 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     cout<<"****************************************"<<endl;
 
     //the plaintext has format: filedimension | filename
-    memcpy(&r_dim_l, plaintext.data(), sizeof(uint32_t));
-    memcpy(&r_dim_h, plaintext.data() + 4, sizeof(uint32_t));
+    memcpy(&r_dim_l, plaintext.data(), NUMERIC_FIELD_SIZE);
+    memcpy(&r_dim_h, plaintext.data() + 4, NUMERIC_FIELD_SIZE);
     filedimension = ((uint64_t)r_dim_h << 32) + r_dim_l;
-    filename = string(plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.end());
+    filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
 
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
     file_ok = regex_match(filename, re);
@@ -819,15 +819,18 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+    
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
     ui->send_buffer.clear();
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
-    payload_size_n = htonl(payload_size);
+    
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok){
         cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
+        cout<<"****************************************"<<endl;
         return -1;
     }
         
@@ -860,6 +863,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
         cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
         return -1;
     }
+    cout<<"       -------- RECEPTION ENDED --------";
     cout<<"****************************************"<<endl;
 }
 
@@ -935,6 +939,12 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     ui->send_buffer.clear();
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     output.fill('0');
+
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1){
+        cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
+        cout<<"****************************************"<<endl;
+        return -1;
+    }
 
     cout<<"****************************************"<<endl;
     cout<<"******     Rename Terminated      ******"<<endl;

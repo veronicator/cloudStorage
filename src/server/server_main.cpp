@@ -7,6 +7,7 @@ int main() {
     fd_set read_set;
     int fd_max;
     int new_sd;
+    struct timeval timeout;         
 
     //set to zero
     FD_ZERO(&master);
@@ -15,9 +16,11 @@ int main() {
     // add listener to master set
     FD_SET(server->getListener(), &master);     // add listener to set master
     fd_max = server->getListener();
-    
     // select sockets ready 
 
+
+    timeout.tv_sec = ;
+    timeout.tv_usec = 0;
     // thread
     list<pthread_t> threads;
     try {
@@ -26,6 +29,9 @@ int main() {
             int new_sd = server->acceptConnection();
             if(new_sd < 0)
                 continue;
+
+            if (setsockopt (new_sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0)
+                cerr <<"setsockopt failed"<<endl;
             pthread_t client_thread;
             ThreadArgs* args = new ThreadArgs(server, new_sd);
             cout << "pthread_create" << endl;

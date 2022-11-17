@@ -796,9 +796,8 @@ uint32_t Client::sendMsgChunks(string filename){
 
     size_t tot_chunks = ceil((float)buf.st_size / FRAGM_SIZE);                          //total number of chunks needed form the upload
     size_t to_send;                                                                     //number of byte to send in the specific msg
-    uint32_t payload_size;                                                              //size of the msg payload both in host and network format
-    string str_payload_size_n;
-    int ret;                                                                       //bytes read by the fread function
+    uint32_t payload_size, payload_size_n;                                              //size of the msg payload both in host and network format
+    int ret;                                                                            //bytes read by the fread function
     vector<unsigned char> aad;                                                          //aad of the msg
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                                          //encrypted text
@@ -823,19 +822,18 @@ uint32_t Client::sendMsgChunks(string filename){
         }
 
         payload_size = this->active_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), aad.size(), output.data());
-        
+        payload_size_n = htonl(payload_size);
+
         aad.assign(aad.size(), '0');
         aad.clear();
         frag_buffer.fill('0');
-
-        str_payload_size_n = to_string(htonl(payload_size));
-
+        
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
         send_buffer.resize(NUMERIC_FIELD_SIZE);
 
-        send_buffer.insert(send_buffer.begin(), str_payload_size_n.begin(), str_payload_size_n.end());
-        send_buffer.insert(send_buffer.begin() + str_payload_size_n.size(), output.begin(), output.begin() + payload_size);
+        memcpy(&payload_size_n, send_buffer.data(), NUMERIC_FIELD_SIZE);
+        send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
         output.fill('0');
 
@@ -846,7 +844,6 @@ uint32_t Client::sendMsgChunks(string filename){
     }
 }
 
-//TODO cambia i cout di errore in cerr
 int Client::uploadFile(){
     uint64_t file_dim;                                                      //dimension (in byte) of the file to upload
     uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
@@ -871,8 +868,8 @@ int Client::uploadFile(){
     //insert in the plaintext filedimension and filename
     file_dim_h_n = htonl((uint32_t) (file_dim >> 32));
     file_dim_l_n = htonl((uint32_t) (file_dim));
-    memcpy(plaintext.data(), &file_dim_h_n, NUMERIC_FIELD_SIZE);
-    memcpy(plaintext.data() + NUMERIC_FIELD_SIZE, &file_dim_l_n, NUMERIC_FIELD_SIZE);
+    memcpy(plaintext.data(), &file_dim_l_n, NUMERIC_FIELD_SIZE);
+    memcpy(plaintext.data() + NUMERIC_FIELD_SIZE, &file_dim_h_n, NUMERIC_FIELD_SIZE);
     plaintext.insert(plaintext.begin() + FILE_SIZE_FIELD, filename.begin(), filename.end());  
 
     this->active_session->createAAD(aad.data(), UPLOAD_REQ);                
