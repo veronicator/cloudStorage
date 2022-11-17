@@ -14,7 +14,7 @@ class Client {
     int sd; // socket descriptor
     sockaddr_in sv_addr;
 
-    void createSocket(string srv_ip);
+    bool createSocket(string srv_ip);
     /****************************/
 
     /***** utility methods *****/
@@ -33,7 +33,7 @@ class Client {
     // methods invoked during the authentication phase -> never called from outside class -> can be private
     int sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce);
     bool receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce, vector<unsigned char> &srv_nonce);    // receive (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
-    int sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *priv_k);
+    int sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k);
 
     // methods invoked by handlerCommand method -> only from inside -> can be private
     void requestFileList();

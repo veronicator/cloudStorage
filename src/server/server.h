@@ -40,7 +40,7 @@ class Server {
     sockaddr_in my_addr, cl_addr;
     socklen_t addr_len;
 
-    void createSrvSocket();
+    bool createSrvSocket();
     
     /****************************************************/
     //pthread_t client_thread;

@@ -11,20 +11,25 @@ Server::Server() {
     if(pthread_mutex_init(&mutex_client_list, NULL) != 0) {
         cerr << "mutex init failed " << endl;
         exit(1);
-        //handleErrors("mutex init failed");
     }
-    createSrvSocket();
+    if(!createSrvSocket()) {
+        perror("Socket creation error");
+        exit(1);
+    }
 }
 
-void Server::createSrvSocket() {
+bool Server::createSrvSocket() {
     cout << "createServerSocket" << endl;
-    if((listener_sd = socket(AF_INET, SOCK_STREAM, 0)) < 0)  // socket TCP
-        handleErrors("Socket creation error");
+    if((listener_sd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {  // socket TCP
+        return false;
+    }
 
     // set reuse socket
     int yes = 1;
-    if(setsockopt(listener_sd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != 0)
-        handleErrors("set reuse socket error");
+    if(setsockopt(listener_sd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != 0) {
+        cerr << "set reuse socket error" << endl;
+        return false;
+    }
 
 
     // creation server address
@@ -32,13 +37,18 @@ void Server::createSrvSocket() {
     my_addr.sin_family = AF_INET;
     my_addr.sin_port = htons(SRV_PORT);
     my_addr.sin_addr.s_addr = INADDR_ANY;
-    if(bind(listener_sd, (sockaddr*)&my_addr, sizeof(my_addr)) != 0)
-        handleErrors("Bind error");
+    if(bind(listener_sd, (sockaddr*)&my_addr, sizeof(my_addr)) != 0) {
+        cerr << "Bind error" << endl;
+        return false;
+    }
     //cout << "bind\n";
-    if(listen(listener_sd, MAX_CLIENTS) != 0)
-        handleErrors("Listen error");
+    if(listen(listener_sd, MAX_CLIENTS) != 0) {
+        cerr << "Listen error" << endl;
+        return false;
+    }
     cout << "Server listening for connections" << endl;
     addr_len = sizeof(cl_addr);
+    return true;
 }
 
 int Server::acceptConnection() {
@@ -78,7 +88,6 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
         send_buffer.clear();    //fill('0');
         //close(sockd);
         return -1;
-        //handleErrors("Message to send too big", sockd);
     }
 
     payload_size += NUMERIC_FIELD_SIZE;
@@ -88,12 +97,10 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
         send_buffer.clear();    //fill('0');
         //close(sockd);
         return -1;
-        //handleErrors("Send error", sockd);
     }
 
     send_buffer.assign(send_buffer.size(), '0');
     send_buffer.clear();
-//    memset(send_buf.data(), 0, MAX_BUF_SIZE);
     return 1;
 }
 
@@ -119,11 +126,9 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     if (msg_size < 0 || msg_size < (unsigned int)NUMERIC_FIELD_SIZE + OPCODE_SIZE) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
-        //memset(recv_buffer, 0, MAX_BUF_SIZE);
         return -1;
     }
 
-    //recv_buf.assign(MAX_BUF_SIZE, 0);
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
     //cout << "payload size received " << payload_size << endl;
@@ -132,8 +137,6 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
-        //close(sockd);
-        //memset(recv_buffer, 0, MAX_BUF_SIZE);
         return -1;
     }
 
@@ -278,6 +281,9 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         recv_buffer.clear();
         return false;
     }
+        
+    cout << "receiveUsername buffer msg: " << endl;
+    BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
     
     start_index = NUMERIC_FIELD_SIZE;   // payload field
     if(payload_size > recv_buffer.size() - start_index) {   // - (uint)OPCODE_SIZE
@@ -292,7 +298,6 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     opcode = ntohs(opcode);
     start_index += OPCODE_SIZE;
     if(opcode != LOGIN) {
-        //handleErrors("Opcode error", sockd);
         cerr << "Received message not expected on socket: " << sockd << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
         //close(sockd);
@@ -302,7 +307,6 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     
     if(start_index >= recv_buffer.size() - (uint)NONCE_SIZE) {
             // if it is equal => there is no username in the message -> error
-        //handleErrors("Received msg size error", sockd);
         cerr << "Received msg size error on socket: " << sockd << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
         //close(sockd);
@@ -310,7 +314,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         return false;
     }
 
-    client_nonce.insert(client_nonce.begin(), recv_buffer.begin(), recv_buffer.begin() + NONCE_SIZE);
+    client_nonce.insert(client_nonce.begin(), recv_buffer.begin() + start_index, recv_buffer.begin() + start_index + NONCE_SIZE);
     start_index += NONCE_SIZE;
     username = string(recv_buffer.begin() + start_index, recv_buffer.end());
     cout << "username " << username << endl;
@@ -387,21 +391,18 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     // retrieve e serialize server certificate
     cert_file = fopen(cert_file_name.c_str(), "r");
     if(!cert_file) { 
-        //handleErrors("Server_cert file doesn't exist", sockd);
         cerr << "Server_cert file does not exist\n" << endl;
         return false;
     }
     cert = PEM_read_X509(cert_file, NULL, NULL, NULL);
     fclose(cert_file);
     if(!cert) {
-        //handleErrors("PEM_read_X509 (cert) returned NULL", sockd);
         cerr << "PEM_read_X509 (cert) returned NULL\n" << endl;
         return false;
     }
 
     cert_size = i2d_X509(cert, &cert_buf);
     if(cert_size < 0) {
-        //handleErrors("Server cert serialization error, i2d_X509 failed", sockd);
         cerr << "Server cert serialization error, i2d_X509 failed" << endl;
         return false;
     }
@@ -497,6 +498,9 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     EVP_PKEY_free(srv_priv_k);
     OPENSSL_free(cert_buf);
     free(ECDH_srv_pub_key); // TODO: check if it is correct
+
+    cout << "sendCertSign buffer msg: " << endl;
+    //BIO_dump_fp(stdout, (const char*)usr->send_buffer.data(), usr->send_buffer.size());
 
     if(sendMsg(payload_size, sockd, usr->send_buffer) != 1) {
         cerr << "sendCertSize failed " << endl;
@@ -784,8 +788,11 @@ void Server::deleteFile() {
 /********************************************/
 
 ThreadArgs::ThreadArgs(Server* serv, int new_sockd) {
-    if(!serv)
-        handleErrors("Null pointer error", new_sockd);
+    if(!serv) {
+        perror("Null pointer error");
+        close(new_sockd);
+        return;
+    }
     server = serv;
     sockd = new_sockd;
 }

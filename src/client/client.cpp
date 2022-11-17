@@ -3,15 +3,11 @@
 Client::Client(string username, string srv_ip) {
     this->username = username;
     active_session = new Session();
-    /*
-    send_buffer = (unsigned char*)malloc(MAX_BUF_SIZE);
-    if(!send_buffer)
-        handleErrors("Malloc error");
-    recv_buffer = (unsigned char*)malloc(MAX_BUF_SIZE);
-    if(!recv_buffer)
-        handleErrors("Malloc error");
-        */
-    createSocket(srv_ip);
+
+    if(!createSocket(srv_ip)) {
+        perror("Socket creation error");
+        exit(1);
+    };
 }
 
 Client::~Client() {
@@ -32,16 +28,23 @@ Client::~Client() {
     }
 }
 
-void Client::createSocket(string srv_ip) {
-    if((sd = socket(AF_INET, SOCK_STREAM, 0)) < 0)  // socket TCP
-        handleErrors("Socket creation error");
+bool Client::createSocket(string srv_ip) {
+    if((sd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {  // socket TCP
+        return false;
+    }
     memset(&sv_addr, 0, sizeof(sv_addr));
     sv_addr.sin_family = AF_INET;
     sv_addr.sin_port = htons(SRV_PORT);
-    if(inet_pton(AF_INET, srv_ip.c_str(), &sv_addr.sin_addr) != 1)
-        handleErrors("Server IP not valid");
-    if(connect(sd, (struct sockaddr*)&sv_addr, sizeof(sv_addr)) != 0)
-        handleErrors("Connection to server failed");
+    if(inet_pton(AF_INET, srv_ip.c_str(), &sv_addr.sin_addr) != 1) {
+        cerr << "Server IP not valid" << endl;
+        return false;
+    }
+    if(connect(sd, (struct sockaddr*)&sv_addr, sizeof(sv_addr)) != 0) {
+        cerr << "Connection to server failed" << endl;
+        return false;
+    }
+    
+    return true;
 }
 
 /********************************************************************/
@@ -213,6 +216,9 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     //memcpy(send_buffer.data() + start_index, username.c_str(), username.size());
     start_index += username.size();
 
+    cout << "sendUsername buffer msg: " << endl;
+    BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size());
+
     //sendMsg
     cout << "authentication->sendMsg M1: nonce, username " << endl;
     if(sendMsg(payload_size) != 1) {
@@ -247,6 +253,9 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         cerr << "Error on the receiveMsg -> closing connection..." << endl;
         return false;
     }
+    
+    cout << "receiveCertSign buffer msg: " << endl;
+    //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
 
     start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
 
@@ -349,31 +358,21 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     start_index += ECDH_key_size;
 
     // retrieve digital signature
-    //int dig_sign_len = payload_size + NUMERIC_FIELD_SIZE - start_index; //*(unsigned int*)(recv_buffer + start_index);
     dig_sign_len = recv_buffer.size() - start_index;
     if(dig_sign_len <= 0) {
         cerr << "Dig_sign length error " << endl;
-        //memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
         ECDH_server_key.assign(ECDH_server_key.size(), '0');
         ECDH_server_key.clear();
         return false;
     }
 
-    /*
-    unsigned char *dig_sign = (unsigned char*)malloc(dig_sign_len);
-    if(!dig_sign)
-        handleErrors("Malloc error");
-        */
     server_signature.insert(server_signature.begin(), 
                         recv_buffer.begin() + start_index, 
                         recv_buffer.end());
-    //memcpy(server_dig_sign.data(), recv_buffer. + start_index, dig_sign_len);
     start_index += dig_sign_len;
     if(start_index - NUMERIC_FIELD_SIZE != payload_size) {
         cerr << "Received data size error" << endl;
-        //memset(server_dig_sign.data(), '0', server_dig_sign.size());
         server_signature.assign(server_signature.size(), '0');
-        //memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
         ECDH_server_key.assign(ECDH_server_key.size(), '0');
         ECDH_server_key.clear();
         server_signature.clear();
@@ -382,12 +381,6 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     
     // verify digital signature
     signed_msg_len = NONCE_SIZE + ECDH_key_size;
-
-    /*
-    unsigned char* signed_msg = (unsigned char*)malloc(signed_msg_len);
-    if(!signed_msg)
-        handleErrors("Malloc error");
-        */
 
     // nonce client
     if(!temp_buffer.empty()) {
@@ -435,7 +428,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
  * @priv_k: client private key needed to sign the message
  * @return: 1 on success, 0 or -1 on error (return of sendMsg())
 */
-int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *priv_k) {
+int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     cout << "Client -> sendSign " << endl;
 
     int ret = 0;
@@ -444,7 +437,7 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *priv_k) {
     uint32_t ECDH_my_key_size;
     uint32_t ECDH_my_key_size_n;
     
-    vector<unsigned char> msg_to_sign(NONCE_SIZE + ECDH_my_key_size);
+    vector<unsigned char> msg_to_sign;
     vector<unsigned char> signed_msg(EVP_PKEY_size(priv_k));
     long signed_msg_len;
 
@@ -456,24 +449,28 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *priv_k) {
     ECDH_my_key_size = active_session->serializePubKey(
                                     active_session->ECDH_myKey, ECDH_my_pub_key);
 
+
+    msg_to_sign.resize(NONCE_SIZE + ECDH_my_key_size);
     msg_to_sign.insert(msg_to_sign.begin(), srv_nonce.begin(), srv_nonce.end());
     //memcpy(msg_to_sign, srv_nonce.data(), NONCE_SIZE);
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
 
     signed_msg_len = active_session->signMsg(msg_to_sign.data(), NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg.data());
+
     if( signed_msg_len < 0) {
         cerr << "signMsg failed" << endl;
         msg_to_sign.assign(msg_to_sign.size(), '0');
         msg_to_sign.clear();
         return -1;
     }
+    //cout << "client: singMsg done" << endl;
 
     // prepare send buffer
     if(!send_buffer.empty()) {
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
     }
-    send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE + NONCE_SIZE +NUMERIC_FIELD_SIZE + ECDH_my_key_size);
+    send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size);
     //memset(send_buffer, 0, MAX_BUF_SIZE);
 
     payload_size = OPCODE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size + signed_msg_len;
@@ -486,17 +483,21 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *priv_k) {
     start_index += OPCODE_SIZE;
 
     send_buffer.insert(send_buffer.begin() + start_index, srv_nonce.begin(), srv_nonce.end());
+    cout << "serv_nonce inserted" << endl;
     //memcpy(send_buffer.data() + start_index, srv_nonce.data(), NONCE_SIZE);
     start_index += NONCE_SIZE;
 
     ECDH_my_key_size_n = htonl(ECDH_my_key_size);
-    memcpy(send_buffer.data() + start_index, &ECDH_my_key_size_n, NUMERIC_FIELD_SIZE);    
+    memcpy(send_buffer.data() + start_index, &ECDH_my_key_size_n, NUMERIC_FIELD_SIZE);  
+    cout << "memcpy ecdh_key_size done" << endl;  
     start_index += NUMERIC_FIELD_SIZE;
 
     memcpy(send_buffer.data() + start_index, ECDH_my_pub_key, ECDH_my_key_size);
+    cout << "memcpy ecdh_pub_key done" << endl;
     start_index += ECDH_my_key_size;
     
     send_buffer.insert(send_buffer.end(), signed_msg.begin(), signed_msg.end());
+    cout << "signed msg inserted " << endl;
     //memcpy(send_buffer.data() + start_index, signed_msg, signed_msg_len);
 
     // send msg to server
@@ -525,7 +526,6 @@ bool Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
     string ca_cert_filename = "./client/FoundationOfCybersecurity_cert.pem";    // controllare percorso directory
     FILE* ca_cert_file = fopen(ca_cert_filename.c_str(), "r");
     if(!ca_cert_file) {
-        //handleErrors("CA_cert file doesn't exist");
         cerr << "CA_cert file does not exists" << endl;
         return false;
     }
@@ -534,7 +534,6 @@ bool Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
     fclose(ca_cert_file);
 
     if(!ca_cert){
-       // handleErrors("PEM_read_X509 returned NULL");
        cerr << "PEM_read_X509 returned NULL" << endl;
        return false;
     }
@@ -542,7 +541,6 @@ bool Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
     string crl_filename = "./client/FoundationOfCybersecurity_crl.pem";
     FILE* crl_file = fopen(crl_filename.c_str(), "r");
     if(!crl_file) {
-        //handleErrors("CRL file doesn't exist");
         cerr << "CRL file not found" << endl;
         return false;
     }
@@ -550,7 +548,6 @@ bool Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
     fclose(crl_file);
 
     if(!crl){
-        //handleErrors("PEM_read_X509_CRL returned NULL");
         cerr << "PEM_read_X509_CRL returned NULL " << endl;
         return false;
     }
@@ -559,25 +556,21 @@ bool Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
     if(!store) {
         cerr << "X509_STORE_new returned NULL\n" 
             << ERR_error_string(ERR_get_error(), NULL) << endl;
-        //handleErrors(err.c_str());
         return false;
     }
     if(X509_STORE_add_cert(store, ca_cert) != 1) {
         cerr << "X509_STORE_add_cert error\n"
             << ERR_error_string(ERR_get_error(), NULL) << endl;
-        //handleErrors(err.c_str());
         return false;
     }
     if(X509_STORE_add_crl(store, crl) != 1) {
         cerr << "X509_STORE_add_crl error\n" 
             << ERR_error_string(ERR_get_error(), NULL) << endl;
-        //handleErrors(err.c_str());
         return false;
     }
     if(X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK) != 1) {
         cerr << "X509_STORE_set_flags error\n" 
             << ERR_error_string(ERR_get_error(), NULL) << endl;
-        //handleErrors(err.c_str());
         return false;
     }
 
@@ -595,7 +588,6 @@ bool Client::verifyCert(unsigned char* cert_buf, long cert_size, EVP_PKEY*& srv_
 
     X509* certToCheck = d2i_X509(NULL, (const unsigned char**)&cert_buf, cert_size);
     if(!certToCheck) {
-        //handleErrors("d2i_X509 failed");
         cerr << "d2i_X509 failed" << endl;
         return false;
     }
@@ -616,7 +608,6 @@ bool Client::verifyCert(unsigned char* cert_buf, long cert_size, EVP_PKEY*& srv_
     if(!certvfy_ctx) {
         cerr << "X509_STORE_CTX_new returned NULL\n"
             << ERR_error_string(ERR_get_error(), NULL) << endl;
-        //handleErrors(err.c_str());
         X509_free(certToCheck);
 
         X509_free(CA_cert);
@@ -630,7 +621,6 @@ bool Client::verifyCert(unsigned char* cert_buf, long cert_size, EVP_PKEY*& srv_
     if(X509_STORE_CTX_init(certvfy_ctx, store, certToCheck, NULL) != 1) {
         cerr << "X50_STORE_CTX_init error\n" 
             << ERR_error_string(ERR_get_error(), NULL) << endl;
-        //handleErrors(err.c_str());
         
         X509_free(certToCheck);
 
@@ -666,7 +656,7 @@ void Client::showCommands() {
     cout << "\n-----------------------------------------------\n";
     cout << "Commands menu" << endl;
     cout << "!help -> show this commands list" << endl;
-    cout << "!list -> show available file list" << endl;
+    cout << "!list -> show list of available files" << endl;
     cout << "!upload -> upload an existing file in your cloud storage" << endl;
     cout << "!download -> download a file from your cloud storage" << endl;
     cout << "!rename -> rename a file in your cloud storage" << endl;

@@ -253,6 +253,7 @@ void Session::generateECDHKey() {
     if(EVP_PKEY_keygen(DH_ctx, &ECDH_myKey) != 1)
         handleErrors();
     EVP_PKEY_CTX_free(DH_ctx);    
+    cout << "session->generateECDHKey done" << endl;
 }
 
 void Session::deriveSecret() {
