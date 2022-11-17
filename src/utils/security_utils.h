@@ -50,7 +50,9 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 
 void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 
-void readFilenameInput(string& input);  
+void readFilenameInput(string& input, string msg);  
+
+uint64_t searchFile(string filename, string username);
 
 //int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
 /*

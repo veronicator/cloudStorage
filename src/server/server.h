@@ -68,7 +68,7 @@ class Server {
     int receiveMsgChunks(UserInfo* ui, uint32_t filedimension, string filename);
     int uploadFile(int sockd, vector<unsigned char> plaintext);
     void downloadFile();
-    void renameFile();
+    int renameFile(int sockd, vector<unsigned char> plaintext);
     void deleteFile();
 
     void requestFileList();

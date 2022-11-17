@@ -779,20 +779,6 @@ void Client::sendErrorMsg(string errorMsg) {
 
 }
 
-uint64_t Client::searchFile(string filename){
-    string path = "./users/" + this->username +"/" + filename;
-    struct stat buffer;
-    if(stat(path.c_str(), &buffer) != 0){
-        cerr<<"File not present"<<endl;
-        return -1;
-    }
-    if(buffer.st_size > MAX_FILE_DIMENSION){
-        cerr<<"File too big"<<endl;
-        return -1;
-    }
-    return buffer.st_size;
-}
-
 uint32_t Client::sendMsgChunks(string filename){
     string path = "./users/" + this->username + "/" + filename;                         //where to find the file
     FILE* file = fopen(path.c_str(), "rb");                                             //opened file
@@ -867,17 +853,17 @@ int Client::uploadFile(){
     uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
     string filename;                                                        //name of the file to upload
     vector<unsigned char> aad;                                              //aad of the msg
-    vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);                     //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
 
     cout<<"****************************************"<<endl;
     cout<<"*********     UPLOAD FILE      *********"<<endl;
     cout<<"****************************************"<<endl<<endl;
 
-    readFilenameInput(filename);
-    file_dim = searchFile(filename);
+    readFilenameInput(filename, "Insert filename: ");
+    file_dim = searchFile(filename, this->username);
 
-    if(file_dim >= MAX_FILE_DIMENSION){
+    if(file_dim >= MAX_FILE_DIMENSION  || file_dim < 0){
         cout << "File is too big! Upload terminated"<<endl;
         return -1;
     }                      
@@ -932,7 +918,7 @@ int Client::uploadFile(){
 
     received_len = receiveMsg();
     if(received_len == 0 || received_len == -1){
-        cerr<<"Error during receive phase (S->C)"<<endl;
+        cerr<<"Error during receive phase (S->C, upload)"<<endl;
         return -1;
     }
 
@@ -962,42 +948,113 @@ int Client::uploadFile(){
 
     if(ret != -1){
         //TODO: receive server response to check if file was saved
+        aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+        plaintext.resize(MAX_BUF_SIZE);        
+        received_len = receiveMsg();
+            if(received_len == 0 || received_len == -1){
+        cerr<<"Error during receive phase (S->C)"<<endl;
+        return -1;
+        }
+        
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
         if(opcode != END_OP){
             cerr<<"Error! Exiting upload phase"<<endl;
             return -1;
         }
-        if(server_response != UPLOAD_TERMINATED){
+        if(server_response != OP_TERMINATED){
             cerr<<"Upload not correcty terminated. "<<server_response<<endl;
             return -1;
         }
     }
-    cout<<"        ---- UPLOAD TERMINATED ----"<<endl<<endl;
-
-    if(ret == -1){
+    else{
         cerr<<"Error! Exiting upload phase"<<endl;
         return -1;
     }
-
+    cout<<"        ---- UPLOAD TERMINATED ----"<<endl<<endl;
     cout<<"****************************************"<<endl<<endl;
 }
 
 void Client::downloadFile(){}
 
-void Client::renameFile(){
+int Client::renameFile(){
     string old_filename, new_filename;
+    vector<unsigned char> aad;                                              //aad of the msg
+    vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);                       //plaintext to be encrypted
+    array<unsigned char, MAX_BUF_SIZE> output;
+    uint32_t old_filename_lenght, old_filename_lenght_n;   
+    uint32_t payload_size, payload_size_n;
+
     cout<<"****************************************"<<endl;
     cout<<"*********     Rename File      *********"<<endl;
     cout<<"****************************************"<<endl;
 
-    readInput(old_filename, MAX_NAME_SIZE, "Insert the name of the file to be changed");
-    readInput(new_filename, MAX_NAME_SIZE, "Insert the new name of the file ");
+    readFilenameInput(old_filename, "Insert the name of the file to be changed: ");
+    readFilenameInput(new_filename, "Insert the new name of the file: ");
 
+    old_filename_lenght = old_filename.length();
+    old_filename_lenght_n = htonl(old_filename_lenght);
+    memcpy(plaintext.data(), &old_filename_lenght_n, NUMERIC_FIELD_SIZE);
+    plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, old_filename.begin(), old_filename.end());
+    plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE + old_filename_lenght, new_filename.begin(), new_filename.end());
+
+    this->active_session->createAAD(aad.data(), RENAME_REQ);
+
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();    
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+    output.fill('0');
+
+    if(sendMsg(payload_size) != 1){
+        cout<<"Error during send phase (C->S | Rename Request Phase)"<<endl;
+        return -1;
+    }
     //send the information of the rename operation
     //to be sent: <count_cs, opcode=3, {old_filename, new_filename}_Kcs>
 
-    //server response: <count_sc, op_code=3, {ResponseMsg}_Kcs>
+    //server response: <count_sc, op_code=9, {ResponseMsg}_Kcs>
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    uint16_t opcode;
+    uint32_t received_len;
+    int pt_len, aad_len;
+    string server_response;
+
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1){
+        cerr <<"Error during receive phase (S->C, rename)";
+        return -1;
+    }
+
+    pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+    opcode = ntohs(*(uint16_t*)aad.data() + NUMERIC_FIELD_SIZE);
+    if(opcode != END_OP){
+        cerr << "Error! Exiting rename request phase"<<endl;
+        return -1;
+    }
+
+    server_response = ((char*)plaintext.data());
+    if(server_response != OP_TERMINATED){
+        cerr << "Rename not accepted. "<< server_response <<endl;
+        return -1;
+    }
+
+    cout<<"****************************************"<<endl;
+    cout<<"******     Rename Terminated      ******"<<endl;
+    cout<<"****************************************"<<endl;
+
 }
 
 void Client::deleteFile(){}

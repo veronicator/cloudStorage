@@ -19,8 +19,8 @@
 #define FILE_PATH_SVR "./userStorage/"
 
 //responses
-#define MESSAGE_OK "ack_upload_req"
-#define UPLOAD_TERMINATED "ack_upload_term"
+#define MESSAGE_OK "ack_operation_req"
+#define OP_TERMINATED "ack_operation_terminated"
 
 // whitelist
 #define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"

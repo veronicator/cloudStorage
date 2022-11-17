@@ -23,10 +23,24 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
-void readFilenameInput(string& input) {
+uint64_t searchFile(string filename, string username){
+    string path = "./users/" + username +"/" + filename;
+    struct stat buffer;
+    if(stat(path.c_str(), &buffer) != 0){
+        cerr<<"File not present"<<endl;
+        return -1;
+    }
+    if(buffer.st_size > MAX_FILE_DIMENSION){
+        cerr<<"File too big"<<endl;
+        return -2;
+    }
+    return buffer.st_size;
+}
+
+void readFilenameInput(string& input, string msg) {
     bool string_ok = false;
     do{
-        cout<<"Insert filename: "<<endl;
+        cout<<msg<<endl;
         getline(std::cin, input);
         if(input.empty()) continue;
         const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
