@@ -368,6 +368,7 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     string cert_file_name = "./server/Server_cert.pem";
     FILE* cert_file = nullptr;
+    uint32_t cert_size_n;
     X509* cert = nullptr;
     int cert_size;
     
@@ -414,7 +415,7 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     ECDH_srv_key_size = usr->client_session->serializePubKey (
                                     usr->client_session->ECDH_myKey, ECDH_srv_pub_key);
-    BIO_dump_fp(stdout, (const char*)ECDH_srv_pub_key, ECDH_srv_key_size);
+    //BIO_dump_fp(stdout, (const char*)ECDH_srv_pub_key, ECDH_srv_key_size);
     // cout << "after serialize pub" << endl;
 
     // prepare message to sign
@@ -424,13 +425,14 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     // fields to sign: client nonce + ECDH server key
     // -> insert client nonce
     msg_to_sign.insert(msg_to_sign.begin(), clt_nonce.begin(), clt_nonce.end());
+    cout << "server: received_nonce: " << endl;
+    BIO_dump_fp(stdout, (const char*)clt_nonce.data(), NONCE_SIZE);
     // -> insert ECDH server key 
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_srv_pub_key, ECDH_srv_key_size);
-    cout << "client nonce inserted\n";
 
     signed_msg_len = usr->client_session->signMsg(msg_to_sign.data(), 
                                     msg_to_sign.size(), srv_priv_k, signed_msg.data());
-
+    cout << "server: signMsg done" << endl;
     // prepare send buffer    
     payload_size = OPCODE_SIZE + NONCE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE 
                 + cert_size + NUMERIC_FIELD_SIZE + ECDH_srv_key_size + signed_msg_len;
@@ -469,10 +471,14 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     usr->send_buffer.insert(usr->send_buffer.begin() + start_index, srv_nonce.begin(), srv_nonce.end());
     start_index += NONCE_SIZE;
     // cert_size
-    cert_size = htonl(cert_size);
-    memcpy(usr->send_buffer.data() + start_index, &cert_size, NUMERIC_FIELD_SIZE);
+    cert_size_n = htonl(cert_size);
+    memcpy(usr->send_buffer.data() + start_index, &cert_size_n, NUMERIC_FIELD_SIZE);
     start_index += NUMERIC_FIELD_SIZE;
     // cert_server
+    if(usr->send_buffer.size() < start_index + cert_size) {
+        cerr << "send_buffer error size" << endl;
+        return false;
+    }
     memcpy(usr->send_buffer.data() + start_index, cert_buf, cert_size);
     start_index += cert_size;
     // ECDH_size
@@ -497,6 +503,7 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
         //delete usr;
         return false;
     }
+    cout << "msg sent" << endl;
     
     //delete usr;
     return true;
@@ -722,6 +729,7 @@ void Server::joinThread() {
 }*/
 
 // TODO
+/*
 int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     uint32_t filedimension;
     string filename;
@@ -758,6 +766,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
 
     cout<<"****************************************"<<endl;
 }
+*/
 
 void Server::downloadFile() {
 

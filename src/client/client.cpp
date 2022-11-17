@@ -272,13 +272,19 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     //cout << opcode << " received opcode client" << endl;
 
     // retrieve & check client nonce
-    received_nonce.reserve(NONCE_SIZE);
+    //received_nonce.reserve(NONCE_SIZE);
     received_nonce.insert(received_nonce.begin(), 
                         recv_buffer.begin() + start_index, 
                         recv_buffer.begin() + start_index + NONCE_SIZE);
     //memcpy(received_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);
     start_index += NONCE_SIZE;
 
+    cout << "client: received_nonce: " << endl;
+    BIO_dump_fp(stdout, (const char*)received_nonce.data(), NONCE_SIZE);
+
+    cout << "client: sent_nonce: " << endl;
+    BIO_dump_fp(stdout, (const char*)client_nonce.data(), NONCE_SIZE);
+    
     if(!active_session->checkNonce(received_nonce.data(), client_nonce.data())) {
         cerr << "Received nonce not valid\n";
 
@@ -685,7 +691,7 @@ bool Client::handlerCommand(string& command) {
     } else if(command.compare("!upload") == 0) {
         // opcode 1
         // TODO
-        uploadFile();    // username saved in class member
+        //uploadFile();    // username saved in class member
     } else if(command.compare("!download") == 0) {
         // opcode 2
         // TODO
@@ -793,6 +799,7 @@ uint64_t Client::searchFile(string filename){
     return buffer.st_size;
 }
 
+/*
 uint32_t Client::sendMsgChunks(string filename){
     string path = "./users/" + this->username + "/" + filename;                         //where to find the file
     FILE* file = fopen(path.c_str(), "rb");                                             //opened file
@@ -859,7 +866,9 @@ uint32_t Client::sendMsgChunks(string filename){
         }
     }
 }
+*/
 
+/*
 int Client::uploadFile(){
     uint64_t file_dim;                                                      //dimension (in byte) of the file to upload
     uint32_t payload_size;                                                  //size of the msg payload both in host and network format
@@ -980,6 +989,7 @@ int Client::uploadFile(){
 
     cout<<"****************************************"<<endl<<endl;
 }
+*/
 
 void Client::downloadFile(){}
 

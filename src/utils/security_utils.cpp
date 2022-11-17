@@ -181,7 +181,7 @@ long Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, 
     
     // delete the digest from memory
     EVP_MD_CTX_free(md_ctx);
-
+    //cout << "signMsg done" << endl;
     return sgnt_size;
 }
 
@@ -218,6 +218,10 @@ void Session::generateNonce(unsigned char *nonce) {
 }
 
 bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonce) {
+    cout << "checkNonce -> received" << endl;
+    BIO_dump_fp(stdout, (const char*)received_nonce, NONCE_SIZE);
+    cout << "checkNonce -> sent" << endl;
+    BIO_dump_fp(stdout, (const char*)sent_nonce, NONCE_SIZE);
     return memcmp(received_nonce, sent_nonce, NONCE_SIZE) == 0;
 }
 
