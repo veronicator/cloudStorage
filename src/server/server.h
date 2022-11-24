@@ -71,8 +71,7 @@ class Server {
     int renameFile(int sockd, vector<unsigned char> plaintext);
     void deleteFile();
 
-    void requestFileList();
-    void sendFileList();
+    int sendFileList(int sockd);
     void logoutClient(int sockd); 
 
     void sendErrorMsg(int sockd, string errorMsg);

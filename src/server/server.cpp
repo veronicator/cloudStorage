@@ -686,12 +686,62 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 }
 
 
-void Server::requestFileList() {
+int Server::sendFileList(int sockd) {
+    uint32_t payload_size, payload_size_n;
+    UserInfo* ui;
+    const string path = path_file + ui->username + "/";
+    string file_list = "";
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);
+    array<unsigned char, MAX_BUF_SIZE> output;     
+    // retrive UserInfo relative to the client
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        return -1;
+    }
 
-}
+    for (const auto& entry : std::filesystem::directory_iterator(path)){
+        const std::string s = entry.path();
+        std::regex rgx("[^/]*$");
+        std::smatch match;
 
-void Server::sendFileList() {
+        if (std::regex_search(s, match, rgx))
+            file_list += string(match[0]) + "\n"; 
+    }    
+    
+    int num_chunks = ceil(file_list.size()/FRAGM_SIZE);
+    plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
+    for(int i = 0; i < num_chunks; i++){
+        if(i == num_chunks - 1)
+            ui->client_session->createAAD(aad.data(), END_OP);
+        else
+            ui->client_session->createAAD(aad.data(), FILE_LIST);
+
+        payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+        payload_size_n = htonl(payload_size);
+
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();    
+        ui->send_buffer.assign(ui->send_buffer.size(), '0');
+        ui->send_buffer.clear();
+        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);   
+
+        memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+        ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size) ;
+
+        output.fill('0');
+
+        if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1){
+            cerr<<"Error during send phase (S->C) | File List Phase"<<endl;
+            return -1;
+        }
+    }
 }
 
 void Server::logoutClient(int sockd) {
@@ -783,6 +833,17 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     cout<<"***********   RECEIVING FILE   *********"<<endl;
     cout<<"****************************************"<<endl;
 
+    // retrive UserInfo relative to the client
+    UserInfo* ui;
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        cout<<"****************************************"<<endl;
+        return -1;
+    }
+
     //the plaintext has format: filedimension | filename
     memcpy(&r_dim_l, plaintext.data(), NUMERIC_FIELD_SIZE);
     memcpy(&r_dim_h, plaintext.data() + 4, NUMERIC_FIELD_SIZE);
@@ -791,16 +852,6 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
 
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
     file_ok = regex_match(filename, re);
-
-    // retrive UserInfo relative to the client
-    UserInfo* ui;
-    try{
-        ui = connectedClient.at(sockd);
-    }
-    catch(const out_of_range& ex){
-        cerr<<"Impossible to find the user"<<endl;
-        return -1;
-    }
 
     if(!file_ok){
         cerr<<"file not correct! Reception of the file terminated"<<endl;

@@ -26,6 +26,7 @@
 #include <regex.h>
 #include <regex>
 #include <cmath>
+#include <filesystem>
 #include "symbols.h"
 
 using namespace std;

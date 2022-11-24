@@ -36,8 +36,8 @@ class Client {
     int sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *priv_k);
 
     // methods invoked by handlerCommand method -> only from inside -> can be private
-    void requestFileList();
-    void receiveFileList();
+    int requestFileList();
+    int receiveFileList();
     void logout();  // dealloca tutto ed esce
     // TODO: implementare/modificare come serve 
         // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)

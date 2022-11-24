@@ -709,12 +709,8 @@ bool Client::handlerCommand(string& command) {
     return true;
 }
 
-void Client::requestFileList() {
-    cout << "client -> fileList\n";
-    // opcode 2
-    string msg = "Available files?";
-    send_buffer.clear();    //fill('0');
-    //memset(send_buffer, 0, MAX_BUF_SIZE);
+/*
+
     int payload_size = active_session->fileList((unsigned char*)msg.c_str(), msg.length(), send_buffer.data());    // prepare msg to send
     int ret = sendMsg(payload_size);
     if(ret != 1) {
@@ -722,37 +718,59 @@ void Client::requestFileList() {
         // todo: clear buffer
         return;
     }
+    
+*/
 
-    receiveFileList();
+int Client::requestFileList() {
+    string msg = this->username;
+    uint32_t payload_size, payload_size_n;
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext;
+    array<unsigned char, MAX_BUF_SIZE> output;
+
+    cout<<"****************************************"<<endl;
+    cout<<"******     Request File List      ******"<<endl;
+    cout<<"****************************************"<<endl;
+
+
+    plaintext.insert(plaintext.begin(), msg.begin(), msg.end());
+
+    this->active_session->createAAD(aad.data(), FILE_LIST);
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+    
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();    
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+    output.fill('0');
+
+    if(sendMsg(payload_size) != 1){
+        cerr<<"Error during send phase (C->S | File List Request)"<<endl;
+        return -1;
+    }
+
+    int ret = receiveFileList();
+
+    cout<<"****************************************"<<endl;
+    cout<<"*****     File List Received       *****"<<endl;
+    cout<<"****************************************"<<endl;
+
+    
+    if(ret == -1)
+        return -1;
 }
 
-// TODO
-void Client::receiveFileList() {
-    unsigned char *aad, *user_list;
-    int aad_len;
-    int payload_size = receiveMsg();
-    if(payload_size <= 0) {
-        cerr << "Error on the receiveMsg -> closing connection..." << endl;
-        return;
-    }
-    //int received_size = receiveMsg(payload_size);
-    int list_len = active_session->decryptMsg(recv_buffer.data() + NUMERIC_FIELD_SIZE, payload_size, aad, aad_len, user_list);
-    uint16_t opcode_n = *(uint16_t*)(aad + NUMERIC_FIELD_SIZE);
-    uint16_t opcode = ntohs(opcode_n);
-    if(opcode == ERROR) {
-        string errorMsg((const char*)user_list, strlen((char*)user_list));
-        cerr << errorMsg << endl;
-        //handleErrors("Error opcode");
-        return;
-    } else if(opcode != FILE_LIST) {
-        handleErrors("Opcode error, message tampered");
-    }
-    if(list_len != strlen((char*)user_list)) {
-        cerr << "received list damaged" << endl;
-        return;
-    }
-    string list((const char*)user_list);    // users list already formatted by the server
-    cout << "Available files:\n" << list << endl;
+int Client::receiveFileList() {
+    uint64_t file_list_size;
+    uint32_t r_dim_l, r_dim_h;
 }
 
 // TODO
@@ -1014,7 +1032,7 @@ int Client::renameFile(){
     output.fill('0');
 
     if(sendMsg(payload_size) != 1){
-        cout<<"Error during send phase (C->S | Rename Request Phase)"<<endl;
+        cerr<<"Error during send phase (C->S | Rename Request Phase)"<<endl;
         return -1;
     }
     //send the information of the rename operation
