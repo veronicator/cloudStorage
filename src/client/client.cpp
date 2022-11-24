@@ -58,6 +58,7 @@ int Client::sendMsg(uint32_t payload_size) {
         return -1;
     }
     payload_size += NUMERIC_FIELD_SIZE;
+    cout << "sentMsg->payload size: " << payload_size << endl;
     if(send(sd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
         send_buffer.assign(send_buffer.size(), '0');
@@ -197,8 +198,8 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     //memcpy(send_buffer.data() + start_index, username.c_str(), username.size());
     start_index += username.size();
 
-    cout << "sendUsername buffer msg: " << endl;
-    BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size());
+    //cout << "sendUsername buffer msg: " << endl;
+    //BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size());
 
     //sendMsg
     cout << "authentication->sendMsg M1: nonce, username " << endl;
@@ -431,11 +432,15 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
                                     active_session->ECDH_myKey, ECDH_my_pub_key);
 
 
-    msg_to_sign.resize(NONCE_SIZE + ECDH_my_key_size);
+    cout << "ECDH_my_key_size " << ECDH_my_key_size << endl;
+    msg_to_sign.resize(ECDH_my_key_size);
     msg_to_sign.insert(msg_to_sign.begin(), srv_nonce.begin(), srv_nonce.end());
     //memcpy(msg_to_sign, srv_nonce.data(), NONCE_SIZE);
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
-
+    
+    cout << " msg to sign" << endl;
+    BIO_dump_fp(stdout, (const char*)(msg_to_sign.data()), msg_to_sign.size());
+    
     signed_msg_len = active_session->signMsg(msg_to_sign.data(), NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg.data());
 
     if( signed_msg_len < 0) {
@@ -444,14 +449,16 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
         msg_to_sign.clear();
         return -1;
     }
-    //cout << "client: singMsg done" << endl;
+    //cout << "client: singMsg done" << endl;    
+    cout << " signed msg: " << signed_msg_len << endl;
+    BIO_dump_fp(stdout, (const char*)(signed_msg.data()), signed_msg_len);
 
     // prepare send buffer
     if(!send_buffer.empty()) {
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
     }
-    send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size);
+    send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size);
     //memset(send_buffer, 0, MAX_BUF_SIZE);
 
     payload_size = OPCODE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size + signed_msg_len;
@@ -476,10 +483,16 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     memcpy(send_buffer.data() + start_index, ECDH_my_pub_key, ECDH_my_key_size);
     cout << "memcpy ecdh_pub_key done" << endl;
     start_index += ECDH_my_key_size;
+    cout << "start index after ecdh key " << start_index << endl; 
     
     send_buffer.insert(send_buffer.end(), signed_msg.begin(), signed_msg.end());
     cout << "signed msg inserted " << endl;
     //memcpy(send_buffer.data() + start_index, signed_msg, signed_msg_len);
+
+    BIO_dump_fp(stdout, (const char*)send_buffer.data() + start_index-1, 8);
+
+    cout << "sendSign buffer msg: " << endl;
+    BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size());
 
     // send msg to server
     cout <<"authentication sendMsg (ecdh pub key)" << endl;

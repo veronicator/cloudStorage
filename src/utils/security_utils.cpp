@@ -94,10 +94,10 @@ unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     return aad_len;
 }
 
-void Session::computeSessionKey(unsigned char* secret, int slen) {
+int Session::computeSessionKey(unsigned char* secret, int slen) {
     cout << "Session->computeSessionKey" << endl;
     // session key obtained from hashing shared secret
-    computeHash(secret, slen, session_key);
+    return computeHash(secret, slen, session_key);
 }
 
 /********************************************************************/
@@ -132,28 +132,45 @@ EVP_PKEY* Session::retrievePrivKey(string path) {
     return key;
 }
 
-void Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msgDigest) {
+/**
+ * compute the hash of a message
+ * @msg: message to hash
+ * @msg_len: length in byte of the message to hash
+ * @msg_digest: result of the hashing
+*/
+int Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msg_digest) {
     unsigned int dig_len;    // digest length
 
     // create & init context
     EVP_MD_CTX* hCtx;
     hCtx = EVP_MD_CTX_new();
-    if(!hCtx)
-        handleErrors("EVP_MD_CTX_new returned NULL");
+    if(!hCtx){
+        perror("EVP_MD_CTX_new returned NULL");
+        return -1;
+    }
     // allocate mem for digest
-    msgDigest = (unsigned char*)malloc(DIGEST_SIZE);
-    if(!msgDigest)
-        handleErrors("Malloc error");
+    msg_digest = (unsigned char*)malloc(DIGEST_SIZE);
+    if(!msg_digest){
+        perror("Malloc error");
+        return -1;
+    }
     //hashing: init, update, finalize digest
-    if(EVP_DigestInit(hCtx, HASH_FUN) != 1)
-        handleErrors("DigestInit error");
-    if(EVP_DigestUpdate(hCtx, msg, msg_len) != 1)
-        handleErrors("DigestUpdate error");
-    if(EVP_DigestFinal(hCtx, msgDigest, &dig_len) != 1)
-        handleErrors("DigestFinal error");
+    if(EVP_DigestInit(hCtx, HASH_FUN) != 1){
+        perror("DigestInit error");
+        return -1;
+    }
+    if(EVP_DigestUpdate(hCtx, msg, msg_len) != 1){
+        perror("DigestUpdate error");
+        return -1;
+    }
+    if(EVP_DigestFinal(hCtx, msg_digest, &dig_len) != 1){
+        perror("DigestFinal error");
+        return -1;
+    }
     
     // context deallocation
     EVP_MD_CTX_free(hCtx);
+    return 1;
 }
 
 long Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign) {
@@ -263,37 +280,44 @@ void Session::generateECDHKey() {
     cout << "session->generateECDHKey done" << endl;
 }
 
-void Session::deriveSecret() {
+int Session::deriveSecret() {
     cout << "session->deriveSecret" << endl;
     // shared secret derivation: create context and buffer 
     EVP_PKEY_CTX* derive_ctx;
     unsigned char* shared_secret;
     size_t secret_len;
 
-    if(!(derive_ctx = EVP_PKEY_CTX_new(ECDH_myKey, NULL)))  // secret derivation
-        handleErrors("EVP_PKEY_CTX_new error");
-    cout << "1\n";
-    if(EVP_PKEY_derive_init(derive_ctx) <= 0)
-        handleErrors("EVP_PKEY_derive_init err");
-    cout << "2\n";
-    if(EVP_PKEY_derive_set_peer(derive_ctx, ECDH_peerKey) <= 0)
-        handleErrors("EVP_PKEY_derive_set_peer err");
-    cout << "3\n";
+    if(!(derive_ctx = EVP_PKEY_CTX_new(ECDH_myKey, NULL))) {  // secret derivation
+        perror("EVP_PKEY_CTX_new error");
+        return -1;
+    }
+
+    if(EVP_PKEY_derive_init(derive_ctx) <= 0){
+        perror("EVP_PKEY_derive_init err");
+        return -1;
+    }
+    if(EVP_PKEY_derive_set_peer(derive_ctx, ECDH_peerKey) <= 0) {
+        perror("EVP_PKEY_derive_set_peer err");
+        return -1;
+    }
 
     // determine buffer length
-    if(EVP_PKEY_derive(derive_ctx, NULL, &secret_len) <= 0)
-        handleErrors("EVP_PKEY_derive err");
-    cout <<"4\n";
+    if(EVP_PKEY_derive(derive_ctx, NULL, &secret_len) <= 0){
+        perror("EVP_PKEY_derive err");
+        return -1;
+    }
 
     // derive shared secret
     shared_secret = (unsigned char*)malloc(secret_len);
-    if(!shared_secret) 
-        handleErrors("Malloc error");
-    cout << "5\n";
-    if(EVP_PKEY_derive(derive_ctx, shared_secret, &secret_len) <= 0)
-        handleErrors("EVP_PKEY_derive error");
+    if(!shared_secret) {
+        perror("Malloc error");
+        return -1;
+    }
+    if(EVP_PKEY_derive(derive_ctx, shared_secret, &secret_len) <= 0) {
+        perror("EVP_PKEY_derive error");
+        return -1;
+    }
     /* shared secret is secret_len bytes written to buffer shared_secret */
-    cout <<"6\n";
 
     EVP_PKEY_CTX_free(derive_ctx);
     EVP_PKEY_free(ECDH_peerKey);
@@ -305,6 +329,7 @@ void Session::deriveSecret() {
     free(shared_secret);
     // free(nonce);
     //nonce.fill('0');
+    return 1;
 }
 
 /********************************************************************/

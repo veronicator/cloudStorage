@@ -132,6 +132,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
     //cout << "payload size received " << payload_size << endl;
+    //cout << "receiveMsg->msg_size received: " << msg_size << endl;
 
     //check if received all data
     if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
@@ -142,7 +143,6 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
     receiver.fill('0');
-    cout << "recv size buf: " << recv_buffer.size() << endl;
 
     return payload_size;
 }
@@ -246,8 +246,12 @@ bool Server::authenticationClient(int sockd) {
         pthread_mutex_unlock(&mutex_client_list);
         return false;
     }
+
+    if(usr->client_session->deriveSecret() != 1) {
+        cerr << "deriveSecret failed " << endl;
+        return false;
+    }
         /* 
-    verifica firma
     invia lista utenti online
     -> end authentication */
 
@@ -282,8 +286,8 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         return false;
     }
         
-    cout << "receiveUsername buffer msg: " << endl;
-    BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
+    //cout << "receiveUsername buffer msg: " << endl;
+    //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
     
     start_index = NUMERIC_FIELD_SIZE;   // payload field
     if(payload_size > recv_buffer.size() - start_index) {   // - (uint)OPCODE_SIZE
@@ -426,8 +430,8 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     // fields to sign: client nonce + ECDH server key
     // -> insert client nonce
     msg_to_sign.insert(msg_to_sign.begin(), clt_nonce.begin(), clt_nonce.end());
-    cout << "server: received_nonce: " << endl;
-    BIO_dump_fp(stdout, (const char*)clt_nonce.data(), NONCE_SIZE);
+    //cout << "server: received_nonce: " << endl;
+    //BIO_dump_fp(stdout, (const char*)clt_nonce.data(), NONCE_SIZE);
     // -> insert ECDH server key 
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_srv_pub_key, ECDH_srv_key_size);
 
@@ -514,7 +518,12 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
 }   // send (nonce, ecdh_key, cert, dig_sign)
 
-
+/** 
+ * receive client digital signature
+ * @sockd: socket descriptor
+ * @srv_nonce: array containing the nonce of the server
+ * @return: true on success, false on failure
+*/
 bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce) {
     // M3 Authentication
     // receive and verify client digital signature 
@@ -590,11 +599,12 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     start_index += NONCE_SIZE;
     if(!usr->client_session->checkNonce(received_nonce.data(), srv_nonce.data())) {
         //sendErrorMsg(sockd, "Received nonce not verified");
-        cerr << "Received mnonce not verified, error on socket: " << sockd << endl;
+        cerr << "Received nonce not verified, error on socket: " << sockd << endl;
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         usr->recv_buffer.clear();
         return false;
     }
+    cout << "nonce verified" << endl;
     /* | ecdh_size | ecdh_Pubk | digital signature |
     */
     if(start_index >= usr->recv_buffer.size() - (uint)NUMERIC_FIELD_SIZE) {
@@ -620,6 +630,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
                         usr->recv_buffer.begin() + start_index,
                         usr->recv_buffer.begin() + start_index + ECDH_key_size);
     start_index += ECDH_key_size;
+    cout << "start index after ecdh key " << start_index << endl; 
 
     // retrieve digital signature
     //int dig_sign_len = payload_size + NUMERIC_FIELD_SIZE - start_index; //*(unsigned int*)(recv_buffer + start_index);
@@ -637,6 +648,8 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
                         usr->recv_buffer.begin() + start_index, 
                         usr->recv_buffer.end());
     start_index += dig_sign_len;
+    cout << "dig_sign_len: " << dig_sign_len << endl;
+    cout << "client_signature len: " << client_signature.size() << endl;
     
     // verify digital signature : nonce + ECDH_key
     signed_msg_len = NONCE_SIZE + ECDH_key_size;
@@ -663,6 +676,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 
     // server ECDH public key
     temp_buf.insert(temp_buf.end(), ECDH_client_key.begin(), ECDH_client_key.end());
+    
     //memcpy(temp_buffer.data() + start_index, ECDH_server_key.data(), ECDH_key_size);
     bool verified = usr->client_session->verifyDigSign(client_signature.data(), dig_sign_len, 
                                                         client_pubK, temp_buf.data(), signed_msg_len);
@@ -688,7 +702,8 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     }
     cout << " Digital Signature Verified!" << endl;
     //free(signed_msg);
-    BIO_dump_fp(stdout, (const char*) ECDH_client_key.data(), ECDH_key_size);
+    //cout << "ECDH_client_key" << endl;
+    //BIO_dump_fp(stdout, (const char*) ECDH_client_key.data(), ECDH_key_size);
     usr->client_session->deserializePubKey(ECDH_client_key.data(), ECDH_key_size, 
                                             usr->client_session->ECDH_peerKey);
 

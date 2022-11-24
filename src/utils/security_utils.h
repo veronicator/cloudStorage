@@ -61,7 +61,7 @@ class Session {
 
 
     void incrementCounter(uint32_t& counter);
-    void computeSessionKey(unsigned char* secret, int slen);  //shared secret -> session key
+    int computeSessionKey(unsigned char* secret, int slen);  //shared secret -> session key
 
     void generateRandomValue(unsigned char* new_value, int value_size);
     
@@ -82,7 +82,7 @@ class Session {
         EVP_PKEY* get_peerKey();
 
         EVP_PKEY* retrievePrivKey(string path);  // retrieve its own private key from pem file and return it
-        void computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);
+        int computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);
         long signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign);   // return dig sign length
         bool verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, EVP_PKEY* pub_key, unsigned char* msg_buf, unsigned int msg_len);
 
@@ -91,7 +91,7 @@ class Session {
         bool checkNonce(unsigned char *received_nonce, unsigned char *sent_nonce);
 
         void generateECDHKey();    //generate ECDH key pair and return the public key
-        void deriveSecret();
+        int deriveSecret();
 
         unsigned int serializePubKey(EVP_PKEY* key, unsigned char*& buf_key);
         void deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key); 
