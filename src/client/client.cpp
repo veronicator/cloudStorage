@@ -236,7 +236,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         return false;
     }
     
-    cout << "receiveCertSign buffer msg: " << endl;
+    //cout << "receiveCertSign buffer msg: " << endl;
     //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
 
     start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
@@ -270,11 +270,6 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     //memcpy(received_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);
     start_index += NONCE_SIZE;
 
-    cout << "client: received_nonce: " << endl;
-    BIO_dump_fp(stdout, (const char*)received_nonce.data(), NONCE_SIZE);
-
-    cout << "client: sent_nonce: " << endl;
-    BIO_dump_fp(stdout, (const char*)client_nonce.data(), NONCE_SIZE);
     
     if(!active_session->checkNonce(received_nonce.data(), client_nonce.data())) {
         cerr << "Received nonce not valid\n";
@@ -399,7 +394,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     }
     cout << " Digital Signature Verified!" << endl;
     //free(signed_msg);
-    BIO_dump_fp(stdout, (const char*) ECDH_server_key.data(), ECDH_key_size);
+    //BIO_dump_fp(stdout, (const char*) ECDH_server_key.data(), ECDH_key_size);
     active_session->deserializePubKey(ECDH_server_key.data(), ECDH_key_size, active_session->ECDH_peerKey);
     return true;
 }
@@ -438,9 +433,6 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     //memcpy(msg_to_sign, srv_nonce.data(), NONCE_SIZE);
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
     
-    cout << " msg to sign" << endl;
-    BIO_dump_fp(stdout, (const char*)(msg_to_sign.data()), msg_to_sign.size());
-    
     signed_msg_len = active_session->signMsg(msg_to_sign.data(), NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg.data());
 
     if( signed_msg_len < 0) {
@@ -450,8 +442,6 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
         return -1;
     }
     //cout << "client: singMsg done" << endl;    
-    cout << " signed msg: " << signed_msg_len << endl;
-    BIO_dump_fp(stdout, (const char*)(signed_msg.data()), signed_msg_len);
 
     // prepare send buffer
     if(!send_buffer.empty()) {
@@ -488,11 +478,6 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     send_buffer.insert(send_buffer.end(), signed_msg.begin(), signed_msg.end());
     cout << "signed msg inserted " << endl;
     //memcpy(send_buffer.data() + start_index, signed_msg, signed_msg_len);
-
-    BIO_dump_fp(stdout, (const char*)send_buffer.data() + start_index-1, 8);
-
-    cout << "sendSign buffer msg: " << endl;
-    BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size());
 
     // send msg to server
     cout <<"authentication sendMsg (ecdh pub key)" << endl;
@@ -667,6 +652,7 @@ bool Client::handlerCommand(string& command) {
         showCommands();
     else if(command.compare("!list") == 0) {
         // opcode 8
+        cout << "FileList operation requested" << endl;
         requestFileList();
         /*
         string msg = "Available users?";
@@ -674,22 +660,27 @@ bool Client::handlerCommand(string& command) {
         // se unsigned char msg[] => active_session->userList(msg, sizeof(msg));
     } else if(command.compare("!upload") == 0) {
         // opcode 1
+        cout << "Upload operation requested" << endl;
         // TODO
         //uploadFile();    // username saved in class member
     } else if(command.compare("!download") == 0) {
         // opcode 2
+        cout << "Download operation requested" << endl;
         // TODO
         downloadFile();
     } else if(command.compare("!rename") == 0) {
         // opcode 3
+        cout << "Rename operation requested " << endl;
         // TODO
         renameFile();    // username saved in class member
     } else if(command.compare("!delete") == 0) {
         // opcode 4
+        cout << "Delete operation requested" << endl;
         // TODO
         deleteFile();
     } else if(command.compare("!exit") == 0) {
         // logout from server - opcode 10
+        cout << "Logout requested" << endl; 
         // TODO
         logout();        
     } else {

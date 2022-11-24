@@ -60,15 +60,6 @@ void readInput(string& input, const int MAX_SIZE, string msg = "") {
     } while (!ok);  // (input.length() == 0 || input.length() > MAX_SIZE || input.find_first_not_of(ok_chars) != string::npos);
 }
 
-/*
-int buffer_copy(unsigned char*& dest, unsigned char* src, int len) {
-    dest = (unsigned char*)malloc(len);
-    if(!dest)
-        handleErrors("Malloc error");
-    memcpy(dest, src, len);
-    return len;
-}
-*/
 
 /********************************************************************/
 
@@ -102,19 +93,25 @@ int Session::computeSessionKey(unsigned char* secret, int slen) {
 
 /********************************************************************/
 
-void Session::generateRandomValue(unsigned char* new_value, int value_size) {
+/**
+ * @return: 1 on success, -1 on failure
+*/
+int Session::generateRandomValue(unsigned char* new_value, int value_size) {
     cout << "Session->generateRandomValue" << endl;
-    if(new_value == NULL)
-        handleErrors("generate random null pointer error ");
+    if(new_value == NULL) {
+        perror("generate random null pointer error ");
+        return -1;
+    }
     cout << "random" << endl;
     if(RAND_poll() != 1) {
         cerr << "Error in RAND_poll\n";
-        exit(1);
+        return -1;
     }
     if(RAND_bytes((unsigned char*)&new_value[0], value_size) != 1) {
         cerr << "Error in RAND_bytes\n";
-        exit(1);
+        return -1;
     }
+    return 1;
 }
 
 EVP_PKEY* Session::retrievePrivKey(string path) {
@@ -189,13 +186,21 @@ long Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, 
 
     // sign the pt
     // perform a single update on the whole pt, assuming that the pt is not huge
-    if(EVP_SignInit(md_ctx, HASH_FUN) != 1)
-        handleErrors("SignInit error");
-    if(EVP_SignUpdate(md_ctx, msg_to_sign, msg_to_sign_len) != 1)
-        handleErrors("SignUpdate error");
+    if(EVP_SignInit(md_ctx, HASH_FUN) != 1) {
+        perror("SignInit error");
+        return -1;
+    }
+
+    if(EVP_SignUpdate(md_ctx, msg_to_sign, msg_to_sign_len) != 1) {
+        perror("SignUpdate error");
+        return -1;
+    }
+
     unsigned int sgnt_size;
-    if(EVP_SignFinal(md_ctx, dig_sign, &sgnt_size, privK) != 1)
-        handleErrors("SignFinal error");
+    if(EVP_SignFinal(md_ctx, dig_sign, &sgnt_size, privK) != 1) {
+        perror("SignFinal error");
+        return -1;
+    }
     
     // delete the digest from memory
     EVP_MD_CTX_free(md_ctx);
@@ -205,9 +210,10 @@ long Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, 
 
 bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, EVP_PKEY* pub_key, unsigned char* msg_buf, unsigned int msg_len) {
     EVP_MD_CTX* md_ctx = EVP_MD_CTX_new();
-    if(!md_ctx)
-        handleErrors("EVP_MD_CTX_new returned NULL");
-
+    if(!md_ctx) {
+        perror("EVP_MD_CTX_new returned NULL");
+        return false;
+    }
     int ret;
 
     // verify the pt
@@ -249,35 +255,57 @@ bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonc
     return memcmp(received_nonce, sent_nonce, NONCE_SIZE) == 0;
 }
 
-void Session::generateECDHKey() {
+bool Session::generateECDHKey() {
     cout << "session->generateECDHkey" << endl;
     // create context for ECDH parameters
     EVP_PKEY* DH_params = NULL;
     EVP_PKEY_CTX* param_ctx;
     
-    if(!(param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL)))    // puts the parameters for EC in the context
-        handleErrors();
-    if(EVP_PKEY_paramgen_init(param_ctx) != 1)
-        handleErrors();
-    if(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_X9_62_prime256v1) != 1)
-        handleErrors();
-    if(EVP_PKEY_paramgen(param_ctx, &DH_params) != 1)
-        handleErrors();
+    if(!(param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL))) {   // puts the parameters for EC in the context
+        cerr << "EVP_PKEY_CTX_new_id failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
+    if(EVP_PKEY_paramgen_init(param_ctx) != 1) {
+        cerr << "EVP_PKEY_paramgen_init failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
+    if(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_X9_62_prime256v1) != 1) {
+        cerr << "EVP_PKEY_CTX_set_ec_paramgen_curve_nid failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
+    if(EVP_PKEY_paramgen(param_ctx, &DH_params) != 1) {
+        cerr << "EVP_PKEY_paramgen failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
     EVP_PKEY_CTX_free(param_ctx);
 
     // create context for key generation and generate a new ephimeral key
     EVP_PKEY_CTX* DH_ctx;
     
-    if(!(DH_ctx = EVP_PKEY_CTX_new(DH_params, NULL)))   // key generation
-        handleErrors();
+    if(!(DH_ctx = EVP_PKEY_CTX_new(DH_params, NULL))) {  // key generation
+        cerr << "EVP_PKEY_CTX_new failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
 
     //EVP_PKEY* my_ECDHkey = NULL;
-    if(EVP_PKEY_keygen_init(DH_ctx) != 1)
-        handleErrors();
-    if(EVP_PKEY_keygen(DH_ctx, &ECDH_myKey) != 1)
-        handleErrors();
+    if(EVP_PKEY_keygen_init(DH_ctx) != 1) {
+        cerr << "ECP_PKEY_keygen_init failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
+    if(EVP_PKEY_keygen(DH_ctx, &ECDH_myKey) != 1) {
+        cerr << "EVP_PKEY_keygen failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
     EVP_PKEY_CTX_free(DH_ctx);    
     cout << "session->generateECDHKey done" << endl;
+    return true;
 }
 
 int Session::deriveSecret() {
@@ -348,8 +376,9 @@ unsigned int Session::serializePubKey(EVP_PKEY* key, unsigned char*& buf_key) {
     }
     unsigned int key_size = BIO_get_mem_data(mBio, &buf);
     buf_key = (unsigned char*)malloc(key_size);
-    if(!buf_key)
-        handleErrors("Malloc error");
+    if(!buf_key) {
+        perror("Malloc error");
+    }
     memcpy(buf_key, buf, key_size);
 
     BIO_free(mBio);

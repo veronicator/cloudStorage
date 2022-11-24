@@ -63,7 +63,7 @@ class Session {
     void incrementCounter(uint32_t& counter);
     int computeSessionKey(unsigned char* secret, int slen);  //shared secret -> session key
 
-    void generateRandomValue(unsigned char* new_value, int value_size);
+    int generateRandomValue(unsigned char* new_value, int value_size);
     
     public:
         EVP_PKEY* ECDH_myKey = NULL;    // ephimeral 
@@ -90,7 +90,7 @@ class Session {
         void generateNonce(unsigned char *nonce);
         bool checkNonce(unsigned char *received_nonce, unsigned char *sent_nonce);
 
-        void generateECDHKey();    //generate ECDH key pair and return the public key
+        bool generateECDHKey();    //generate ECDH key pair
         int deriveSecret();
 
         unsigned int serializePubKey(EVP_PKEY* key, unsigned char*& buf_key);
