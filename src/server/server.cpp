@@ -779,20 +779,14 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
     }
 
     size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
-    size_t to_receive;
     int received_len, pt_len, aad_len;
-    uint32_t opcode;
+    uint16_t opcode;
     vector<unsigned char> aad;
     array<unsigned char, MAX_BUF_SIZE> plaintext;
 
     plaintext.fill('0');
 
     for(int i = 0; i < tot_chunks; i++){
-        if(i == tot_chunks - 1)
-            to_receive = filedimension- i* FRAGM_SIZE;
-        else
-            to_receive = FRAGM_SIZE;
-
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
         if(received_len == -1 || received_len == 0){
             cerr<<"Error! Exiting receive phase"<<endl;
@@ -800,7 +794,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
         }
 
         pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
-        opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+        opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
             outfile.close();
             cerr << "Wrong message format. Exiting"<<endl;
