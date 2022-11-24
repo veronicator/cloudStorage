@@ -287,7 +287,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     
     start_index = NUMERIC_FIELD_SIZE;   // payload field
     if(payload_size > recv_buffer.size() - start_index) {   // - (uint)OPCODE_SIZE
-        cerr << "284Received msg size error on socket: " << sockd << endl;
+        cerr << "receiveUsrname1: Received msg size error on socket: " << sockd << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
         //close(sockd);
         recv_buffer.clear();
@@ -298,7 +298,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     opcode = ntohs(opcode);
     start_index += OPCODE_SIZE;
     if(opcode != LOGIN) {
-        cerr << "Received message not expected on socket: " << sockd << endl;
+        cerr << "receiveUsrname2:Received message not expected on socket: " << sockd << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
         //close(sockd);
         recv_buffer.clear();
@@ -307,7 +307,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     
     if(start_index >= recv_buffer.size() - (uint)NONCE_SIZE) {
             // if it is equal => there is no username in the message -> error
-        cerr << "Received msg size error on socket: " << sockd << endl;
+        cerr << "ReceiveUsrname3: Received msg size error on socket: " << sockd << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
         //close(sockd);
         recv_buffer.clear();
@@ -386,7 +386,7 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     pthread_mutex_unlock(&mutex_client_list);
 
     // retrieve server private key
-    usr->client_session->retrievePrivKey("./server/Server_key.pem", srv_priv_k);
+    srv_priv_k = usr->client_session->retrievePrivKey("./server/Server_key.pem");
 
     // retrieve e serialize server certificate
     cert_file = fopen(cert_file_name.c_str(), "r");
@@ -515,8 +515,6 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 }   // send (nonce, ecdh_key, cert, dig_sign)
 
 
-//HERE
-
 bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce) {
     // M3 Authentication
     // receive and verify client digital signature 
@@ -535,7 +533,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     uint32_t signed_msg_len;
     vector<unsigned char> temp_buf;
 
-    EVP_PKEY* client_pubK;  // TODO: RETRIEVE THIS KEY FROM FILE
+    EVP_PKEY* client_pubK;
     
     // retrieve user structure
     pthread_mutex_lock(&mutex_client_list);
@@ -559,8 +557,8 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     }
         
     start_index = NUMERIC_FIELD_SIZE;
-    if(payload_size > usr->recv_buffer.size() - start_index - (uint)OPCODE_SIZE) {
-        cerr << "Received msg size error on socket: " << sockd << endl;
+    if(payload_size > usr->recv_buffer.size() - start_index) {  // - (uint)OPCODE_SIZE
+        cerr << "receiveSign1:Received msg size error on socket: " << sockd << endl;
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         //close(sockd);
         usr->recv_buffer.clear();
@@ -572,7 +570,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     start_index += OPCODE_SIZE;
 
     if(opcode != LOGIN) {
-        cerr << "Received message not expected on socket: " << sockd << endl;
+        cerr << "receiveSign: wrong OpCode \nReceived message not expected on socket: " << sockd << endl;
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         usr->recv_buffer.clear();
         return false;
@@ -580,7 +578,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     //start_index >= recv_buffer.size() - (int)NONCE_SIZE
     //if(recv_buf.size() <= NONCE_SIZE) {
     if(start_index >= usr->recv_buffer.size() - (uint)NONCE_SIZE) {
-        cerr << "Received msg size error on socket: " << sockd << endl;
+        cerr << "ReceiveSign2: Received msg size error on socket: " << sockd << endl;
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         usr->recv_buffer.clear();
         return false;
@@ -600,7 +598,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     /* | ecdh_size | ecdh_Pubk | digital signature |
     */
     if(start_index >= usr->recv_buffer.size() - (uint)NUMERIC_FIELD_SIZE) {
-        cerr << "Received msg size error on socket: " << sockd << endl;
+        cerr << "receiveSign3: Received msg size error on socket: " << sockd << endl;
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         usr->recv_buffer.clear();
         return false;
@@ -612,7 +610,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     start_index += NUMERIC_FIELD_SIZE;
 
     if(start_index >= usr->recv_buffer.size() - ECDH_key_size) {
-        cerr << "Received msg size error on socket: " << sockd << endl;
+        cerr << "receiveSign4: Received msg size error on socket: " << sockd << endl;
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         usr->recv_buffer.clear();
         return false;

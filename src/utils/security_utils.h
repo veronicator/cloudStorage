@@ -35,7 +35,7 @@ void handleErrors(const char *error);
 
 void handleErrors(const char *error, int sockd);
 
-void terminate();   // dealloca tutto e termina in caso di errore
+void terminate();   // TODO: dealloca tutto e termina in caso di errore
 
 void incrementCounter(uint32_t& counter);
 
@@ -52,14 +52,7 @@ void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE cha
 void readFilenameInput(string& input, string msg);  
 
 //int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
-/*
-struct UserInfo {
-    string username;    // client username
-    string chat_user;   // client username chatting with
-    bool available = false; // true: when online and there is no active chat, false otherwise
-    int clt_sockd;     // client socket descriptor
-    Session* client_session;
-};*/
+
 
 class Session {
     unsigned char* session_key;
@@ -70,6 +63,8 @@ class Session {
     void incrementCounter(uint32_t& counter);
     void computeSessionKey(unsigned char* secret, int slen);  //shared secret -> session key
 
+    void generateRandomValue(unsigned char* new_value, int value_size);
+    
     public:
         EVP_PKEY* ECDH_myKey = NULL;    // ephimeral 
         EVP_PKEY* ECDH_peerKey = NULL;  // ephimeral
@@ -82,12 +77,11 @@ class Session {
 
         // Session utils
         uint createAAD(unsigned char* aad, uint16_t opcode); // return aad_len
-        void generateRandomValue(unsigned char* new_value, int value_size);
         // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input and put in "input" string
 
         EVP_PKEY* get_peerKey();
 
-        void retrievePrivKey(string path, EVP_PKEY*& key);  // retrieve its own private key from pem file
+        EVP_PKEY* retrievePrivKey(string path);  // retrieve its own private key from pem file and return it
         void computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);
         long signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign);   // return dig sign length
         bool verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, EVP_PKEY* pub_key, unsigned char* msg_buf, unsigned int msg_len);

@@ -117,18 +117,19 @@ void Session::generateRandomValue(unsigned char* new_value, int value_size) {
     }
 }
 
-void Session::retrievePrivKey(string path, EVP_PKEY*& key) {
+EVP_PKEY* Session::retrievePrivKey(string path) {
     FILE *fileKey = fopen(path.c_str(), "r");
     if(!fileKey) {
         cerr << "Error: the file doesn't exist.\n";
-        exit(1);
+        return nullptr;
     }
-    key = PEM_read_PrivateKey(fileKey, NULL, NULL, NULL);
+    EVP_PKEY* key = PEM_read_PrivateKey(fileKey, NULL, NULL, NULL);
     fclose(fileKey);
     if(!key) {
         cerr << "Error: PEM_read_PrivateKey returned NULL.\n";
-        exit(1);
+        return nullptr;
     }
+    return key;
 }
 
 void Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msgDigest) {
@@ -194,14 +195,23 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 
     // verify the pt
     // performe a single update on the whole pt, assuming that the pt is not huge
-    if(EVP_VerifyInit(md_ctx, HASH_FUN) != 1)
-        handleErrors("VerifyInit error");
-    if(EVP_VerifyUpdate(md_ctx, msg_buf, msg_len) != 1)
-        handleErrors("VerifyUpdate error");
+    if(EVP_VerifyInit(md_ctx, HASH_FUN) != 1) {
+        cerr << "EVP_VerifyInit error" << endl;
+        EVP_MD_CTX_free(md_ctx);
+        return false;
+    }
+    if(EVP_VerifyUpdate(md_ctx, msg_buf, msg_len) != 1){
+        cerr << "EVP_VerifyUpdate error" << endl;
+        EVP_MD_CTX_free(md_ctx);
+        return false;    
+    }
     ret = EVP_VerifyFinal(md_ctx, dig_sign, dig_sign_len, pub_key);
 
-    if(ret == -1) 
-        handleErrors("VerifyFinal error");
+    if(ret == -1) {
+        cerr << "EVP_VerifyFinal error" << endl;
+        EVP_MD_CTX_free(md_ctx);
+        return false;
+    }
 
     EVP_MD_CTX_free(md_ctx);    // deallocate data
     cout << "verifydigsign ret " << ret << endl;
@@ -211,9 +221,6 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 /********************************************************************/
 
 void Session::generateNonce(unsigned char *nonce) {
-    /*nonce = (unsigned char*)malloc(NONCE_SIZE);
-    if(!nonce)
-        handleErrors("Malloc error");*/
     generateRandomValue(nonce, NONCE_SIZE);    
 }
 

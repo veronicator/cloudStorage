@@ -15,16 +15,10 @@ Client::~Client() {
     if(!send_buffer.empty()) {
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
-        //send_buffer.fill('0');
-        //free(send_buffer);
-        //send_buffer = nullptr;
     }
     if(!recv_buffer.empty()) {
         recv_buffer.assign(recv_buffer.size(), '0');
         recv_buffer.clear();
-        //recv_buffer.fill('0');
-        //free(recv_buffer);
-        //recv_buffer = nullptr;
     }
 }
 
@@ -60,18 +54,18 @@ int Client::sendMsg(uint32_t payload_size) {
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
         send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();    //fill('0');
+        send_buffer.clear();
         return -1;
     }
     payload_size += NUMERIC_FIELD_SIZE;
     if(send(sd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
         send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();    //fill('0');
+        send_buffer.clear();
         return -1;
     }
     send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();    //fill('0');
+    send_buffer.clear();
 
     return 1;    
  }
@@ -88,7 +82,7 @@ int Client::sendMsg(uint32_t payload_size) {
     uint32_t payload_size;
 
     recv_buffer.assign(recv_buffer.size(), '0');
-    recv_buffer.clear();    //fill('0');
+    recv_buffer.clear();
 
     msg_size = recv(sd, receiver.data(), MAX_BUF_SIZE-1, 0);
     cout << "received msg size: " << msg_size << endl;
@@ -101,23 +95,21 @@ int Client::sendMsg(uint32_t payload_size) {
     if (msg_size < 0 || msg_size < (uint)NUMERIC_FIELD_SIZE + (uint)OPCODE_SIZE) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
-        //memset(recv_buffer, 0, MAX_BUF_SIZE);
         return -1;
     }
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
     cout << payload_size << " received payload length" << endl;
-    //check if received all data
+    //check if all data are received
     if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
-        //memset(recv_buffer, 0, MAX_BUF_SIZE);
         return -1;
     }
 
     recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
-    receiver.fill('0');     // erase content of the temporary receiver buffer
+    receiver.fill('0');     // clear content of the temporary receiver buffer
 
     return payload_size;
 
@@ -137,7 +129,8 @@ bool Client::authentication() {
 
     // M1
     if(sendUsername(client_nonce) != 1) {
-        cerr << "Authentication failed" << endl;
+        cerr << "Authentication->sendUsername failed" << endl;
+        return false;
     }
     
 
@@ -146,19 +139,11 @@ bool Client::authentication() {
 
     // receive M2
     if(!receiveCertSign(client_nonce, server_nonce)) {
-        cerr << "receiveVerifyCert failed" << endl;
+        cerr << "Authentication->receiveCertSign failed" << endl;
         return false;
     }
-    /*
-    //start_index = 0;
-    int received_size = receiveMsg(payload_size);    // return total size received data
-
-    active_session->deserializeKey(ECDH_srv_key, ECDH_key_size, active_session->ECDH_peerKey);
-    */
-    // DONE legge/deserializza msg -> verifica nonce -> verifica cert server -> verifica firma server -> 
-    //genera ECDH_key -> prepara buffer&invia -> riceve login ack
     
-    active_session->retrievePrivKey("./client/users/" + username + "/" + username + "_key.pem", my_priv_key);
+    my_priv_key = active_session->retrievePrivKey("./client/users/" + username + "/" + username + "_key.pem");
     active_session->generateECDHKey();
     ret = sendSign(server_nonce, my_priv_key);
     cout << "sendsign serv nonce" << endl;
@@ -168,10 +153,6 @@ bool Client::authentication() {
         EVP_PKEY_free(my_priv_key);
         return false;
     }
-    /*
-    unsigned char* ECDH_my_pub_key = NULL;
-    unsigned int ECDH_my_key_size = active_session->serializeKey(active_session->ECDH_myKey, ECDH_my_pub_key);
-    */
 
     active_session->deriveSecret();     // derive secrete & compute session key
     cout << "active_session -> derive secret " << endl;
