@@ -16,6 +16,7 @@ Client::Client(string username, string srv_ip) {
 
 Client::~Client() {
     //TODO: check if everything is deallocated
+    active_session = nullptr;
     username.clear();
     if(!send_buffer.empty()) {
         send_buffer.assign(send_buffer.size(), '0');
@@ -790,7 +791,6 @@ int Client::receiveFileList() {
     return 0;
 }
 
-// TODO
 void Client::logout() {
     vector<unsigned char> aad;
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);
@@ -818,7 +818,6 @@ void Client::logout() {
     while(sendMsg(payload_size) != 1)
         cerr<<"Error during logout phase! Trying again"<<endl;
 
-    // deallocare tutte le risorse utilizzate e chiudere il socket di connessione col server    
     this->active_session->~Session();
     this->~Client();
 }

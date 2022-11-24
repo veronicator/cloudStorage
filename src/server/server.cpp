@@ -7,6 +7,19 @@ UserInfo::UserInfo(int sd, string name) {
     client_session = new Session();
 }
 
+UserInfo::~UserInfo(){
+    username.clear();
+    if(!send_buffer.empty()) {
+        send_buffer.assign(send_buffer.size(), '0');
+        send_buffer.clear();
+    }
+    if(!recv_buffer.empty()) {
+        recv_buffer.assign(recv_buffer.size(), '0');
+        recv_buffer.clear();
+    }
+    client_session = nullptr;
+}
+
 Server::Server() {
     if(pthread_mutex_init(&mutex_client_list, NULL) != 0) {
         cerr << "mutex init failed " << endl;
@@ -745,8 +758,20 @@ int Server::sendFileList(int sockd) {
 }
 
 void Server::logoutClient(int sockd) {
-
+    UserInfo* ui;
+    // retrive UserInfo relative to the client
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        return;
+    }
+    ui->client_session->~Session();
+    ui->~UserInfo();
+    ui = nullptr;
 }
+    
 
 void Server::sendErrorMsg(int sockd, string errorMsg) {
         //cerr << errorMsg << endl;
@@ -794,7 +819,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
         }
 
         pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
-        opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+        opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
             outfile.close();
             cerr << "Wrong message format. Exiting"<<endl;
