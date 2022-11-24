@@ -19,7 +19,7 @@ int main() {
     // select sockets ready 
 
 
-    timeout.tv_sec = ;
+    timeout.tv_sec = 60;
     timeout.tv_usec = 0;
     // thread
     list<pthread_t> threads;

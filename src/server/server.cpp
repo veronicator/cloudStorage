@@ -720,7 +720,7 @@ void Server::joinThread() {
     }
 }*/
 
-int Server::receiveMsgChunks(UserInfo* ui, uint32_t filedimension, string filename){
+int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename){
     string path = path_file + ui->username + "/" + filename;
     std::ofstream outfile(path, std::ofstream::binary);
     if(!outfile.is_open()){
@@ -786,7 +786,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     //the plaintext has format: filedimension | filename
     memcpy(&r_dim_l, plaintext.data(), NUMERIC_FIELD_SIZE);
     memcpy(&r_dim_h, plaintext.data() + 4, NUMERIC_FIELD_SIZE);
-    filedimension = ((uint64_t)r_dim_h << 32) + r_dim_l;
+    filedimension = ((uint64_t)ntohl(r_dim_h) << 32) + ntohl(r_dim_l);
     filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
 
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
