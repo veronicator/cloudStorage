@@ -15,20 +15,15 @@ Client::Client(string username, string srv_ip) {
 }
 
 Client::~Client() {
+    //TODO: check if everything is deallocated
     username.clear();
     if(!send_buffer.empty()) {
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
-        //send_buffer.fill('0');
-        //free(send_buffer);
-        //send_buffer = nullptr;
     }
     if(!recv_buffer.empty()) {
         recv_buffer.assign(recv_buffer.size(), '0');
         recv_buffer.clear();
-        //recv_buffer.fill('0');
-        //free(recv_buffer);
-        //recv_buffer = nullptr;
     }
 }
 
@@ -709,18 +704,6 @@ bool Client::handlerCommand(string& command) {
     return true;
 }
 
-/*
-
-    int payload_size = active_session->fileList((unsigned char*)msg.c_str(), msg.length(), send_buffer.data());    // prepare msg to send
-    int ret = sendMsg(payload_size);
-    if(ret != 1) {
-        cerr << "send requestFileList failed" << endl;
-        // todo: clear buffer
-        return;
-    }
-    
-*/
-
 int Client::requestFileList() {
     string msg = this->username;
     uint32_t payload_size, payload_size_n;
@@ -769,15 +752,77 @@ int Client::requestFileList() {
 }
 
 int Client::receiveFileList() {
-    uint64_t file_list_size;
-    uint32_t r_dim_l, r_dim_h;
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext;
+    int received_len, aad_len, pt_len;
+    uint16_t opcode;
+    string filelist = "";
+
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    while(true){
+        received_len = receiveMsg();
+        if(received_len == -1 || received_len == 0){
+            cerr<<"Error! Exiting receive file list phase"<<endl;
+            return -1;
+        }
+        pt_len = this->active_session->decryptMsg(recv_buffer.data(), recv_buffer.size(), aad.data(), aad_len, plaintext.data());
+
+        opcode = ntohs(*(uint16_t*)(aad.data()+NUMERIC_FIELD_SIZE));
+
+        if(opcode == FILE_LIST)
+            cout<<((char*)plaintext.data());
+        else if(opcode == END_OP){
+            cout<<((char*)plaintext.data());
+            break;
+        }
+        else{
+            cerr<<"Error! The received msg was malformed"<<endl;
+            return -1;
+        }
+
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+    }
+    return 0;
 }
 
 // TODO
 void Client::logout() {
-    // deallocare tutte le risorse utilizzate e chiudere il socket di connessione col server
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    array<unsigned char, MAX_BUF_SIZE> output;
+    uint32_t payload_size, payload_size_n;
+    string msg = "Close this client session";
 
+    plaintext.insert(plaintext.begin(), msg.begin(), msg.end());
+    this->active_session->createAAD(aad.data(), LOGOUT);
+
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();    
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+    while(sendMsg(payload_size) != 1)
+        cerr<<"Error during logout phase! Trying again"<<endl;
+
+    // deallocare tutte le risorse utilizzate e chiudere il socket di connessione col server    
+    this->active_session->~Session();
+    this->~Client();
 }
+    
 
 void Client::sendErrorMsg(string errorMsg) {
         //cerr << errorMsg << endl;
@@ -868,7 +913,7 @@ int Client::uploadFile(){
     uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
     string filename;                                                        //name of the file to upload
     vector<unsigned char> aad;                                              //aad of the msg
-    vector<unsigned char> plaintext(FILE_SIZE_FIELD);                     //plaintext to be encrypted
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
 
     cout<<"****************************************"<<endl;
@@ -910,7 +955,7 @@ int Client::uploadFile(){
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
     if(sendMsg(payload_size) != 1){
-        cout<<"Error during send phase (C->S | Upload Request Phase)"<<endl;
+        cerr<<"Error during send phase (C->S | Upload Request Phase)"<<endl;
         return -1;
     }
 

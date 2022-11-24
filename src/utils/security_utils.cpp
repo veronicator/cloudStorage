@@ -643,6 +643,7 @@ int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char* outpu
 }
 
 Session::~Session(){
+    //TODO: check if everything is deallocated
     free(session_key);
     EVP_PKEY_free(ECDH_myKey);
     EVP_PKEY_free(ECDH_peerKey);
