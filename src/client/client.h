@@ -58,9 +58,6 @@ class Client {
     print_progress_bar(int total, unsigned int fragment);
     void
     removeFile(string filename);
-    void
-    checkRequestSV(unsigned char *input_buffer, int msg_size, unsigned char *&aad, int &aad_len, unsigned char *&plaintext, uint16_t request);
-
 
 
 
