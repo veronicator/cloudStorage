@@ -23,18 +23,28 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
-void readFilenameInput(string& input, string msg = "") {
+void
+readFilenameInput(string& input, string msg)
+{
     bool string_ok = false;
-    do{
-        cout<<msg<<endl;
-        getline(std::cin, input);
+
+    do
+    {
+        cout << msg << endl;
+        getline(cin, input);
+
+        if(!cin)
+        { cerr << "\n === Error during input ===\n"; exit(1); }
+
         if(input.empty()) continue;
+
         const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
         string_ok = regex_match(input, re);
+
         if(!string_ok)
-            cout<<"! FILE NAME HAS A WRONG FORMAT !"<<endl;
-    }
-    while(!string_ok);
+        { cout<<"! FILE NAME HAS A WRONG FORMAT !"<<endl; }
+    
+    } while(!string_ok);
 }
 
 
@@ -116,6 +126,7 @@ void Session::generateRandomValue(unsigned char* new_value, int value_size) {
         exit(1);
     }
 }
+
 
 void Session::retrievePrivKey(string path, EVP_PKEY*& key) {
     FILE *fileKey = fopen(path.c_str(), "r");
