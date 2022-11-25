@@ -919,34 +919,6 @@ Client::removeFile(string filename)
     */
 }
 
-void
-Client::checkRequestSV(unsigned char *input_buffer, int msg_size, unsigned char *&aad, int &aad_len, unsigned char *&plaintext, uint16_t request)
-{
-    uint64_t received_len; 
-    uint32_t plaintext_len;
-    uint16_t opcode;
-    
-    received_len = receiveMsg();
-    if(received_len == 0 || received_len == -1)
-    {
-        cout<<"Error during receive phase (S->C)"<<endl;
-        return;
-    }
-
-    //Ciò che ricevo dal server
-    plaintext_len = this->active_session->decryptMsg(input_buffer, msg_size,
-                                                aad, aad_len, plaintext);
-
-    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
-    opcode = ntohs(*(uint16_t*)(aad + NUMERIC_FIELD_SIZE));    
-    if(opcode != request)
-    {
-        cout<<"Error! Exiting download request phase"<<endl;
-    }
-
-    return;
-}
-
 int
 Client::receiveMsgChunks( uint32_t filedimension, string filename)
 {
