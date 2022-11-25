@@ -819,8 +819,6 @@ void Client::uploadFile(){
     //server response: <count_sc, op_code=5, {ResponseMsg}_Kcs>
 }
 
-void Client::downloadFile(){}
-
 void Client::renameFile(){
     string old_filename, new_filename;
     cout<<"****************************************"<<endl;
@@ -836,4 +834,401 @@ void Client::renameFile(){
     //server response: <count_sc, op_code=3, {ResponseMsg}_Kcs>
 }
 
-void Client::deleteFile(){}
+
+//---------------------------------------------\\
+
+int32_t
+checkFileExistClient(string filename)
+{
+    string path = FILE_PATH_CL + filename;
+    struct stat buffer;
+
+    if (stat(path.c_str(),&buffer)!=0)  //stat failed
+    { 
+        return 0;   //File dosen't exist
+	}
+	
+	return -1;  //File exist
+}
+
+void
+Client::print_progress_bar(int total, unsigned int fragment)
+{
+    cout << "\r" << "[Fragment " << fragment + 1 << " of " << total << "]";
+	cout.flush();
+
+    /*
+        - Possibile alternativa -
+        void
+        progress_bar(int fragment)
+        {        
+            //while (fragment < 1)
+            //{
+                int barWidth = 70;
+
+                cout << "[";
+        
+                int pos = barWidth * fragment;
+                for (size_t i = 0; i < barWidth; ++i)
+                {
+                    if (i < pos)
+                        cout << "=";
+                    else if (i == pos)
+                        cout << ">";
+                    else
+                        cout << " ";
+                }
+        
+            cout << "] " << int(fragment+1) << " %\r";
+            cout.flush();
+
+            fragment += 0.16; // for demonstration only
+        //}
+        }
+    */
+}
+
+void
+Client::removeFile(string filename)
+{  
+    string pathFile = FILE_PATH_CL + filename;
+
+    //If the file is successfully deleted return 0. On failure a nonzero value (!=0) is returned.
+    if (remove(pathFile.c_str()) !=0)
+    {   
+        perror ("\n\t * * * ERROR during deleting/overwriting file: "); }
+    else
+    {   cout << "\n\t --- Deleted Successfully ---\n" << endl; }
+    
+    return;
+
+
+    /* --- EXEC_version ---
+    void
+    deleteFileExeclEasy(string filename)
+    {  
+        if(filename.length() > 20)
+        {   cout << "\n\t -- Error: Filename too long --\n" << endl; return;    }
+
+        string pathFile = FILE_PATH_CL + filename;
+
+        execl("/bin/rm", "rm", pathFile.c_str(), (char*)0);
+
+        return;   
+    }
+    */
+}
+
+void
+Client::checkRequestSV(unsigned char *input_buffer, int msg_size, unsigned char *&aad, int &aad_len, unsigned char *&plaintext, uint16_t request)
+{
+    uint64_t received_len; 
+    uint32_t plaintext_len;
+    uint16_t opcode;
+    
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (S->C)"<<endl;
+        return;
+    }
+
+    //Ciò che ricevo dal server
+    plaintext_len = this->active_session->decryptMsg(input_buffer, msg_size,
+                                                aad, aad_len, plaintext);
+
+    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad + NUMERIC_FIELD_SIZE));    
+    if(opcode != request)
+    {
+        cout<<"Error! Exiting download request phase"<<endl;
+    }
+
+    return;
+}
+
+int
+Client::receiveMsgChunks( uint32_t filedimension, string filename)
+{
+    string path = FILE_PATH_CL + this->username + "/" + filename;
+    std::ofstream outfile(path, std::ofstream::binary);
+
+    size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
+    size_t to_receive;
+    int received_len, pt_len, aad_len;
+    uint32_t opcode;
+
+    vector<unsigned char> aad;
+    array<unsigned char, MAX_BUF_SIZE> plaintext;
+
+    plaintext.fill('0');
+
+    for(int i = 0; i < tot_chunks; i++)
+    {
+        if(i == tot_chunks - 1)
+            to_receive = filedimension - i* FRAGM_SIZE;
+        else
+            to_receive = FRAGM_SIZE;
+
+        
+        received_len = receiveMsg();
+        if(received_len == -1 || received_len == 0)
+        {
+            cerr<<"Error! Exiting receive phase"<<endl;
+            return -1;
+        }
+
+        pt_len = this->active_session->decryptMsg(this->recv_buffer.data(),
+                                received_len, aad.data(), aad_len, plaintext.data());
+
+        opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+        
+        if((opcode == DOWNLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1))
+        {
+            outfile.close();
+            cerr << "Wrong message format. Exiting"<<endl;
+            
+            if(remove(path.c_str()) != 0)
+            {
+                cerr << "File not correctly cancelled"<<endl;
+            }
+            return -1;
+        }
+
+        outfile << plaintext.data();
+
+        print_progress_bar(tot_chunks, i);
+    }
+
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.fill('0');
+
+    return;
+}
+
+void
+Client::downloadFile()
+{
+    string filename;
+    uint32_t file_size, payload_size, payload_size_n, filedimension;   
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    array<unsigned char, MAX_BUF_SIZE> cyphertext;
+
+    readFilenameInput(filename, "Insert the name of the file you want to Download: ");
+
+    // === Controllo e gestione dell'esistenza del file all'interno della cartella Download ===
+    if (checkFileExistClient(filename)!=0)
+    {
+        string choice;
+        
+        cout << "The requested file already exists in the Download folder, do you want to overwrite it?: [y/n]\n\n "<<endl;
+        cout<<"_Ans: ";
+        getline(cin, choice);
+
+        if(!cin)
+        { cerr << "\n === Error during input ===\n"; exit(1); }
+
+        while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
+        {
+            cout<<"\nError: The parameter of cohice is wrong!"<<endl;
+            cout<<"-- Try again: [y/n]: ";
+            getline(cin, choice);
+
+            if(!cin)
+            { cerr << "\n === Error during input ===\n"; exit(1); }
+        }
+
+        if(choice == "N" || choice == "n")
+        {
+            //--Annullamento Download operation
+            //terminate();
+
+            cout<<"\n\t~ The file *( "<< filename << " )* will not be overwritten. ~\n\n"<<endl;
+            return;
+        }
+        
+        removeFile(filename);
+    }
+    
+    // === Preparazione Invio Dati e Cifratura  ===
+    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
+
+    this->active_session->createAAD(aad.data(), DOWNLOAD_REQ);
+    
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
+                                            aad.data(), aad.size(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    // === Management Buffers & Content that to be sent ===
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
+                        cyphertext.begin() + payload_size);
+    cyphertext.fill('0');
+
+
+// _BEGIN_(1)-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------
+
+    if(sendMsg(payload_size) != 1)
+    {   cout<<"Error during send phase (C->S)"<<endl;   }
+
+// _END_(1))-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------  
+
+
+    int aad_len, aad_len_2;
+    uint64_t received_len, received_len_2;  //legnht of the message received from the server 
+    string server_response; //message from the server containing the response to the request
+    int fileChunk;   //Management Chunk
+    //uint32_t plaintext_len;    
+    //uint16_t opcode;
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    checkRequestSV(recv_buffer.data(), received_len,
+                    aad.data(), aad_len, plaintext.data(), DOWNLOAD_REQ);
+
+
+// _BEGIN_(2)-------------- [M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] --------------
+    
+    /*----- Check Response esistenza file nel Cloud Storage da parte del Server -----*/
+    server_response = ((char*)plaintext.data());
+    if(server_response != MESSAGE_OK)
+    {       
+        cout<<"The file cannot be downloaded: "<< server_response <<endl;
+        return;
+    }
+    
+// _END_(2)-------------- [ M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] --------------
+
+
+    cout << "\nThe requested file is in the cloud storage and can be downloaded."<<endl;
+    cout<<"\n\t ...Download file " + filename +" in progress...\n\n"<<endl;  
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    checkRequestSV(recv_buffer.data(), received_len_2,
+                    aad.data(), aad_len_2, plaintext.data(), DOWNLOAD);
+    
+    filedimension = ntohl(*(uint32_t*)(plaintext.data()));
+    
+
+// _BEGIN_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
+
+    fileChunk = receiveMsgChunks(filedimension, filename);
+
+    if(fileChunk == -1)
+    {
+        cout<<"Error! Exiting Download phase"<<endl; return;  }
+
+// _END_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
+
+
+    cout << "\n\tFile Download Completed!" << endl;
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    // === Preparazione Invio Dati e Cifratura Per ===    
+    this->active_session->createAAD(aad.data(), END_OP);
+    string ack_msg = DOWNLOAD_TERMINATED;
+    
+    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
+                                            aad.data(), aad.size(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
+                        cyphertext.begin() + payload_size);
+    cyphertext.fill('0');
+
+// _BEGIN_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
+
+    if(sendMsg(payload_size) != 1)
+    {   cout<<"Error during send phase (C->S)"<<endl;   }
+    
+// _END_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
+
+    
+    return;
+}
+
+void
+Client::deleteFile()
+{
+    string choice, filename;
+
+    readFilenameInput(filename, "Insert the name of the file you want to Delete: ");
+
+    // --- Da Sistemare ---
+
+    //Invio richiesta al server
+        
+    cout << "Are you sure you want to delete the file??: [y/n]\n\n "<<endl;
+    cout<<"_Ans: ";
+    getline(cin, choice);
+
+    if(!cin)
+    { cerr << "\n === Error during input ===\n"; exit(1); }
+
+    while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
+    {
+        cout<<"\nError: The parameter of cohice is wrong!"<<endl;
+        cout<<"-- Try again: [y/n]: ";
+        getline(cin, choice);
+
+        if(!cin)
+        { cerr << "\n === Error during input ===\n"; exit(1); }
+    }
+
+    if(choice == "N" || choice == "n")
+    {
+        //--Annullamento Download operation
+        //terminate();
+
+        cout<<"\n\t~ The file *( "<< filename << " )* will not be overwritten. ~\n\n"<<endl;
+        return;
+    }
+        
+    removeFile(filename);
+
+    //Response conferma eliminazione dal server
+}
