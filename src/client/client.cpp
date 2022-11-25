@@ -1194,14 +1194,89 @@ Client::downloadFile()
 void
 Client::deleteFile()
 {
-    string choice, filename;
+    string filename;
+    uint32_t file_size, payload_size, payload_size_n, filedimension;   
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    array<unsigned char, MAX_BUF_SIZE> cyphertext;
 
     readFilenameInput(filename, "Insert the name of the file you want to Delete: ");
 
-    // --- Da Sistemare ---
+    // === Preparazione Invio Dati e Cifratura  ===
+    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
 
-    //Invio richiesta al server
+    this->active_session->createAAD(aad.data(), DELETE_REQ);
+    
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
+                                            aad.data(), aad.size(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    // === Management Buffers & Content that to be sent ===
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
+                        cyphertext.begin() + payload_size);
+    cyphertext.fill('0');
+
+
+// _BEGIN_(1)-------------- [ M1: INVIO_RICHIESTA_DELETE_AL_SERVER ] --------------
+
+    if(sendMsg(payload_size) != 1)
+    {   cout<<"Error during send phase (C->S)"<<endl;   }
+
+// _END_(1))-------------- [ M1: INVIO_RICHIESTA_DELETE_AL_SERVER ] --------------
+
+    
+    int aad_len;
+    uint16_t opcode;
+    uint64_t received_len;  
+    uint32_t plaintext_len;
+    string server_response, choice; 
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (S->C)"<<endl;
+        return;
+    }
+
+    //Ciò che ricevo dal server in termini di byte
+    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+                                                aad.data(), aad_len, plaintext.data());
+
+    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    if(opcode != DELETE_REQ)
+    {
+        cout<<"Error! Exiting DELETE request phase"<<endl;
+    }
+
+// _BEGIN_(2)-------------- [M2: RICEZIONE_CONFERMA_RICHIESTA_DELETE_DAL_SERVER ] --------------
+    
+    /*----- Check Response esistenza file nel Cloud Storage da parte del Server -----*/
+    server_response = ((char*)plaintext.data());
+    if(server_response != MESSAGE_OK)
+    {       
+        cout<<"The file dosen't exist in the cloud: "<< server_response <<endl;
+        return;
+    }
+    
+// _END_(2)-------------- [ M2: RICEZIONE_CONFERMA_RICHIESTA_DELETE_DAL_SERVER ] --------------
         
+    
     cout << "Are you sure you want to delete the file??: [y/n]\n\n "<<endl;
     cout<<"_Ans: ";
     getline(cin, choice);
@@ -1221,14 +1296,88 @@ Client::deleteFile()
 
     if(choice == "N" || choice == "n")
     {
-        //--Annullamento Download operation
+        //--Annullamento Delete operation
         //terminate();
 
-        cout<<"\n\t~ The file *( "<< filename << " )* will not be overwritten. ~\n\n"<<endl;
+        cout<<"\n\t~ The file *( "<< filename << " )* will not be deleted. ~\n\n"<<endl;
         return;
     }
         
-    removeFile(filename);
+    
+    //--Invio della scelta presa dall'utente al server
+    
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
 
-    //Response conferma eliminazione dal server
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    // === Preparazione Invio Dati e Cifratura Per ===    
+    this->active_session->createAAD(aad.data(), DELETE_CONFIRM);
+    
+    plaintext.insert(plaintext.begin(), choice.begin(), choice.end());
+
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
+                                            aad.data(), aad.size(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
+                        cyphertext.begin() + payload_size);
+    cyphertext.fill('0');
+
+// _BEGIN_(4)-------------- [ M3: INVIO_SCELTA-UTENTE_AL_SERVER ] --------------
+
+    if(sendMsg(payload_size) != 1)
+    {   cout<<"Error during send phase (C->S)"<<endl;   }
+    
+// _END_(4)-------------- [ M3: INVIO_SCELTA-UTENTE_AL_SERVER ] --------------
+
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (S->C)"<<endl;
+        return;
+    }
+
+    //Ciò che ricevo dal server in termini di byte
+    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+                                                aad.data(), aad_len, plaintext.data());
+
+    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    if(opcode != DELETE_CONFIRM)
+    {
+        cout<<"Error! Exiting DELETE phase"<<endl;
+    }
+
+
+// _BEGIN_(2)-------------- [M4: RICEZIONE_CONFERMA_DELETE_DAL_SERVER ] --------------
+    
+    server_response = ((char*)plaintext.data());
+    
+    cout<<"\nEND Operaton Msg: "<< server_response <<endl;
+
+// _END_(2)-------------- [ M4: RICEZIONE_CONFERMA_DELETE_DAL_SERVER ] --------------
+
+    return;
+
 }
