@@ -1086,19 +1086,33 @@ Client::downloadFile()
 // _END_(1))-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------  
 
 
-    int aad_len, aad_len_2;
-    uint64_t received_len, received_len_2;  //legnht of the message received from the server 
+    int aad_len; uint16_t opcode;
+    uint64_t received_len;  //legnht of the message received from the server 
+    uint32_t plaintext_len;
     string server_response; //message from the server containing the response to the request
     int fileChunk;   //Management Chunk
-    //uint32_t plaintext_len;    
-    //uint16_t opcode;
 
     // === Reuse of vectors declared at the beginning ===
     aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
     plaintext.resize(MAX_BUF_SIZE);
 
-    checkRequestSV(recv_buffer.data(), received_len,
-                    aad.data(), aad_len, plaintext.data(), DOWNLOAD_REQ);
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (S->C)"<<endl;
+        return;
+    }
+
+    //Ciò che ricevo dal server in termini di byte
+    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+                                                aad.data(), aad_len, plaintext.data());
+
+    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    if(opcode != DOWNLOAD_REQ)
+    {
+        cout<<"Error! Exiting download request phase"<<endl;
+    }
 
 
 // _BEGIN_(2)-------------- [M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] --------------
@@ -1127,8 +1141,23 @@ Client::downloadFile()
     aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
     plaintext.resize(MAX_BUF_SIZE);
 
-    checkRequestSV(recv_buffer.data(), received_len_2,
-                    aad.data(), aad_len_2, plaintext.data(), DOWNLOAD);
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (S->C)"<<endl;
+        return;
+    }
+
+    //Ciò che ricevo dal server in termini di byte
+    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+                                                aad.data(), aad_len, plaintext.data());
+
+    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    if(opcode != DOWNLOAD)
+    {
+        cout<<"Error! Exiting download request phase"<<endl;
+    }
     
     filedimension = ntohl(*(uint32_t*)(plaintext.data()));
     
