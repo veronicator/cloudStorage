@@ -42,10 +42,27 @@ class Client {
     // TODO: implementare/modificare come serve 
         // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
     uint64_t searchFile(string filename);
-    void uploadFile();
-    void downloadFile();
-    void renameFile();
-    void deleteFile();
+    void
+    uploadFile();
+    void
+    renameFile();
+    void
+    downloadFile();
+    void
+    deleteFile();
+    int32_t
+    checkFileExistClient(string filename);
+    int
+    receiveMsgChunks( uint32_t filedimension, string filename);
+    void
+    print_progress_bar(int total, unsigned int fragment);
+    void
+    removeFile(string filename);
+    void
+    checkRequestSV(unsigned char *input_buffer, int msg_size, unsigned char *&aad, int &aad_len, unsigned char *&plaintext, uint16_t request);
+
+
+
 
     public:
         Client(string username, string srv_ip);
