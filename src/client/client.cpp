@@ -722,13 +722,8 @@ int Client::requestFileList() {
     this->active_session->createAAD(aad.data(), FILE_LIST);
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     payload_size_n = htonl(payload_size);
-    
-    aad.assign(aad.size(), '0');
-    aad.clear();
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();    
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
+        
+    clear_vec_vec_sendbuff(aad, plaintext);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -783,10 +778,7 @@ int Client::receiveFileList() {
             return -1;
         }
 
-        aad.assign(aad.size(), '0');
-        aad.clear();
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
+        clear_vec_vec(plaintext, aad);
     }
     return 0;
 }
@@ -804,12 +796,7 @@ void Client::logout() {
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     payload_size_n = htonl(payload_size);
 
-    aad.assign(aad.size(), '0');
-    aad.clear();
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();    
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
+    clear_vec_vec_sendbuff(aad, plaintext);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -863,8 +850,9 @@ uint32_t Client::sendMsgChunks(string filename){
     vector<unsigned char> aad;                                                          //aad of the msg
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                                          //encrypted text
-
-    frag_buffer.fill('0');
+    
+    clear_sendbuff_and_array(frag_buffer.data(), frag_buffer.size());
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     for(int i = 0; i < tot_chunks; i++){
         if(i == tot_chunks - 1){
@@ -886,18 +874,13 @@ uint32_t Client::sendMsgChunks(string filename){
         payload_size = this->active_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), aad.size(), output.data());
         payload_size_n = htonl(payload_size);
 
-        aad.assign(aad.size(), '0');
-        aad.clear();
-        frag_buffer.fill('0');
-        
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();
-        send_buffer.resize(NUMERIC_FIELD_SIZE);
+        clear_vec_array(aad, frag_buffer.data(), frag_buffer.size());
 
         memcpy(&payload_size_n, send_buffer.data(), NUMERIC_FIELD_SIZE);
         send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-        output.fill('0');
+        clear_sendbuff_and_array(output.data(), output.size());
+        send_buffer.resize(NUMERIC_FIELD_SIZE);
 
         if(sendMsg(payload_size) != 1){
             cerr<<"Error during send phase (C->S) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
@@ -942,12 +925,8 @@ int Client::uploadFile(){
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     payload_size_n = htonl(payload_size);
 
-    aad.assign(aad.size(), '0');
-    aad.clear();
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();    
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
+    //clear aad, plaintext and send_buffer
+    clear_vec_vec_sendbuff(aad, plaintext);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -958,10 +937,9 @@ int Client::uploadFile(){
         return -1;
     }
 
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
+    //clear send_buffer and output array
+    clear_sendbuff_and_array(output.data(), output.size());
     send_buffer.resize(NUMERIC_FIELD_SIZE);
-    output.fill('0');
 
     //receive from the server the response to the upload request
     //received_len:  legnht of the message received from the server
@@ -997,11 +975,10 @@ int Client::uploadFile(){
    
     //start of the upload
     cout<<"        -------- UPLOADING --------"<<endl;
-
-    aad.assign(aad.size(), '0');
-    aad.clear();
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
+    
+    //clear aad, plaintext and send_buffer
+    clear_vec_vec_sendbuff(aad, plaintext);
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     ret = sendMsgChunks(filename);
 
@@ -1062,12 +1039,8 @@ int Client::renameFile(){
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     payload_size_n = htonl(payload_size);
 
-    aad.assign(aad.size(), '0');
-    aad.clear();
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();    
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
+    //clear aad, plaintext and send_buffer
+    clear_vec_vec_sendbuff(aad, plaintext);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -1117,3 +1090,32 @@ int Client::renameFile(){
 }
 
 void Client::deleteFile(){}
+
+void Client::clear_vec_vec_sendbuff(vector<unsigned char>& v1, vector<unsigned char>& v2){
+    v1.assign(v1.size(), '0');
+    v1.clear();
+    v2.assign(v2.size(), '0');
+    v2.clear();    
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+
+}
+
+void Client::clear_vec_vec(vector<unsigned char>& v1, vector<unsigned char>& v2){
+    v1.assign(v1.size(), '0');
+    v1.clear();
+    v2.assign(v2.size(), '0');
+    v2.clear();    
+}
+
+void Client::clear_sendbuff_and_array(unsigned char* arr, int arr_len){ 
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    memset(arr, '0', sizeof(char)*arr_len);
+}
+
+void Client::clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len){
+    v1.assign(v1.size(), '0');
+    v1.clear();
+    memset(arr, '0', sizeof(char)*arr_len);
+}

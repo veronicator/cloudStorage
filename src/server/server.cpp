@@ -797,7 +797,7 @@ void Server::joinThread() {
 
 int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename){
     string path = path_file + ui->username + "/" + filename;
-    std::ofstream outfile(path, std::ofstream::binary);
+    ofstream outfile(path, ofstream::binary);
     if(!outfile.is_open()){
         cout<<"It was not possible to create or open the new file"<<endl;
         return -1;
