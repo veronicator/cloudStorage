@@ -87,22 +87,22 @@ class Session {
         bool verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, EVP_PKEY* pub_key, unsigned char* msg_buf, unsigned int msg_len);
 
         //void generateNonce();
-        void generateNonce(unsigned char *nonce);
+        int generateNonce(unsigned char *nonce);
         bool checkNonce(unsigned char *received_nonce, unsigned char *sent_nonce);
 
         bool generateECDHKey();    //generate ECDH key pair
         int deriveSecret();
 
-        unsigned int serializePubKey(EVP_PKEY* key, unsigned char*& buf_key);
+        uint32_t serializePubKey(EVP_PKEY* key, unsigned char*& buf_key);
         void deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key); 
    
         bool checkCounter(uint32_t counter);
         //void sendMsg(const unsigned char* buffer, uint32_t msg_dim);
         //int receiveMsg(unsigned char *&rcv_buffer);
 
-        unsigned int encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, int aad_len, unsigned char *output);  // encrypt message to send and return message length
+        uint32_t encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, int aad_len, unsigned char *output);  // encrypt message to send and return message length
         //unsigned int decryptMsg(unsigned char *ciphertext, int ct_len, int aad_len, unsigned char *plaintext, unsigned char *rcv_iv, unsigned char *tag);  // dencrypt received message and return message (pt) length
-        unsigned int decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, int &aad_len, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
+        uint32_t decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, int &aad_len, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
         
         int fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf);    // return payload size
         //encrypt/decrypt()

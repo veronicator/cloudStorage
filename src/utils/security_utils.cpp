@@ -243,8 +243,8 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 
 /********************************************************************/
 
-void Session::generateNonce(unsigned char *nonce) {
-    generateRandomValue(nonce, NONCE_SIZE);    
+int Session::generateNonce(unsigned char *nonce) {
+    return generateRandomValue(nonce, NONCE_SIZE);    
 }
 
 bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonce) {
@@ -430,69 +430,82 @@ int Session::receiveMsg(unsigned char *&buffer) {
 */
 /********************************************************************/
 
-unsigned int Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, int aad_len, unsigned char *output) {
+uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, int aad_len, unsigned char *output) {
     cout << "session->encryptMsg pt_len " << pt_len << endl;
     EVP_CIPHER_CTX *ctx;
     int len = 0;
     int ct_len = 0;
 
     unsigned char *ciphertext = (unsigned char*)malloc(pt_len + BLOCK_SIZE);
-    if(!ciphertext)
-        handleErrors("Malloc error");
+    if(!ciphertext) {
+        perror("Malloc error CT");
+        return 0;
+    }
     unsigned char *tag = (unsigned char*)malloc(TAG_SIZE);
-    if(!tag)
-        handleErrors("Malloc error");
+    if(!tag) {
+        perror("Malloc error TAG");
+        return 0;
+    }
 
     //generate IV
     unsigned char* iv = (unsigned char*)malloc(IV_LEN);
-    if(!iv)
-        handleErrors("Malloc error");
+    if(!iv) {
+        perror("Malloc error IV");
+        return 0;
+    }
     memset(iv, 0, IV_LEN);
     generateRandomValue(iv, IV_LEN); 
     // cout << "session->encryptMsg2" << endl;
 
     // create and initialise the context
-    if(!(ctx = EVP_CIPHER_CTX_new()))
-        handleErrors("create context enc");
+    if(!(ctx = EVP_CIPHER_CTX_new())) {
+        perror("EVP_CIPHER_CTX_new failed");
+        return 0;
+    }
     // initialise the encryption operation
     if(EVP_EncryptInit(ctx, CIPHER_AE, session_key, iv) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("initialise ctx enc op");
+        perror("EVP_EncryptInit failed");
+        return 0;
     }
     
     // provide any AAD data. this can be called zero or more time as required
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     if(EVP_EncryptUpdate(ctx, NULL, &len, aad, aad_len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("enc update aad");
+        perror("EVP_EncryptUpdate AAD failed");
+        return 0;
     }
     
     if(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, pt_len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("enc update ct");
+        perror("EVP_EncryptUpdate CT failed");
+        return 0;
     }
     ct_len = len;
     // finalise encryption
     if(EVP_EncryptFinal(ctx, ciphertext + ct_len, &len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("enc final ct");
+        perror("EVP_EncryptFinal failed");
+        return 0;
     }
     ct_len += len;
     // get the tag
     if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, TAG_SIZE, tag) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("ctrl get tag");
+        perror("EVP_CIPHER_CTX_ctrl failed");
+        return 0;
     }
     // clean up
     EVP_CIPHER_CTX_free(ctx);
 
     // cout << "session->encryptMsg3" << endl;
 
-    unsigned int written_bytes = 0;
+    uint32_t written_bytes = 0;
     memcpy(output, iv, IV_LEN);
     written_bytes += IV_LEN;
-    memcpy(output + written_bytes, (unsigned char*)&aad_len, NUMERIC_FIELD_SIZE);
-    written_bytes += NUMERIC_FIELD_SIZE;
+    //memcpy(output + written_bytes, (unsigned char*)&aad_len, NUMERIC_FIELD_SIZE);
+    //written_bytes += NUMERIC_FIELD_SIZE;
     memcpy(output + written_bytes, aad, aad_len);
     written_bytes += aad_len;
     // cout << "session->encryptMsg4" << endl;
@@ -563,7 +576,7 @@ unsigned int Session::decryptMsg(unsigned char *ciphertext, int ct_len, int aad_
    }
 }
 */
-unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, int &aad_len, unsigned char *plaintext) {
+uint32_t Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, int &aad_len, unsigned char *plaintext) {
     cout << "session->decryptMsg" << endl;
     EVP_CIPHER_CTX *ctx;
     int ct_len; // va calcolata dopo aver letto aad_len -> ct_len = msg_size - IV_LEN - aad_len - TAG_SIZE
@@ -573,13 +586,22 @@ unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsi
 
     unsigned char *ciphertext;   
     unsigned char *rcv_iv = (unsigned char*)malloc(IV_LEN);
-    if(!rcv_iv)
-        handleErrors("Malloc error");
+    if(!rcv_iv) {
+        perror("Malloc error rcv_iv");
+        return 0;
+    }
     unsigned char *tag = (unsigned char*)malloc(TAG_SIZE);
-    if(!tag)
-        handleErrors("Malloc error");
+    if(!tag) {
+        perror("Malloc error tag");
+        return 0;
+    }
 
-
+    /*
+    TODO
+    togliere aad_len, perché l'aad ha dimensione fissa -> non necessario
+    modificare e fixare tutto di conseguenza
+    -> togliere anche l'argomento nella chiamata di funzione
+    */
     // read fields in buffer
     int read_bytes = 0;
     memcpy(rcv_iv, input_buffer, IV_LEN);
@@ -587,11 +609,15 @@ unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsi
     aad_len = *(unsigned int*)(input_buffer + read_bytes);
     read_bytes += NUMERIC_FIELD_SIZE;
     aad = (unsigned char*)malloc(aad_len);
-    if(!aad)
-        handleErrors("Malloc error");
+    if(!aad) {
+        perror("Malloc error aad");
+        return 0;
+    }
     uint32_t counter = *(unsigned int*)(input_buffer + read_bytes);
-    if(!checkCounter(counter))
-        handleErrors("received counter not valid");
+    if(!checkCounter(counter)) {
+        perror("received counter not valid");
+        return 0;
+    }
     incrementCounter(rcv_counter);
    
     mempcpy(aad, input_buffer + read_bytes, aad_len);
@@ -611,10 +637,6 @@ unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsi
 
     if(read_bytes != msg_size)
         handleErrors("read_bytes error");
-
-    plaintext = (unsigned char*)malloc(ct_len);     // pt_len <= ct_len
-    if(!plaintext)
-        handleErrors("Malloc error");
 
     // create and initialise the context
     if(!(ctx = EVP_CIPHER_CTX_new()))
@@ -656,7 +678,7 @@ unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsi
        return pt_len;
    } else {
        // verify failed
-       return -1;
+       return 0;
    }
 }
 

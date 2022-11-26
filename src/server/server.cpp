@@ -415,7 +415,10 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     cout << "serialize cert" << endl;
 
     // generete and serialize ecdh key
-    usr->client_session->generateNonce(srv_nonce.data());
+    if(usr->client_session->generateNonce(srv_nonce.data()) != 1) {
+        cerr << "generate nonce failed" << endl;
+        return false;
+    }
     usr->client_session->generateECDHKey();
 
     ECDH_srv_key_size = usr->client_session->serializePubKey (

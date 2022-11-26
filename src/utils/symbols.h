@@ -35,7 +35,6 @@
 #define MAX_NAME_SIZE 20
 #define MAX_CLIENTS 50
 // to check/decide size
-#define MAX_MSG_SIZE 10000
 #define MAX_BUF_SIZE 20000
 #define FRAGM_SIZE 8192  // 8 KiB - dimensione frammento del file da inviare
 #define MAX_FILE_DIMENSION 4294967296

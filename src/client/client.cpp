@@ -173,7 +173,10 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     uint32_t payload_n = htonl(payload_size);
     uint16_t opcode;
 
-    active_session->generateNonce(client_nonce.data());
+    if(active_session->generateNonce(client_nonce.data()) != 1) {
+        cerr << "generateNonce failed" << endl;
+        return -1;
+    }
 
     // clear content of the sender buffer
     send_buffer.assign(send_buffer.size(), '0');
