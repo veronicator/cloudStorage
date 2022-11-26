@@ -942,14 +942,12 @@ Client::receiveMsgChunks( uint32_t filedimension, string filename)
         else
             to_receive = FRAGM_SIZE;
 
-        
         received_len = receiveMsg();
         if(received_len == -1 || received_len == 0)
         {
             cerr<<"Error! Exiting receive phase"<<endl;
             return -1;
         }
-
         pt_len = this->active_session->decryptMsg(this->recv_buffer.data(),
                                 received_len, aad.data(), aad_len, plaintext.data());
 
@@ -968,7 +966,6 @@ Client::receiveMsgChunks( uint32_t filedimension, string filename)
         }
 
         outfile << plaintext.data();
-
         print_progress_bar(tot_chunks, i);
     }
 
@@ -976,7 +973,7 @@ Client::receiveMsgChunks( uint32_t filedimension, string filename)
     aad.clear();
     plaintext.fill('0');
 
-    return;
+    return 1;
 }
 
 int
