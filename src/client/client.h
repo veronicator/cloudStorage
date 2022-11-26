@@ -46,9 +46,9 @@ class Client {
     uploadFile();
     void
     renameFile();
-    void
+    int
     downloadFile();
-    void
+    int
     deleteFile();
     int32_t
     checkFileExistClient(string filename);
