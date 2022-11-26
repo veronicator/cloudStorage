@@ -923,7 +923,7 @@ int
 Client::receiveMsgChunks( uint32_t filedimension, string filename)
 {
     string path = FILE_PATH_CL + this->username + "/" + filename;
-    std::ofstream outfile(path, std::ofstream::binary);
+    ofstream outfile(path, ofstream::binary);
 
     size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
     size_t to_receive;
@@ -979,7 +979,7 @@ Client::receiveMsgChunks( uint32_t filedimension, string filename)
     return;
 }
 
-void
+int
 Client::downloadFile()
 {
     string filename;
@@ -1000,7 +1000,7 @@ Client::downloadFile()
         getline(cin, choice);
 
         if(!cin)
-        { cerr << "\n === Error during input ===\n"; exit(1); }
+        {   cerr << "\n === Error during input ===\n" << endl; return -1; }
 
         while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
         {
@@ -1009,7 +1009,7 @@ Client::downloadFile()
             getline(cin, choice);
 
             if(!cin)
-            { cerr << "\n === Error during input ===\n"; exit(1); }
+            {   cerr << "\n === Error during input ===\n" << endl; return -1; }
         }
 
         if(choice == "N" || choice == "n")
@@ -1189,10 +1189,10 @@ Client::downloadFile()
 // _END_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
 
     
-    return;
+    return 1;
 }
 
-void
+int
 Client::deleteFile()
 {
     string filename;
@@ -1283,7 +1283,18 @@ Client::deleteFile()
     getline(cin, choice);
 
     if(!cin)
-    { cerr << "\n === Error during input ===\n"; exit(1); }
+    {
+        cerr << "\n === Error during input ===\n" << endl;
+    
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
 
     while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
     {
@@ -1292,7 +1303,18 @@ Client::deleteFile()
         getline(cin, choice);
 
         if(!cin)
-        { cerr << "\n === Error during input ===\n"; exit(1); }
+        {
+            cerr << "\n === Error during input ===\n" << endl;
+    
+            // === Cleaning ===
+            plaintext.assign(plaintext.size(), '0');
+            plaintext.clear();
+            aad.assign(aad.size(), '0');
+            aad.clear();
+            cyphertext.fill('0');
+
+            return -1;
+        }
     }
 
     if(choice == "N" || choice == "n")
@@ -1343,7 +1365,7 @@ Client::deleteFile()
 // _BEGIN_(4)-------------- [ M3: INVIO_SCELTA-UTENTE_AL_SERVER ] --------------
 
     if(sendMsg(payload_size) != 1)
-    {   cout<<"Error during send phase (C->S)"<<endl;   }
+    {   cout<<"Error during send phase (C->S)"<<endl;  return;}
     
 // _END_(4)-------------- [ M3: INVIO_SCELTA-UTENTE_AL_SERVER ] --------------
 
@@ -1368,6 +1390,7 @@ Client::deleteFile()
     if(opcode != DELETE_CONFIRM)
     {
         cout<<"Error! Exiting DELETE phase"<<endl;
+        return;
     }
 
 
@@ -1379,6 +1402,6 @@ Client::deleteFile()
 
 // _END_(2)-------------- [ M4: RICEZIONE_CONFERMA_DELETE_DAL_SERVER ] --------------
 
-    return;
+    return 1;
 
 }
