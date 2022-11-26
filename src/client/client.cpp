@@ -1053,7 +1053,18 @@ Client::downloadFile()
 // _BEGIN_(1)-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------
 
     if(sendMsg(payload_size) != 1)
-    {   cout<<"Error during send phase (C->S)"<<endl;   }
+    {
+        cout<<"Error during send phase (C->S)"<<endl;
+        
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
 
 // _END_(1))-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------  
 
@@ -1072,7 +1083,15 @@ Client::downloadFile()
     if(received_len == 0 || received_len == -1)
     {
         cout<<"Error during receive phase (S->C)"<<endl;
-        return;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
     }
 
     //Ciò che ricevo dal server in termini di byte
@@ -1084,6 +1103,14 @@ Client::downloadFile()
     if(opcode != DOWNLOAD_REQ)
     {
         cout<<"Error! Exiting download request phase"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+
+        return -1;
     }
 
 
@@ -1094,7 +1121,16 @@ Client::downloadFile()
     if(server_response != MESSAGE_OK)
     {       
         cout<<"The file cannot be downloaded: "<< server_response <<endl;
-        return;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+
+        return -1;
     }
     
 // _END_(2)-------------- [ M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] --------------
@@ -1117,7 +1153,15 @@ Client::downloadFile()
     if(received_len == 0 || received_len == -1)
     {
         cout<<"Error during receive phase (S->C)"<<endl;
-        return;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
     }
 
     //Ciò che ricevo dal server in termini di byte
@@ -1129,6 +1173,15 @@ Client::downloadFile()
     if(opcode != DOWNLOAD)
     {
         cout<<"Error! Exiting download request phase"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
     }
     
     filedimension = ntohl(*(uint32_t*)(plaintext.data()));
@@ -1140,7 +1193,17 @@ Client::downloadFile()
 
     if(fileChunk == -1)
     {
-        cout<<"Error! Exiting Download phase"<<endl; return;  }
+        cout<<"Error! Exiting Download phase"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+        
+        return -1;
+    }
 
 // _END_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
 
@@ -1184,10 +1247,27 @@ Client::downloadFile()
 // _BEGIN_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
 
     if(sendMsg(payload_size) != 1)
-    {   cout<<"Error during send phase (C->S)"<<endl;   }
+    {
+        cout<<"Error during send phase (C->S)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
     
 // _END_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
 
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    cyphertext.fill('0');
     
     return 1;
 }
@@ -1232,11 +1312,21 @@ Client::deleteFile()
 // _BEGIN_(1)-------------- [ M1: INVIO_RICHIESTA_DELETE_AL_SERVER ] --------------
 
     if(sendMsg(payload_size) != 1)
-    {   cout<<"Error during send phase (C->S)"<<endl;   }
+    {
+        cout<<"Error during send phase (C->S)"<<endl;
+        
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
 
 // _END_(1))-------------- [ M1: INVIO_RICHIESTA_DELETE_AL_SERVER ] --------------
 
-    
     int aad_len;
     uint16_t opcode;
     uint64_t received_len;  
@@ -1251,7 +1341,15 @@ Client::deleteFile()
     if(received_len == 0 || received_len == -1)
     {
         cout<<"Error during receive phase (S->C)"<<endl;
-        return;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
     }
 
     //Ciò che ricevo dal server in termini di byte
@@ -1263,6 +1361,15 @@ Client::deleteFile()
     if(opcode != DELETE_REQ)
     {
         cout<<"Error! Exiting DELETE request phase"<<endl;
+
+         // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
     }
 
 // _BEGIN_(2)-------------- [M2: RICEZIONE_CONFERMA_RICHIESTA_DELETE_DAL_SERVER ] --------------
@@ -1272,6 +1379,14 @@ Client::deleteFile()
     if(server_response != MESSAGE_OK)
     {       
         cout<<"The file dosen't exist in the cloud: "<< server_response <<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
         return;
     }
     
@@ -1285,7 +1400,7 @@ Client::deleteFile()
     if(!cin)
     {
         cerr << "\n === Error during input ===\n" << endl;
-        
+
         // === Cleaning ===
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
@@ -1323,11 +1438,19 @@ Client::deleteFile()
         //terminate();
 
         cout<<"\n\t~ The file *( "<< filename << " )* will not be deleted. ~\n\n"<<endl;
-        return;
+
+         // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+        
+        return -1;
     }
         
     
-    //--Invio della scelta presa dall'utente al server
+//--Invio della scelta presa dall'utente al server--
     
     // === Cleaning ===
     plaintext.assign(plaintext.size(), '0');
@@ -1365,7 +1488,18 @@ Client::deleteFile()
 // _BEGIN_(4)-------------- [ M3: INVIO_SCELTA-UTENTE_AL_SERVER ] --------------
 
     if(sendMsg(payload_size) != 1)
-    {   cout<<"Error during send phase (C->S)"<<endl;  return;}
+    {
+        cout<<"Error during send phase (C->S)"<<endl;
+        
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
     
 // _END_(4)-------------- [ M3: INVIO_SCELTA-UTENTE_AL_SERVER ] --------------
 
@@ -1378,7 +1512,15 @@ Client::deleteFile()
     if(received_len == 0 || received_len == -1)
     {
         cout<<"Error during receive phase (S->C)"<<endl;
-        return;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');   
+            
+        return -1;
     }
 
     //Ciò che ricevo dal server in termini di byte
@@ -1390,7 +1532,15 @@ Client::deleteFile()
     if(opcode != DELETE_CONFIRM)
     {
         cout<<"Error! Exiting DELETE phase"<<endl;
-        return;
+
+         // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+        
+        return -1;
     }
 
 
@@ -1402,6 +1552,12 @@ Client::deleteFile()
 
 // _END_(2)-------------- [ M4: RICEZIONE_CONFERMA_DELETE_DAL_SERVER ] --------------
 
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    cyphertext.fill('0');
+    
     return 1;
-
 }
