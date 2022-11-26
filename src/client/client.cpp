@@ -1285,7 +1285,7 @@ Client::deleteFile()
     if(!cin)
     {
         cerr << "\n === Error during input ===\n" << endl;
-    
+        
         // === Cleaning ===
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
@@ -1305,7 +1305,7 @@ Client::deleteFile()
         if(!cin)
         {
             cerr << "\n === Error during input ===\n" << endl;
-    
+
             // === Cleaning ===
             plaintext.assign(plaintext.size(), '0');
             plaintext.clear();
