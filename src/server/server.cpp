@@ -731,7 +731,7 @@ int Server::sendFileList(int sockd) {
     UserInfo* ui;
     const string path = path_file + ui->username + "/";
     string file_list = "";
-    vector<unsigned char> aad;
+    vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);
     array<unsigned char, MAX_BUF_SIZE> output;     
     // retrive UserInfo relative to the client
@@ -872,7 +872,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     string filename;
     string ack_msg;
     uint32_t payload_size, payload_size_n;
-    vector<unsigned char> aad;
+    vector<unsigned char> aad(AAD_LEN);
     array<unsigned char, MAX_BUF_SIZE> output;
     bool file_ok = true;
     cout<<"****************************************"<<endl;
@@ -973,7 +973,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     uint32_t old_name_len;
     string ack_msg;
     uint32_t payload_size, payload_size_n;
-    vector<unsigned char> aad;
+    vector<unsigned char> aad(AAD_LEN);
     array<unsigned char, MAX_BUF_SIZE> output;
     bool file_ok = true;
     UserInfo* ui;

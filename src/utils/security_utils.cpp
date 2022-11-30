@@ -520,8 +520,8 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     written_bytes += IV_LEN;
     //memcpy(output + written_bytes, (unsigned char*)&aad_len, NUMERIC_FIELD_SIZE);
     //written_bytes += NUMERIC_FIELD_SIZE;
-    memcpy(output + written_bytes, aad, aad_len);
-    written_bytes += aad_len;
+    memcpy(output + written_bytes, aad, AAD_LEN);
+    written_bytes += AAD_LEN;
     // cout << "session->encryptMsg4" << endl;
     memcpy(output + written_bytes, ciphertext, ct_len);
     written_bytes += ct_len;
@@ -536,60 +536,8 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
 
     return written_bytes;
 }
-/*
-unsigned int Session::decryptMsg(unsigned char *ciphertext, int ct_len, int aad_len, unsigned char *plaintext, unsigned char *rcv_iv, unsigned char *tag) {
-    cout << "session->decryptMsg" << endl;
-    EVP_CIPHER_CTX *ctx;
-    int len = 0;
-    int pt_len = 0;
-    int ret;
-    unsigned char *aad = (unsigned char*)malloc(aad_len);
-    if(!aad)
-        handleErrors("Malloc error");
-    // create and initialise the context
-    if(!(ctx = EVP_CIPHER_CTX_new()))
-        handleErrors("create ctx dec");
-    if(EVP_DecryptInit(ctx, CIPHER_AE, session_key, rcv_iv) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
-        handleErrors("initialise ctx dec op");
-    }
-    
-    // provide any AAD data
-    if(EVP_DecryptUpdate(ctx, NULL, &len, aad, aad_len) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
-        handleErrors("dec update aad");
-    }
-    // provide the msg to be decrypted and obtain the pt output
-    if(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ct_len) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
-        handleErrors("dec update pt");
-    }
-    pt_len += len;
-    
-    // set expected tag value
-    if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, TAG_SIZE, tag) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
-        handleErrors("ctrl set tag");
-    }
-    
-    // finalise the decryption: a positive return value indicates success 
-    // anything else is a failure -> the pt is not trustworthy 
-   ret = EVP_DecryptFinal(ctx, plaintext + pt_len, &len);
 
-   // clean up
-   EVP_CIPHER_CTX_free(ctx);
-   //EVP_CIPHER_CTX_cleanup(ctx);
 
-   if(ret > 0) {
-       // success
-       pt_len += len;
-       return pt_len;
-   } else {
-       // verify failed
-       return -1;
-   }
-}
-*/
 uint32_t Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, int &aad_len, unsigned char *plaintext) {
     cout << "session->decryptMsg" << endl;
     EVP_CIPHER_CTX *ctx;
@@ -620,13 +568,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned
     int read_bytes = 0;
     memcpy(rcv_iv, input_buffer, IV_LEN);
     read_bytes += IV_LEN;
-    aad_len = *(unsigned int*)(input_buffer + read_bytes);
-    read_bytes += NUMERIC_FIELD_SIZE;
-    aad = (unsigned char*)malloc(aad_len);
-    if(!aad) {
-        perror("Malloc error aad");
-        return 0;
-    }
+
     uint32_t counter = *(unsigned int*)(input_buffer + read_bytes);
     if(!checkCounter(counter)) {
         perror("received counter not valid");

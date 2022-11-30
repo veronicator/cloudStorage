@@ -667,7 +667,7 @@ bool Client::handlerCommand(string& command) {
         // opcode 1
         cout << "Upload operation requested" << endl;
         // TODO
-        //uploadFile();    // username saved in class member
+        uploadFile();    // username saved in class member
     } else if(command.compare("!download") == 0) {
         // opcode 2
         cout << "Download operation requested" << endl;
@@ -698,7 +698,7 @@ bool Client::handlerCommand(string& command) {
 int Client::requestFileList() {
     string msg = this->username;
     uint32_t payload_size, payload_size_n;
-    vector<unsigned char> aad;
+    vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext;
     array<unsigned char, MAX_BUF_SIZE> output;
 
@@ -774,7 +774,7 @@ int Client::receiveFileList() {
 }
 
 void Client::logout() {
-    vector<unsigned char> aad;
+    vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);
     array<unsigned char, MAX_BUF_SIZE> output;
     uint32_t payload_size, payload_size_n;
@@ -837,7 +837,7 @@ uint32_t Client::sendMsgChunks(string filename){
     size_t to_send;                                                                     //number of byte to send in the specific msg
     uint32_t payload_size, payload_size_n;                                              //size of the msg payload both in host and network format
     int ret;                                                                            //bytes read by the fread function
-    vector<unsigned char> aad;                                                          //aad of the msg
+    vector<unsigned char> aad(AAD_LEN);                                                          //aad of the msg
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                                          //encrypted text
     
@@ -886,7 +886,7 @@ int Client::uploadFile(){
     uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
     uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
     string filename;                                                        //name of the file to upload
-    vector<unsigned char> aad;                                              //aad of the msg
+    vector<unsigned char> aad(AAD_LEN);                                              //aad of the msg
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
 
@@ -1008,7 +1008,7 @@ void Client::downloadFile(){}
 
 int Client::renameFile(){
     string old_filename, new_filename;
-    vector<unsigned char> aad;                                              //aad of the msg
+    vector<unsigned char> aad(AAD_LEN);                                              //aad of the msg
     vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;
     uint32_t old_filename_lenght, old_filename_lenght_n;   
@@ -1049,7 +1049,7 @@ int Client::renameFile(){
     //to be sent: <count_cs, opcode=3, {old_filename, new_filename}_Kcs>
 
     //server response: <count_sc, op_code=9, {ResponseMsg}_Kcs>
-    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    aad.resize(AAD_LEN);
     plaintext.resize(MAX_BUF_SIZE);
 
     uint16_t opcode;
