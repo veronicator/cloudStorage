@@ -7,16 +7,14 @@
 struct UserInfo {
     string username;    // client username
     int sockd;
-    //bool available = false; // true: when online and there is no active chat, false otherwise
     Session* client_session;
-    //unsigned char *send_buffer = nullptr;
-    //unsigned char *recv_buffer = nullptr;
     vector<unsigned char> send_buffer;
     vector<unsigned char> recv_buffer;
 
     UserInfo(int sd, string name);
-    //UserInfo();
+    ~UserInfo();
 };
+    
 
 class Server {
     //static Server* server;
@@ -65,13 +63,13 @@ class Server {
  
     // TODO: modificare come serve 
     // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
+    int receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename);
     int uploadFile(int sockd, vector<unsigned char> plaintext);
     void downloadFile();
-    void renameFile();
+    int renameFile(int sockd, vector<unsigned char> plaintext);
     void deleteFile();
 
-    void requestFileList();
-    void sendFileList();
+    int sendFileList(int sockd);
     void logoutClient(int sockd); 
 
     void sendErrorMsg(int sockd, string errorMsg);

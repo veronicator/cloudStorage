@@ -11,6 +11,8 @@ Client::Client(string username, string srv_ip) {
 }
 
 Client::~Client() {
+    //TODO: check if everything is deallocated
+    active_session = nullptr;
     username.clear();
     if(!send_buffer.empty()) {
         send_buffer.assign(send_buffer.size(), '0');
@@ -693,57 +695,110 @@ bool Client::handlerCommand(string& command) {
     return true;
 }
 
-void Client::requestFileList() {
-    cout << "client -> fileList\n";
-    // opcode 2
-    string msg = "Available files?";
-    send_buffer.clear();    //fill('0');
-    //memset(send_buffer, 0, MAX_BUF_SIZE);
-    int payload_size = active_session->fileList((unsigned char*)msg.c_str(), msg.length(), send_buffer.data());    // prepare msg to send
-    int ret = sendMsg(payload_size);
-    if(ret != 1) {
-        cerr << "send requestFileList failed" << endl;
-        // todo: clear buffer
-        return;
+int Client::requestFileList() {
+    string msg = this->username;
+    uint32_t payload_size, payload_size_n;
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext;
+    array<unsigned char, MAX_BUF_SIZE> output;
+
+    cout<<"****************************************"<<endl;
+    cout<<"******     Request File List      ******"<<endl;
+    cout<<"****************************************"<<endl;
+
+
+    plaintext.insert(plaintext.begin(), msg.begin(), msg.end());
+
+    this->active_session->createAAD(aad.data(), FILE_LIST);
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+        
+    clear_vec_vec_sendbuff(aad, plaintext);
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+    output.fill('0');
+
+    if(sendMsg(payload_size) != 1){
+        cerr<<"Error during send phase (C->S | File List Request)"<<endl;
+        return -1;
     }
 
-    receiveFileList();
+    int ret = receiveFileList();
+
+    cout<<"****************************************"<<endl;
+    cout<<"*****     File List Received       *****"<<endl;
+    cout<<"****************************************"<<endl;
+
+    
+    if(ret == -1)
+        return -1;
 }
 
-// TODO
-void Client::receiveFileList() {
-    unsigned char *aad, *user_list;
-    int aad_len;
-    int payload_size = receiveMsg();
-    if(payload_size <= 0) {
-        cerr << "Error on the receiveMsg -> closing connection..." << endl;
-        return;
+int Client::receiveFileList() {
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext;
+    int received_len, aad_len, pt_len;
+    uint16_t opcode;
+    string filelist = "";
+
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    while(true){
+        received_len = receiveMsg();
+        if(received_len == -1 || received_len == 0){
+            cerr<<"Error! Exiting receive file list phase"<<endl;
+            return -1;
+        }
+        pt_len = this->active_session->decryptMsg(recv_buffer.data(), recv_buffer.size(), aad.data(), aad_len, plaintext.data());
+
+        opcode = ntohs(*(uint16_t*)(aad.data()+NUMERIC_FIELD_SIZE));
+
+        if(opcode == FILE_LIST)
+            cout<<((char*)plaintext.data());
+        else if(opcode == END_OP){
+            cout<<((char*)plaintext.data());
+            break;
+        }
+        else{
+            cerr<<"Error! The received msg was malformed"<<endl;
+            return -1;
+        }
+
+        clear_vec_vec(plaintext, aad);
     }
-    //int received_size = receiveMsg(payload_size);
-    int list_len = active_session->decryptMsg(recv_buffer.data() + NUMERIC_FIELD_SIZE, payload_size, aad, aad_len, user_list);
-    uint16_t opcode_n = *(uint16_t*)(aad + NUMERIC_FIELD_SIZE);
-    uint16_t opcode = ntohs(opcode_n);
-    if(opcode == ERROR) {
-        string errorMsg((const char*)user_list, strlen((char*)user_list));
-        cerr << errorMsg << endl;
-        //handleErrors("Error opcode");
-        return;
-    } else if(opcode != FILE_LIST) {
-        handleErrors("Opcode error, message tampered");
-    }
-    if(list_len != strlen((char*)user_list)) {
-        cerr << "received list damaged" << endl;
-        return;
-    }
-    string list((const char*)user_list);    // users list already formatted by the server
-    cout << "Available files:\n" << list << endl;
+    return 0;
 }
 
-// TODO
 void Client::logout() {
-    // deallocare tutte le risorse utilizzate e chiudere il socket di connessione col server
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    array<unsigned char, MAX_BUF_SIZE> output;
+    uint32_t payload_size, payload_size_n;
+    string msg = "Close this client session";
 
+    plaintext.insert(plaintext.begin(), msg.begin(), msg.end());
+    this->active_session->createAAD(aad.data(), LOGOUT);
+
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+
+    clear_vec_vec_sendbuff(aad, plaintext);
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+    while(sendMsg(payload_size) != 1)
+        cerr<<"Error during logout phase! Trying again"<<endl;
+
+    this->active_session->~Session();
+    this->~Client();
 }
+    
 
 void Client::sendErrorMsg(string errorMsg) {
         //cerr << errorMsg << endl;
@@ -763,46 +818,31 @@ void Client::sendErrorMsg(string errorMsg) {
 
 }
 
-uint64_t Client::searchFile(string filename){
-    string path = "./users/" + this->username +"/" + filename;
-    struct stat buffer;
-    if(stat(path.c_str(), &buffer) != 0){
-        cout<<"File not present"<<endl;
-        return -1;
-    }
-    if(buffer.st_size > MAX_FILE_DIMENSION){
-        cout<<"File too big"<<endl;
-        return -1;
-    }
-    return buffer.st_size;
-}
-
-/*
 uint32_t Client::sendMsgChunks(string filename){
     string path = "./users/" + this->username + "/" + filename;                         //where to find the file
     FILE* file = fopen(path.c_str(), "rb");                                             //opened file
     struct stat buf;
 
     if(!file){
-        cout<<"Error during file opening";
+        cerr<<"Error during file opening";
         return -1;
     }
 
     if(stat(path.c_str(), &buf) != 0){
-        cout<<filename + "doesn't exist in " + this->username + "folder" <<endl;
+        cerr<<filename + "doesn't exist in " + this->username + "folder" <<endl;
         return -1;
     }
 
     size_t tot_chunks = ceil((float)buf.st_size / FRAGM_SIZE);                          //total number of chunks needed form the upload
     size_t to_send;                                                                     //number of byte to send in the specific msg
-    uint32_t payload_size;                                                              //size of the msg payload both in host and network format
-    string str_payload_size_n;
-    uint32_t ret;                                                                       //bytes read by the fread function
+    uint32_t payload_size, payload_size_n;                                              //size of the msg payload both in host and network format
+    int ret;                                                                            //bytes read by the fread function
     vector<unsigned char> aad;                                                          //aad of the msg
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                                          //encrypted text
-
-    frag_buffer.fill('0');
+    
+    clear_sendbuff_and_array(frag_buffer.data(), frag_buffer.size());
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     for(int i = 0; i < tot_chunks; i++){
         if(i == tot_chunks - 1){
@@ -817,41 +857,35 @@ uint32_t Client::sendMsgChunks(string filename){
         ret = fread(frag_buffer.data(), sizeof(char), to_send, file);
 
         if(ferror(file) != 0 || ret != to_send){
-            cout<<"ERROR while reading file"<<endl;
+            cerr<<"ERROR while reading file"<<endl;
             return -1;
         }
 
         payload_size = this->active_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), aad.size(), output.data());
-        
-        aad.assign(aad.size(), '0');
-        aad.clear();
-        frag_buffer.fill('0');
+        payload_size_n = htonl(payload_size);
 
-        str_payload_size_n = to_string(htonl(payload_size));
+        clear_vec_array(aad, frag_buffer.data(), frag_buffer.size());
 
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();
+        memcpy(&payload_size_n, send_buffer.data(), NUMERIC_FIELD_SIZE);
+        send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+        clear_sendbuff_and_array(output.data(), output.size());
         send_buffer.resize(NUMERIC_FIELD_SIZE);
 
-        send_buffer.insert(send_buffer.begin(), str_payload_size_n.begin(), str_payload_size_n.end());
-        send_buffer.insert(send_buffer.begin() + str_payload_size_n.size(), output.begin(), output.begin() + payload_size);
-
-        output.fill('0');
-
         if(sendMsg(payload_size) != 1){
-            cout<<"Error during send phase (C->S) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
+            cerr<<"Error during send phase (C->S) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
             return -1;
         }
     }
 }
-*/
 
-/*
+
+
 int Client::uploadFile(){
     uint64_t file_dim;                                                      //dimension (in byte) of the file to upload
-    uint32_t payload_size;                                                  //size of the msg payload both in host and network format
+    uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
     uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
-    string str_payload_size_n, filename;                                    //name of the file to upload
+    string filename;                                                        //name of the file to upload
     vector<unsigned char> aad;                                              //aad of the msg
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
@@ -860,20 +894,19 @@ int Client::uploadFile(){
     cout<<"*********     UPLOAD FILE      *********"<<endl;
     cout<<"****************************************"<<endl<<endl;
 
-    readFilenameInput(filename, "Insert file name: ");
-    file_dim = searchFile(filename);
+    readFilenameInput(filename, "Insert filename: ");
+    file_dim = searchFile(filename, this->username);
 
-    if(file_dim >= MAX_FILE_DIMENSION){
+    if(file_dim >= MAX_FILE_DIMENSION  || file_dim < 0){
         cout << "File is too big! Upload terminated"<<endl;
         return -1;
     }                      
 
-    //change the insert -> for the int is not correct 
-    //change htonl -> doesn't work for 64bit 
+    //insert in the plaintext filedimension and filename
     file_dim_h_n = htonl((uint32_t) (file_dim >> 32));
     file_dim_l_n = htonl((uint32_t) (file_dim));
-    memcpy(plaintext.data(), &file_dim_h_n, NUMERIC_FIELD_SIZE);
-    memcpy(plaintext.data() + NUMERIC_FIELD_SIZE, &file_dim_l_n, NUMERIC_FIELD_SIZE);
+    memcpy(plaintext.data(), &file_dim_l_n, NUMERIC_FIELD_SIZE);
+    memcpy(plaintext.data() + NUMERIC_FIELD_SIZE, &file_dim_h_n, NUMERIC_FIELD_SIZE);
     plaintext.insert(plaintext.begin() + FILE_SIZE_FIELD, filename.begin(), filename.end());  
 
     this->active_session->createAAD(aad.data(), UPLOAD_REQ);                
@@ -882,32 +915,29 @@ int Client::uploadFile(){
     //to be sent: payload_size | IV | count_cs | opcode | {output}_Kcs | TAG
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
-    str_payload_size_n = to_string(htonl(payload_size));
+    payload_size_n = htonl(payload_size);
 
-    aad.assign(aad.size(), '0');
-    aad.clear();
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();    
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
+    //clear aad, plaintext and send_buffer
+    clear_vec_vec_sendbuff(aad, plaintext);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
-    plaintext.insert(send_buffer.begin(), str_payload_size_n.begin(), str_payload_size_n.end());
-    send_buffer.insert(send_buffer.begin() + str_payload_size_n.size(), output.begin(), output.begin() + payload_size);
-
-    output.fill('0');
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
     if(sendMsg(payload_size) != 1){
-        cout<<"Error during send phase (C->S | Upload Request Phase)"<<endl;
+        cerr<<"Error during send phase (C->S | Upload Request Phase)"<<endl;
         return -1;
     }
+
+    //clear send_buffer and output array
+    clear_sendbuff_and_array(output.data(), output.size());
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     //receive from the server the response to the upload request
     //received_len:  legnht of the message received from the server
     //server_response: message from the server containing the response to the request
-    int aad_len;                                                          
+    int aad_len, pt_len;                                                          
     uint16_t opcode;
-    uint32_t pt_len;
     uint32_t ret;  
     uint64_t received_len;
     string server_response;
@@ -917,7 +947,7 @@ int Client::uploadFile(){
 
     received_len = receiveMsg();
     if(received_len == 0 || received_len == -1){
-        cout<<"Error during receive phase (S->C)"<<endl;
+        cerr<<"Error during receive phase (S->C, upload)"<<endl;
         return -1;
     }
 
@@ -925,65 +955,160 @@ int Client::uploadFile(){
     
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
     if(opcode != UPLOAD_REQ){
-        cout<<"Error! Exiting upload request phase"<<endl;
+        cerr<<"Error! Exiting upload request phase"<<endl;
         return -1;
     }
     
     server_response = ((char*)plaintext.data());
     if(server_response != MESSAGE_OK){       
-        cout<<"File not accepted. "<<server_response<<endl;
+        cerr<<"File not accepted. "<<server_response<<endl;
         return -1;
     }
    
     //start of the upload
-    cout<<"        -------- UPLOADING --------";
-
-    aad.assign(aad.size(), '0');
-    aad.clear();
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
+    cout<<"        -------- UPLOADING --------"<<endl;
+    
+    //clear aad, plaintext and send_buffer
+    clear_vec_vec_sendbuff(aad, plaintext);
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     ret = sendMsgChunks(filename);
 
     if(ret != -1){
         //TODO: receive server response to check if file was saved
+        aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+        plaintext.resize(MAX_BUF_SIZE);        
+        received_len = receiveMsg();
+            if(received_len == 0 || received_len == -1){
+        cerr<<"Error during receive phase (S->C)"<<endl;
+        return -1;
+        }
+        
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
-        if(opcode != UPLOAD){
-            cout<<"Error! Exiting upload phase"<<endl;
+        if(opcode != END_OP){
+            cerr<<"Error! Exiting upload phase"<<endl;
             return -1;
         }
-        if(server_response != UPLOAD_TERMINATED){
-            cout<<"Upload not correcty terminated. "<<server_response<<endl;
+        if(server_response != OP_TERMINATED){
+            cerr<<"Upload not correcty terminated. "<<server_response<<endl;
             return -1;
         }
     }
-    cout<<"        ---- UPLOAD TERMINATED ----"<<endl<<endl;
-
-    if(ret == -1){
-        cout<<"Error! Exiting upload phase"<<endl;
+    else{
+        cerr<<"Error! Exiting upload phase"<<endl;
         return -1;
     }
-
+    cout<<"        ---- UPLOAD TERMINATED ----"<<endl<<endl;
     cout<<"****************************************"<<endl<<endl;
 }
-*/
+
 
 void Client::downloadFile(){}
 
-void Client::renameFile(){
+int Client::renameFile(){
     string old_filename, new_filename;
+    vector<unsigned char> aad;                                              //aad of the msg
+    vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);                       //plaintext to be encrypted
+    array<unsigned char, MAX_BUF_SIZE> output;
+    uint32_t old_filename_lenght, old_filename_lenght_n;   
+    uint32_t payload_size, payload_size_n;
+
     cout<<"****************************************"<<endl;
     cout<<"*********     Rename File      *********"<<endl;
     cout<<"****************************************"<<endl;
 
-    readInput(old_filename, MAX_NAME_SIZE, "Insert the name of the file to be changed");
-    readInput(new_filename, MAX_NAME_SIZE, "Insert the new name of the file ");
+    readFilenameInput(old_filename, "Insert the name of the file to be changed: ");
+    readFilenameInput(new_filename, "Insert the new name of the file: ");
 
+    old_filename_lenght = old_filename.length();
+    old_filename_lenght_n = htonl(old_filename_lenght);
+    memcpy(plaintext.data(), &old_filename_lenght_n, NUMERIC_FIELD_SIZE);
+    plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, old_filename.begin(), old_filename.end());
+    plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE + old_filename_lenght, new_filename.begin(), new_filename.end());
+
+    this->active_session->createAAD(aad.data(), RENAME_REQ);
+
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+
+    //clear aad, plaintext and send_buffer
+    clear_vec_vec_sendbuff(aad, plaintext);
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+    output.fill('0');
+
+    if(sendMsg(payload_size) != 1){
+        cerr<<"Error during send phase (C->S | Rename Request Phase)"<<endl;
+        return -1;
+    }
     //send the information of the rename operation
     //to be sent: <count_cs, opcode=3, {old_filename, new_filename}_Kcs>
 
-    //server response: <count_sc, op_code=3, {ResponseMsg}_Kcs>
+    //server response: <count_sc, op_code=9, {ResponseMsg}_Kcs>
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    uint16_t opcode;
+    uint32_t received_len;
+    int pt_len, aad_len;
+    string server_response;
+
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1){
+        cerr <<"Error during receive phase (S->C, rename)";
+        return -1;
+    }
+
+    pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+    opcode = ntohs(*(uint16_t*)aad.data() + NUMERIC_FIELD_SIZE);
+    if(opcode != END_OP){
+        cerr << "Error! Exiting rename request phase"<<endl;
+        return -1;
+    }
+
+    server_response = ((char*)plaintext.data());
+    if(server_response != OP_TERMINATED){
+        cerr << "Rename not accepted. "<< server_response <<endl;
+        return -1;
+    }
+
+    cout<<"****************************************"<<endl;
+    cout<<"******     Rename Terminated      ******"<<endl;
+    cout<<"****************************************"<<endl;
+
 }
 
 void Client::deleteFile(){}
+
+void Client::clear_vec_vec_sendbuff(vector<unsigned char>& v1, vector<unsigned char>& v2){
+    v1.assign(v1.size(), '0');
+    v1.clear();
+    v2.assign(v2.size(), '0');
+    v2.clear();    
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+
+}
+
+void Client::clear_vec_vec(vector<unsigned char>& v1, vector<unsigned char>& v2){
+    v1.assign(v1.size(), '0');
+    v1.clear();
+    v2.assign(v2.size(), '0');
+    v2.clear();    
+}
+
+void Client::clear_sendbuff_and_array(unsigned char* arr, int arr_len){ 
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    memset(arr, '0', sizeof(char)*arr_len);
+}
+
+void Client::clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len){
+    v1.assign(v1.size(), '0');
+    v1.clear();
+    memset(arr, '0', sizeof(char)*arr_len);
+}

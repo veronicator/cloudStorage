@@ -7,6 +7,19 @@ UserInfo::UserInfo(int sd, string name) {
     client_session = new Session();
 }
 
+UserInfo::~UserInfo(){
+    username.clear();
+    if(!send_buffer.empty()) {
+        send_buffer.assign(send_buffer.size(), '0');
+        send_buffer.clear();
+    }
+    if(!recv_buffer.empty()) {
+        recv_buffer.assign(recv_buffer.size(), '0');
+        recv_buffer.clear();
+    }
+    client_session = nullptr;
+}
+
 Server::Server() {
     if(pthread_mutex_init(&mutex_client_list, NULL) != 0) {
         cerr << "mutex init failed " << endl;
@@ -30,7 +43,6 @@ bool Server::createSrvSocket() {
         cerr << "set reuse socket error" << endl;
         return false;
     }
-
 
     // creation server address
     memset(&my_addr, 0, sizeof(my_addr));
@@ -714,17 +726,79 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 }
 
 
-void Server::requestFileList() {
+int Server::sendFileList(int sockd) {
+    uint32_t payload_size, payload_size_n;
+    UserInfo* ui;
+    const string path = path_file + ui->username + "/";
+    string file_list = "";
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);
+    array<unsigned char, MAX_BUF_SIZE> output;     
+    // retrive UserInfo relative to the client
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        return -1;
+    }
 
-}
+    for (const auto& entry : std::filesystem::directory_iterator(path)){
+        const std::string s = entry.path();
+        std::regex rgx("[^/]*$");
+        std::smatch match;
 
-void Server::sendFileList() {
+        if (std::regex_search(s, match, rgx))
+            file_list += string(match[0]) + "\n"; 
+    }    
+    
+    int num_chunks = ceil(file_list.size()/FRAGM_SIZE);
+    plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
+    for(int i = 0; i < num_chunks; i++){
+        if(i == num_chunks - 1)
+            ui->client_session->createAAD(aad.data(), END_OP);
+        else
+            ui->client_session->createAAD(aad.data(), FILE_LIST);
+
+        payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+        payload_size_n = htonl(payload_size);
+
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();    
+        ui->send_buffer.assign(ui->send_buffer.size(), '0');
+        ui->send_buffer.clear();
+        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);   
+
+        memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+        ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size) ;
+
+        output.fill('0');
+
+        if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1){
+            cerr<<"Error during send phase (S->C) | File List Phase"<<endl;
+            return -1;
+        }
+    }
 }
 
 void Server::logoutClient(int sockd) {
-
+    UserInfo* ui;
+    // retrive UserInfo relative to the client
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        return;
+    }
+    ui->client_session->~Session();
+    ui->~UserInfo();
+    ui = nullptr;
 }
+    
 
 void Server::sendErrorMsg(int sockd, string errorMsg) {
         //cerr << errorMsg << endl;
@@ -748,52 +822,230 @@ void Server::joinThread() {
     }
 }*/
 
-// TODO
-/*
+int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename){
+    string path = path_file + ui->username + "/" + filename;
+    ofstream outfile(path, ofstream::binary);
+    if(!outfile.is_open()){
+        cout<<"It was not possible to create or open the new file"<<endl;
+        return -1;
+    }
+
+    size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
+    int received_len, pt_len, aad_len;
+    uint16_t opcode;
+    vector<unsigned char> aad;
+    array<unsigned char, MAX_BUF_SIZE> plaintext;
+
+    plaintext.fill('0');
+
+    for(int i = 0; i < tot_chunks; i++){
+        received_len = receiveMsg(ui->sockd, ui->recv_buffer);
+        if(received_len == -1 || received_len == 0){
+            cerr<<"Error! Exiting receive phase"<<endl;
+            return -1;
+        }
+
+        pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+        opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+        if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
+            outfile.close();
+            cerr << "Wrong message format. Exiting"<<endl;
+            if(remove(path.c_str()) != 0){
+                cerr << "File not correctly cancelled"<<endl;
+            }
+            return -1;
+        }
+
+        outfile << plaintext.data();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        plaintext.fill('0');
+        outfile.flush();
+    }
+
+    outfile.close();
+}
+
 int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
-    uint32_t filedimension;
+    uint64_t filedimension;
+    uint32_t r_dim_l, r_dim_h;
     string filename;
     string ack_msg;
+    uint32_t payload_size, payload_size_n;
     vector<unsigned char> aad;
-    vector<unsigned char> plaintext;
     array<unsigned char, MAX_BUF_SIZE> output;
     bool file_ok = true;
     cout<<"****************************************"<<endl;
     cout<<"***********   RECEIVING FILE   *********"<<endl;
     cout<<"****************************************"<<endl;
 
-    //the plaintext has format: filedimension | filename
+    // retrive UserInfo relative to the client
+    UserInfo* ui;
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        cout<<"****************************************"<<endl;
+        return -1;
+    }
 
-    filedimension = ntohl(*(uint32_t*)(plaintext.data()));
-    filename = string(plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.end());
+    //the plaintext has format: filedimension | filename
+    memcpy(&r_dim_l, plaintext.data(), NUMERIC_FIELD_SIZE);
+    memcpy(&r_dim_h, plaintext.data() + 4, NUMERIC_FIELD_SIZE);
+    filedimension = ((uint64_t)ntohl(r_dim_h) << 32) + ntohl(r_dim_l);
+    filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
 
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
     file_ok = regex_match(filename, re);
 
     if(!file_ok){
-        cout<<"file not correct! Reception of the file terminated"<<endl;
+        cerr<<"file not correct! Reception of the file terminated"<<endl;
         ack_msg = "Filename not correct";
     }
-    else
+
+    if(searchFile(filename, ui->username) == -1){
+        cerr<<"File not present"<<endl;
+        ack_msg = "File not present";
+        file_ok = false;
+    }
+
+    if(file_ok)
         ack_msg = MESSAGE_OK;
     
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+    ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
 
-    // accedi alla map connected client con il sockd (id socket) e recupera UserInfo
-    //UserInfo ui = connectedClient.at(sockd);
-    //ui->client_session->createAAD(...);
-    //ui->client_session->encryptMsg(...);
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+    
+    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok){
+        cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
+        cout<<"****************************************"<<endl;
+        return -1;
+    }
+        
+    output.fill('0');
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    cout << "       -------- RECEIVING FILE --------"<<endl;
+
+    int ret = receiveMsgChunks(ui, filedimension, filename);
+    if(ret == -1){
+        cerr<<"Error! Something went wrong while receiving the file"<<endl;
+        return -1;
+    }
+
+    ui->client_session->createAAD(aad.data(), END_OP);
+    ack_msg = OP_TERMINATED;
+    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size_n = htonl(payload_size);
+    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+    
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1){
+        cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
+        return -1;
+    }
+    cout<<"       -------- RECEPTION ENDED --------";
     cout<<"****************************************"<<endl;
 }
-*/
 
 void Server::downloadFile() {
 
 }
 
-void Server::renameFile() {
+int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
+    string old_filename, new_filename;
+    uint32_t old_name_len;
+    string ack_msg;
+    uint32_t payload_size, payload_size_n;
+    vector<unsigned char> aad;
+    array<unsigned char, MAX_BUF_SIZE> output;
+    bool file_ok = true;
+    UserInfo* ui;
+    cout<<"****************************************"<<endl;
+    cout<<"***********   Rename Request   *********"<<endl;
+    cout<<"****************************************"<<endl;
 
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        return -1;
+    }
+
+    old_name_len = ntohl(*(uint32_t*)plaintext.data());
+    old_filename.insert(old_filename.begin(), plaintext.begin() + FILE_SIZE_FIELD, plaintext.begin() + FILE_SIZE_FIELD + old_name_len);
+    new_filename.insert(new_filename.begin(), plaintext.begin() + FILE_SIZE_FIELD + old_name_len, plaintext.end());
+
+    const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+    file_ok = (regex_match(old_filename, re) && regex_match(new_filename, re));
+
+    if(!file_ok){
+        cerr<<"Filename not correct! Rename terminated"<<endl;
+        ack_msg = "Filename not correct";
+    }
+
+    if(searchFile(old_filename, ui->username) == -1){
+        cerr << "Filename to change doesn't correspond to any file"<<endl;
+        ack_msg = "Filename to change doesn't correspond to any file";
+        file_ok = false;
+    }
+
+    if(searchFile(new_filename, ui->username) != -1){
+        cerr << "The new filename is already used by another file" << endl;
+        ack_msg = "The new filename is already used by another file";
+        file_ok = false;
+    }
+    
+    if(file_ok)
+        ack_msg = MESSAGE_OK;
+    
+    ui->client_session->createAAD(aad.data(), END_OP);
+    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), ui->send_buffer.data());
+    payload_size_n = htonl(payload_size);
+
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+    output.fill('0');
+
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1){
+        cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
+        cout<<"****************************************"<<endl;
+        return -1;
+    }
+
+    cout<<"****************************************"<<endl;
+    cout<<"******     Rename Terminated      ******"<<endl;
+    cout<<"****************************************"<<endl;
 }
 
 void Server::deleteFile() {

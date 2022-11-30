@@ -23,7 +23,21 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
-void readFilenameInput(string& input, string msg = "") {
+uint64_t searchFile(string filename, string username){
+    string path = "./users/" + username +"/" + filename;
+    struct stat buffer;
+    if(stat(path.c_str(), &buffer) != 0){
+        cerr<<"File not present"<<endl;
+        return -1;
+    }
+    if(buffer.st_size > MAX_FILE_DIMENSION){
+        cerr<<"File too big"<<endl;
+        return -2;
+    }
+    return buffer.st_size;
+}
+
+void readFilenameInput(string& input, string msg) {
     bool string_ok = false;
     do{
         cout<<msg<<endl;
@@ -717,6 +731,7 @@ int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char* outpu
 }
 
 Session::~Session(){
+    //TODO: check if everything is deallocated
     free(session_key);
     EVP_PKEY_free(ECDH_myKey);
     EVP_PKEY_free(ECDH_peerKey);

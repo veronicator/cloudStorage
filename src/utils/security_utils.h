@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
 #include <string>
 #include <string.h>
@@ -25,6 +26,7 @@
 #include <regex.h>
 #include <regex>
 #include <cmath>
+#include <filesystem>
 #include "symbols.h"
 
 using namespace std;
@@ -50,6 +52,8 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 
 void readFilenameInput(string& input, string msg);  
+
+uint64_t searchFile(string filename, string username);
 
 //int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
 
