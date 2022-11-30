@@ -71,14 +71,14 @@ unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     cout << "session->createAAD" << endl;
     int aad_len = 0;
     //cout << sizeof(uint16_t) << " sizeof " << endl;
-    memcpy(aad, (unsigned char*)&send_counter, NUMERIC_FIELD_SIZE);
+    memcpy(aad, &send_counter, NUMERIC_FIELD_SIZE);
     aad_len += NUMERIC_FIELD_SIZE;
     incrementCounter(send_counter);
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     // cout << "session->createAAD2 " << sizeof(*aad) << endl;
     
     uint16_t opcode_n = htons(opcode);
-    memcpy(aad + aad_len, (unsigned char*)&opcode_n, OPCODE_SIZE);
+    memcpy(aad + aad_len, &opcode_n, OPCODE_SIZE);
     aad_len += OPCODE_SIZE;
     // cout << "session->createAAD3" << endl;
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
