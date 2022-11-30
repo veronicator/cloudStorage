@@ -743,7 +743,7 @@ int Server::sendFileList(int sockd) {
         return -1;
     }
 
-    for (const auto& entry : std::filesystem::directory_iterator(path)){
+    for (const auto& entry : fs::directory_iterator(path)){
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
         std::smatch match;

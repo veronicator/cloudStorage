@@ -27,9 +27,11 @@
 #include <regex>
 #include <cmath>
 #include <filesystem>
+#include <experimental/filesystem>
 #include "symbols.h"
 
 using namespace std;
+namespace fs = std::experimental::filesystem;
 
 void handleErrors();
 
