@@ -737,12 +737,7 @@ int Server::sendFileList(int sockd) {
         payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
         payload_size_n = htonl(payload_size);
 
-        aad.assign(aad.size(), '0');
-        aad.clear();
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();    
-        ui->send_buffer.assign(ui->send_buffer.size(), '0');
-        ui->send_buffer.clear();
+        clear_three_vec(aad, plaintext, ui->send_buffer);
         ui->send_buffer.resize(NUMERIC_FIELD_SIZE);   
 
         memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -755,6 +750,7 @@ int Server::sendFileList(int sockd) {
             return -1;
         }
     }
+    return 1;
 }
 
 void Server::logoutClient(int sockd) {
@@ -807,9 +803,9 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
     int received_len, pt_len, aad_len;
     uint16_t opcode;
     vector<unsigned char> aad;
-    array<unsigned char, MAX_BUF_SIZE> plaintext;
+    array<unsigned char, MAX_BUF_SIZE> frag_buffer;
 
-    plaintext.fill('0');
+    frag_buffer.fill('0');
 
     for(int i = 0; i < tot_chunks; i++){
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
@@ -818,7 +814,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
             return -1;
         }
 
-        pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+        pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), aad_len, frag_buffer.data());
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
             outfile.close();
@@ -829,14 +825,12 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
             return -1;
         }
 
-        outfile << plaintext.data();
-        aad.assign(aad.size(), '0');
-        aad.clear();
-        plaintext.fill('0');
+        outfile << frag_buffer.data();
+        clear_vec_array(aad, frag_buffer.data(), frag_buffer.size());
         outfile.flush();
     }
-
     outfile.close();
+    return 1;
 }
 
 int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
@@ -891,8 +885,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     payload_size_n = htonl(payload_size);
     
-    ui->send_buffer.assign(ui->send_buffer.size(), '0');
-    ui->send_buffer.clear();
+    clear_three_vec(aad, plaintext, ui->send_buffer);
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -903,14 +896,8 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
         cout<<"****************************************"<<endl;
         return -1;
     }
-        
-    output.fill('0');
-    aad.assign(aad.size(), '0');
-    aad.clear();
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-    ui->send_buffer.assign(ui->send_buffer.size(), '0');
-    ui->send_buffer.clear();
+    
+    clear_vec_array(ui->send_buffer, output.data(), output.size());
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     cout << "       -------- RECEIVING FILE --------"<<endl;
@@ -918,11 +905,10 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     int ret = receiveMsgChunks(ui, filedimension, filename);
     if(ret == -1){
         cerr<<"Error! Something went wrong while receiving the file"<<endl;
-        return -1;
+        ack_msg = "File not received correctly\n";
     }
 
     ui->client_session->createAAD(aad.data(), END_OP);
-    ack_msg = OP_TERMINATED;
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     payload_size_n = htonl(payload_size);
@@ -935,6 +921,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     }
     cout<<"       -------- RECEPTION ENDED --------";
     cout<<"****************************************"<<endl;
+    return 1;
 }
 
 void Server::downloadFile() {
@@ -994,21 +981,14 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), ui->send_buffer.data());
     payload_size_n = htonl(payload_size);
 
-    aad.assign(aad.size(), '0');
-    aad.clear();
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-    ui->send_buffer.assign(ui->send_buffer.size(), '0');
-    ui->send_buffer.clear();
+    clear_three_vec(aad, plaintext, ui->send_buffer);
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    ui->send_buffer.assign(ui->send_buffer.size(), '0');
-    ui->send_buffer.clear();
+    clear_vec_array(ui->send_buffer, output.data(), output.size());
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
-    output.fill('0');
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != -1){
         cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
@@ -1019,13 +999,13 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     cout<<"****************************************"<<endl;
     cout<<"******     Rename Terminated      ******"<<endl;
     cout<<"****************************************"<<endl;
+
+    return 1;
 }
 
 void Server::deleteFile() {
 
 }
-
-
 /********************************************/
 
 ThreadArgs::ThreadArgs(Server* serv, int new_sockd) {

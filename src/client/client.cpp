@@ -723,7 +723,7 @@ int Client::requestFileList() {
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     payload_size_n = htonl(payload_size);
         
-    clear_vec_vec_sendbuff(aad, plaintext);
+    clear_three_vec(aad, plaintext, send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -745,6 +745,8 @@ int Client::requestFileList() {
     
     if(ret == -1)
         return -1;
+    else
+        return 1;
 }
 
 int Client::receiveFileList() {
@@ -780,7 +782,7 @@ int Client::receiveFileList() {
             return -1;
         }
 
-        clear_vec_vec(plaintext, aad);
+        clear_two_vec(plaintext, aad);
     }
     return 0;
 }
@@ -798,7 +800,7 @@ void Client::logout() {
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
     payload_size_n = htonl(payload_size);
 
-    clear_vec_vec_sendbuff(aad, plaintext);
+    clear_three_vec(aad, plaintext, send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -853,7 +855,7 @@ uint32_t Client::sendMsgChunks(string filename){
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                                          //encrypted text
     
-    clear_sendbuff_and_array(frag_buffer.data(), frag_buffer.size());
+    clear_vec_array(send_buffer, frag_buffer.data(), frag_buffer.size());
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     for(int i = 0; i < tot_chunks; i++){
@@ -881,7 +883,7 @@ uint32_t Client::sendMsgChunks(string filename){
         memcpy(&payload_size_n, send_buffer.data(), NUMERIC_FIELD_SIZE);
         send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-        clear_sendbuff_and_array(output.data(), output.size());
+        clear_vec_array(send_buffer, output.data(), output.size());
         send_buffer.resize(NUMERIC_FIELD_SIZE);
 
         if(sendMsg(payload_size) != 1){
@@ -889,6 +891,7 @@ uint32_t Client::sendMsgChunks(string filename){
             return -1;
         }
     }
+    return 1;
 }
 
 int Client::uploadFile(){
@@ -932,7 +935,7 @@ int Client::uploadFile(){
     payload_size_n = htonl(payload_size);
 
     //clear aad, plaintext and send_buffer
-    clear_vec_vec_sendbuff(aad, plaintext);
+    clear_three_vec(aad, plaintext, send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -944,7 +947,7 @@ int Client::uploadFile(){
     }
 
     //clear send_buffer and output array
-    clear_sendbuff_and_array(output.data(), output.size());
+    clear_vec_array(send_buffer, output.data(), output.size());
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     //receive from the server the response to the upload request
@@ -983,12 +986,12 @@ int Client::uploadFile(){
     cout<<"        -------- UPLOADING --------"<<endl;
     
     //clear aad, plaintext and send_buffer
-    clear_vec_vec_sendbuff(aad, plaintext);
+    clear_three_vec(aad, plaintext, send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     ret = sendMsgChunks(filename);
 
-    if(ret != -1){
+    if(ret == 1){
         //TODO: receive server response to check if file was saved
         aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
         plaintext.resize(MAX_BUF_SIZE);        
@@ -1001,7 +1004,7 @@ int Client::uploadFile(){
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
         if(opcode != END_OP){
-            cerr<<"Error! Exiting upload phase"<<endl;
+            cerr<<"Error! Exiting upload phase." << endl;
             return -1;
         }
         if(server_response != OP_TERMINATED){
@@ -1015,6 +1018,8 @@ int Client::uploadFile(){
     }
     cout<<"        ---- UPLOAD TERMINATED ----"<<endl<<endl;
     cout<<"****************************************"<<endl<<endl;
+
+    return 1;
 }
 
 void Client::downloadFile(){}
@@ -1046,7 +1051,7 @@ int Client::renameFile(){
     payload_size_n = htonl(payload_size);
 
     //clear aad, plaintext and send_buffer
-    clear_vec_vec_sendbuff(aad, plaintext);
+    clear_three_vec(aad, plaintext, send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -1093,35 +1098,7 @@ int Client::renameFile(){
     cout<<"******     Rename Terminated      ******"<<endl;
     cout<<"****************************************"<<endl;
 
+    return 1;
 }
 
 void Client::deleteFile(){}
-
-void Client::clear_vec_vec_sendbuff(vector<unsigned char>& v1, vector<unsigned char>& v2){
-    v1.assign(v1.size(), '0');
-    v1.clear();
-    v2.assign(v2.size(), '0');
-    v2.clear();    
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
-
-}
-
-void Client::clear_vec_vec(vector<unsigned char>& v1, vector<unsigned char>& v2){
-    v1.assign(v1.size(), '0');
-    v1.clear();
-    v2.assign(v2.size(), '0');
-    v2.clear();    
-}
-
-void Client::clear_sendbuff_and_array(unsigned char* arr, int arr_len){ 
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
-    memset(arr, '0', sizeof(char)*arr_len);
-}
-
-void Client::clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len){
-    v1.assign(v1.size(), '0');
-    v1.clear();
-    memset(arr, '0', sizeof(char)*arr_len);
-}
