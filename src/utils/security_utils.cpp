@@ -606,6 +606,52 @@ unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsi
    }
 }
 
+int32_t
+checkFileExist(string filename, string username, string path_side)
+{
+    string path = path_side + username + "/" + filename;
+    struct stat buffer;
+
+    if (stat(path.c_str(),&buffer)!=0)  //stat failed
+    { 
+        return 0;   //File dosen't exist
+	}
+	
+	return -1;  //File exist
+}
+
+int
+removeFile(string filename, string username, string path_side)
+{
+    string path = path_side + username + "/" + filename;
+
+    //If the file is successfully deleted return 0. On failure a nonzero value (!=0) is returned.
+    if (remove(path.c_str()) != 0)
+    {   
+        perror ("\n\t * * * ERROR: ");
+        return -1;
+    }
+    else
+    {
+        return 1;
+    }
+
+    /* --- EXEC_version ---
+    void
+    deleteFileExeclEasy(string filename)
+    {  
+        if(filename.length() > 20)
+        {   cout << "\n\t -- Error: Filename too long --\n" << endl; return;    }
+
+        string pathFile = FILE_PATH_CL + filename;
+
+        execl("/bin/rm", "rm", pathFile.c_str(), (char*)0);
+
+        return;   
+    }
+    */
+}
+
 /********************************************************************/
 
 int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf) {

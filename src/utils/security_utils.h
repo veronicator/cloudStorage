@@ -52,7 +52,13 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 
 void
-readFilenameInput(string& input, string msg);  
+readFilenameInput(string& input, string msg);
+
+int32_t
+checkFileExist(string filename, string username, string path_side);
+
+int
+removeFile(string filename, string username, string path_side);
 
 //int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
 /*

@@ -15,7 +15,7 @@ struct UserInfo {
     vector<unsigned char> recv_buffer;
 
     UserInfo(int sd, string name);
-    //UserInfo();
+    ~UserInfo();
 };
 
 class Server {
@@ -23,8 +23,8 @@ class Server {
 
     // vector<Session> activeSessions;
     //todo: fare un unica mappa <int sockID, UserInfo> ?
-    unordered_map<int, UserInfo> connectedClient;    // client sockd, session
-    unordered_map<string, int> socketClient;      // client username, socket descriptor -> to find if a client is already connected and what is his sockd
+    unordered_map<int, UserInfo*> connectedClient;    // client sockd, session
+    //unordered_map<string, int> socketClient;      // client username, socket descriptor -> to find if a client is already connected and what is his sockd
     //map<int, UserInfo> connectedClient;     // client_socket descriptor, userInfo struct
     //unordered_map<string, UserInfo> activeChats;  // client username, data about chat
     // vector/list/map di int socket e username ?
@@ -40,7 +40,7 @@ class Server {
     sockaddr_in my_addr, cl_addr;
     socklen_t addr_len;
 
-    void createSrvSocket();
+    bool createSrvSocket();
     
     /***********************/
 
@@ -49,10 +49,10 @@ class Server {
         //static Server* getServer();
 
         //pthread_t client_thread;
-        pthread_mutex_t mutex;
+        pthread_mutex_t mutex_client_list;
 
         //list<thread> threads;
-        std::mutex mtx;
+        //std::mutex mtx;
 
 
         // socket
@@ -65,6 +65,7 @@ class Server {
 
         int sendMsg(int payload_size, int sockd, vector<unsigned char> &send_buffer);       //dopo invio: deallocare buffer
         long receiveMsg(int sockd, vector<unsigned char> &recv_buffer);    // restituisce lunghezza totale messaggio ricevuto, msg_size
+        
         void receiveUsername(int sockd);
         void sendCertSign(vector<unsigned char> clt_nonce, string username, int sockd);    // send (nonce, ecdh_key, cert, dig_sign), deserialize and verify server cert and digital signature
         bool receiveSign(int sd, string username, vector<unsigned char>& recv_buf);
@@ -80,10 +81,15 @@ class Server {
 
         // TODO: modificare come serve 
         // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
-        void uploadFile();
-        void downloadFile();
-        void renameFile();
-        void deleteFile();
+        void
+        uploadFile();
+        void
+        renameFile();
+        int
+        downloadFile(int sockd, vector<unsigned char> plaintext);
+        int
+        deleteFile(int sockd, vector<unsigned char> plaintext);
+
 
 
 

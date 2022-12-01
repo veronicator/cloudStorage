@@ -50,14 +50,10 @@ class Client {
     downloadFile();
     int
     deleteFile();
-    int32_t
-    checkFileExistClient(string filename);
     int
     receiveMsgChunks( uint32_t filedimension, string filename);
     void
     print_progress_bar(int total, unsigned int fragment);
-    void
-    removeFile(string filename);
 
 
 

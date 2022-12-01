@@ -1,54 +1,80 @@
 #include "server.h"
 
-UserInfo::UserInfo(int sd, string name) {
+UserInfo::UserInfo(int sd, string name)
+{
     sockd = sd;
     username = name;
 
-/*    send_buffer = (unsigned char*)malloc(MAX_BUF_SIZE);
-    if(!send_buffer)
-        handleErrors("Malloc error");
-    recv_buffer = (unsigned char*)malloc(MAX_BUF_SIZE);
-    if(!recv_buffer)
-        handleErrors("Malloc error");
-*/
     client_session = new Session();
 }
 
-Server::Server() {
-    if(pthread_mutex_init(&mutex, NULL) != 0)
-        handleErrors("mutex init failed");
-    createSrvSocket();
+UserInfo::~UserInfo()
+{
+    username.clear();
+    if(!send_buffer.empty()) {
+        send_buffer.assign(send_buffer.size(), '0');
+        send_buffer.clear();
+    }
+    if(!recv_buffer.empty()) {
+        recv_buffer.assign(recv_buffer.size(), '0');
+        recv_buffer.clear();
+    }
+    client_session = nullptr;
 }
-/*
-Server* Server::getServer() {
-    if(!server)
-        server = new Server();
-    return server;
+
+Server::Server()
+{
+    if(pthread_mutex_init(&mutex_client_list, NULL) != 0)
+    {
+        cerr << "mutex init failed " << endl;
+        exit(1);
+    }
+    if(!createSrvSocket())
+    {
+        perror("Socket creation error");
+        exit(1);
+    }
 }
-*/
-void Server::createSrvSocket() {
+
+bool Server::createSrvSocket()
+{
     cout << "createServerSocket" << endl;
-    if((listener_sd = socket(AF_INET, SOCK_STREAM, 0)) < 0)  // socket TCP
-        handleErrors("Socket creation error");
+    
+    if((listener_sd = socket(AF_INET, SOCK_STREAM, 0)) < 0) // socket TCP
+    {
+        return false;
+    }
 
     // set reuse socket
     int yes = 1;
     if(setsockopt(listener_sd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != 0)
-        handleErrors("set reuse socket error");
-
+    {
+        cerr << "set reuse socket error" << endl;
+        return false;
+    }
 
     // creation server address
     memset(&my_addr, 0, sizeof(my_addr));
     my_addr.sin_family = AF_INET;
     my_addr.sin_port = htons(SRV_PORT);
     my_addr.sin_addr.s_addr = INADDR_ANY;
+    
     if(bind(listener_sd, (sockaddr*)&my_addr, sizeof(my_addr)) != 0)
-        handleErrors("Bind error");
+    {
+        cerr << "Bind error" << endl;
+        return false;
+    }
     //cout << "bind\n";
     if(listen(listener_sd, MAX_CLIENTS) != 0)
-        handleErrors("Listen error");
+    {
+        cerr << "Listen error" << endl;
+        return false;
+    }
+
     cout << "Server listening for connections" << endl;
     addr_len = sizeof(cl_addr);
+
+    return true;
 }
 
 int Server::acceptConnection() {
@@ -514,12 +540,12 @@ void Server::joinThread() {
     }
 }*/
 
+
+//---------------------------------------------------------
+
+
 // TODO
 void Server::uploadFile() {
-
-}
-
-void Server::downloadFile() {
 
 }
 
@@ -527,16 +553,216 @@ void Server::renameFile() {
 
 }
 
-void Server::deleteFile() {
 
+int
+Server::downloadFile(int sockd, vector<unsigned char> plaintext)
+{
+
+}
+
+int
+Server::deleteFile(int sockd, vector<unsigned char> plaintext)
+{
+    string filename;
+    uint32_t payload_size, payload_size_n;
+    string ack_msg;
+    vector<unsigned char> aad;
+    array<unsigned char, MAX_BUF_SIZE> cyphertext;
+    bool file_ok = true;
+
+    UserInfo *ui;
+
+    try
+    {
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex)
+    {
+        cerr<<"_User NOT FOUND!_"<<endl;
+        return -1;
+    }
+
+// _BEGIN_(1)-------------- [ M1: SEND_CONFIRMATION_DELETE_REQUEST_TO_CLIENT ] --------------
+
+    filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
+
+    const auto allowed = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+    file_ok = regex_match(filename, allowed);
+
+    if(!file_ok)
+    {
+        cerr<<"File not correct! Termination of the Delete_Operation in progress"<<endl;
+        ack_msg = "Filename not allowed";
+    }
+
+    if(checkFileExist(filename, ui->username, FILE_PATH_SV) != 0)
+    {
+        cerr<<"Error: this file is not present in the folder"<<endl;
+        ack_msg = "File not present in the cloud";
+
+        file_ok = false;
+    }
+
+    if(file_ok)
+    {   ack_msg = MESSAGE_OK; }
+
+    //=== Preparing Data Sending and Encryption ===
+    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+
+    ui->client_session->createAAD(aad.data(), DELETE_REQ);
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+    
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+    
+    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, cyphertext.begin(), cyphertext.begin() + payload_size);
+
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok)
+    {
+        cerr<<"Error during sending DELETE_REQUEST_RESPONSE phase (S->C)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+
+// _END_(1))-------------- [ M1: SEND_CONFIRMATION_DELETE_REQUEST_TO_CLIENT ] --------------
+
+
+// _BEGIN_(2)-------------- [ M2: RECEIVE_CHOICE_OPERATION_FROM_CLIENT ] --------------
+
+    int aad_len; uint16_t opcode;
+    uint64_t received_len;  //legnht of the message received from the client
+    uint32_t plaintext_len;
+    string user_choice, final_msg;  //final_msg: message of successful cancellation
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    received_len = receiveMsg(sockd, ui->recv_buffer);
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (C->S)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+
+    plaintext_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len,
+                                                aad.data(), aad_len, plaintext.data());
+
+    //Opcode sent by the client, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    if(opcode != DELETE_CONFIRM)
+    {
+        cout<<"Error! Exiting DELETE_OPERATION phase"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+
+        return -1;
+    }
+
+    user_choice = ((char*)plaintext.data());
+
+// _END_(2)-------------- [ M2: RECEIVE_CHOICE_OPERATION_FROM_CLIENT ] --------------
+
+
+// _BEGIN_(3)-------------- [ M3: SEND_RESPONSE_OF_THE_OPERATION_TO_CLIENT ] --------------
+
+    if(user_choice == "Y" || user_choice == "y")
+    {
+        cout<<"\n\t~ The file *( "<< filename << " )* is going to be deleted. ~\n\n"<<endl;
+
+        if(removeFile(filename, ui->username, FILE_PATH_SV) == -1)
+        {
+            cout << "\n\t --- Error during Deleting file ---\n" << endl; 
+        }
+
+        final_msg = "File Deleted Successfully";
+    }
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    cyphertext.fill('0');
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    // === Preparing Data Sending and Encryption ===    
+    plaintext.insert(plaintext.begin(), final_msg.begin(), final_msg.end());
+
+    ui->client_session->createAAD(aad.data(), END_OP);
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+    
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+    
+    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, cyphertext.begin(), cyphertext.begin() + payload_size);                             
+
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1)
+    {
+        cerr<<"Error during sending CONFIRM_OPERATION phase (S->C)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }                                                
+
+// _END_(3)-------------- [ M3: SEND_RESPONSE_OF_THE_OPERATION_TO_CLIENT ] --------------
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    cyphertext.fill('0');
+
+    return 1; //Successful_State
 }
 
 
 /********************************************/
 
-ThreadArgs::ThreadArgs(Server* serv, int new_sockd) {
+ThreadArgs::ThreadArgs(Server* serv, int new_sockd)
+{
     if(!serv)
-        handleErrors("Null pointer error", new_sockd);
+    {
+        perror("Null pointer error");
+        close(new_sockd);
+        return;
+    }
+
     server = serv;
     sockd = new_sockd;
 }

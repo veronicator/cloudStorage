@@ -837,20 +837,6 @@ void Client::renameFile(){
 
 //---------------------------------------------\\
 
-int32_t
-checkFileExistClient(string filename)
-{
-    string path = FILE_PATH_CL + filename;
-    struct stat buffer;
-
-    if (stat(path.c_str(),&buffer)!=0)  //stat failed
-    { 
-        return 0;   //File dosen't exist
-	}
-	
-	return -1;  //File exist
-}
-
 void
 Client::print_progress_bar(int total, unsigned int fragment)
 {
@@ -885,37 +871,6 @@ Client::print_progress_bar(int total, unsigned int fragment)
             fragment += 0.16; // for demonstration only
         //}
         }
-    */
-}
-
-void
-Client::removeFile(string filename)
-{  
-    string pathFile = FILE_PATH_CL + filename;
-
-    //If the file is successfully deleted return 0. On failure a nonzero value (!=0) is returned.
-    if (remove(pathFile.c_str()) !=0)
-    {   
-        perror ("\n\t * * * ERROR during deleting/overwriting file: "); }
-    else
-    {   cout << "\n\t --- Deleted Successfully ---\n" << endl; }
-    
-    return;
-
-
-    /* --- EXEC_version ---
-    void
-    deleteFileExeclEasy(string filename)
-    {  
-        if(filename.length() > 20)
-        {   cout << "\n\t -- Error: Filename too long --\n" << endl; return;    }
-
-        string pathFile = FILE_PATH_CL + filename;
-
-        execl("/bin/rm", "rm", pathFile.c_str(), (char*)0);
-
-        return;   
-    }
     */
 }
 
@@ -987,8 +942,8 @@ Client::downloadFile()
 
     readFilenameInput(filename, "Insert the name of the file you want to Download: ");
 
-    // === Controllo e gestione dell'esistenza del file all'interno della cartella Download ===
-    if (checkFileExistClient(filename)!=0)
+    // === Checking and managing the existence of the file within the Download folder ===
+    if (checkFileExist(filename, this->username, FILE_PATH_CL)!=0)
     {
         string choice;
         
@@ -1011,17 +966,20 @@ Client::downloadFile()
 
         if(choice == "N" || choice == "n")
         {
-            //--Annullamento Download operation
+            //--Canceling Download operation
             //terminate();
 
             cout<<"\n\t~ The file *( "<< filename << " )* will not be overwritten. ~\n\n"<<endl;
             return;
         }
         
-        removeFile(filename);
+        if(removeFile(filename, this->username, FILE_PATH_CL) == -1)
+        {
+            cout << "\n\t --- Error during Deleting file ---\n" << endl; 
+        }
     }
     
-    // === Preparazione Invio Dati e Cifratura  ===
+    // === Preparing Data Sending and Encryption ===
     plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
 
     this->active_session->createAAD(aad.data(), DOWNLOAD_REQ);
@@ -1067,10 +1025,10 @@ Client::downloadFile()
 
 
     int aad_len; uint16_t opcode;
-    uint64_t received_len;  //legnht of the message received from the server 
+    uint64_t received_len;  //Legnht of the message received from the server 
     uint32_t plaintext_len;
-    string server_response; //message from the server containing the response to the request
-    int fileChunk;   //Management Chunk
+    string server_response; //Message from the server containing the response to the request
+    int fileChunk; //Management Chunk
 
     // === Reuse of vectors declared at the beginning ===
     aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
@@ -1091,7 +1049,7 @@ Client::downloadFile()
         return -1;
     }
 
-    //Ciò che ricevo dal server in termini di byte
+    //received from server in terms of byte
     plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), aad_len, plaintext.data());
 
@@ -1113,7 +1071,7 @@ Client::downloadFile()
 
 // _BEGIN_(2)-------------- [M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] --------------
     
-    /*----- Check Response esistenza file nel Cloud Storage da parte del Server -----*/
+    /*--- Check Response file existence in the Cloud Storage by the Server ---*/
     server_response = ((char*)plaintext.data());
     if(server_response != MESSAGE_OK)
     {       
@@ -1125,7 +1083,6 @@ Client::downloadFile()
         aad.assign(aad.size(), '0');
         aad.clear();
         cyphertext.fill('0');
-
 
         return -1;
     }
@@ -1161,7 +1118,7 @@ Client::downloadFile()
         return -1;
     }
 
-    //Ciò che ricevo dal server in termini di byte
+    //received from server in terms of byte
     plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), aad_len, plaintext.data());
 
@@ -1217,7 +1174,7 @@ Client::downloadFile()
     aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
     plaintext.resize(MAX_BUF_SIZE);
 
-    // === Preparazione Invio Dati e Cifratura Per ===    
+    // === Preparing Data Sending and Encryption ===    
     this->active_session->createAAD(aad.data(), END_OP);
     string ack_msg = DOWNLOAD_TERMINATED;
     
@@ -1274,13 +1231,17 @@ Client::deleteFile()
 {
     string filename;
     uint32_t file_size, payload_size, payload_size_n, filedimension;   
-    vector<unsigned char> aad;
+    vector<unsigned char> aad;  // vector<> aad(AAD_LEN);
+    //array<unsigned char, AAD_LEN> new_aad;
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);
     array<unsigned char, MAX_BUF_SIZE> cyphertext;
 
+
+// _BEGIN_(1)-------------- [ M1: SEND_DELETE_REQUEST_TO_SERVER ] --------------
+
     readFilenameInput(filename, "Insert the name of the file you want to Delete: ");
 
-    // === Preparazione Invio Dati e Cifratura  ===
+    // === Preparing Data Sending and Encryption  ===
     plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
 
     this->active_session->createAAD(aad.data(), DELETE_REQ);
@@ -1305,9 +1266,6 @@ Client::deleteFile()
                         cyphertext.begin() + payload_size);
     cyphertext.fill('0');
 
-
-// _BEGIN_(1)-------------- [ M1: INVIO_RICHIESTA_DELETE_AL_SERVER ] --------------
-
     if(sendMsg(payload_size) != 1)
     {
         cout<<"Error during send phase (C->S)"<<endl;
@@ -1322,7 +1280,10 @@ Client::deleteFile()
         return -1;
     }
 
-// _END_(1))-------------- [ M1: INVIO_RICHIESTA_DELETE_AL_SERVER ] --------------
+// _END_(1))-------------- [ M1: SEND_DELETE_REQUEST_TO_SERVER ] --------------
+
+
+// _BEGIN_(2)------ [M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] ------
 
     int aad_len;
     uint16_t opcode;
@@ -1349,7 +1310,7 @@ Client::deleteFile()
         return -1;
     }
 
-    //Ciò che ricevo dal server in termini di byte
+    //received from server in terms of byte
     plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), aad_len, plaintext.data());
 
@@ -1368,10 +1329,8 @@ Client::deleteFile()
 
         return -1;
     }
-
-// _BEGIN_(2)-------------- [M2: RICEZIONE_CONFERMA_RICHIESTA_DELETE_DAL_SERVER ] --------------
     
-    /*----- Check Response esistenza file nel Cloud Storage da parte del Server -----*/
+    /*--- Check Response existence of file in the Cloud Storage by the Server ---*/
     server_response = ((char*)plaintext.data());
     if(server_response != MESSAGE_OK)
     {       
@@ -1384,10 +1343,10 @@ Client::deleteFile()
         aad.clear();
         cyphertext.fill('0');
 
-        return;
+        return -1;
     }
     
-// _END_(2)-------------- [ M2: RICEZIONE_CONFERMA_RICHIESTA_DELETE_DAL_SERVER ] --------------
+// _END_(2)-------- [ M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] --------
         
     
     cout << "Are you sure you want to delete the file??: [y/n]\n\n "<<endl;
@@ -1431,7 +1390,7 @@ Client::deleteFile()
 
     if(choice == "N" || choice == "n")
     {
-        //--Annullamento Delete operation
+        //--termination Delete_Operation
         //terminate();
 
         cout<<"\n\t~ The file *( "<< filename << " )* will not be deleted. ~\n\n"<<endl;
@@ -1443,11 +1402,11 @@ Client::deleteFile()
         aad.clear();
         cyphertext.fill('0');
         
-        return -1;
+        return;
     }
         
     
-//--Invio della scelta presa dall'utente al server--
+// _BEGIN_(3)-------------- [ M3: SEND_USER-CHOICE_TO_SERVER ] --------------
     
     // === Cleaning ===
     plaintext.assign(plaintext.size(), '0');
@@ -1459,7 +1418,7 @@ Client::deleteFile()
     aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
     plaintext.resize(MAX_BUF_SIZE);
 
-    // === Preparazione Invio Dati e Cifratura Per ===    
+    // === Preparing Data Sending and Encryption ===    
     this->active_session->createAAD(aad.data(), DELETE_CONFIRM);
     
     plaintext.insert(plaintext.begin(), choice.begin(), choice.end());
@@ -1482,7 +1441,6 @@ Client::deleteFile()
                         cyphertext.begin() + payload_size);
     cyphertext.fill('0');
 
-// _BEGIN_(4)-------------- [ M3: INVIO_SCELTA-UTENTE_AL_SERVER ] --------------
 
     if(sendMsg(payload_size) != 1)
     {
@@ -1498,8 +1456,10 @@ Client::deleteFile()
         return -1;
     }
     
-// _END_(4)-------------- [ M3: INVIO_SCELTA-UTENTE_AL_SERVER ] --------------
+// _END_(3)-------------- [ M3: SEND_USER-CHOICE_TO_SERVER] --------------
 
+
+//_BEGIN_(4)---------- [M4: RECEIVE_CONFIRMATION_DELETE_OPERATION_FROM_SERVER ] ----------
 
     // === Reuse of vectors declared at the beginning ===
     aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
@@ -1520,13 +1480,13 @@ Client::deleteFile()
         return -1;
     }
 
-    //Ciò che ricevo dal server in termini di byte
+    //received from server in terms of byte
     plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), aad_len, plaintext.data());
 
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
-    if(opcode != DELETE_CONFIRM)
+    if(opcode != END_OP)
     {
         cout<<"Error! Exiting DELETE phase"<<endl;
 
@@ -1539,15 +1499,12 @@ Client::deleteFile()
         
         return -1;
     }
-
-
-// _BEGIN_(2)-------------- [M4: RICEZIONE_CONFERMA_DELETE_DAL_SERVER ] --------------
     
     server_response = ((char*)plaintext.data());
     
-    cout<<"\nEND Operaton Msg: "<< server_response <<endl;
+    cout<<"\nEND_DELETE_OPERATION_MSG: "<< server_response <<endl;
 
-// _END_(2)-------------- [ M4: RICEZIONE_CONFERMA_DELETE_DAL_SERVER ] --------------
+//_END_(4)----------- [ M4: RECEIVE_CONFIRMATION_DELETE_OPERATION_FROM_SERVER ] -----------
 
     // === Cleaning ===
     plaintext.assign(plaintext.size(), '0');
