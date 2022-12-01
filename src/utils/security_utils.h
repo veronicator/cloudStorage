@@ -82,7 +82,7 @@ class Session {
         ~Session(); //deallocare tutti i vari buffer utilizzati: session_key ecc
 
         // Session utils
-        uint createAAD(unsigned char* aad, uint16_t opcode); // return aad_len
+        uint32_t createAAD(unsigned char* aad, uint16_t opcode); // return aad_len
         // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input and put in "input" string
 
         EVP_PKEY* get_peerKey();
@@ -99,16 +99,16 @@ class Session {
         bool generateECDHKey();    //generate ECDH key pair
         int deriveSecret();
 
-        uint32_t serializePubKey(EVP_PKEY* key, unsigned char*& buf_key);
-        void deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key); 
+        long serializePubKey(EVP_PKEY* key, unsigned char*& buf_key);
+        int deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key); 
    
         bool checkCounter(uint32_t counter);
         //void sendMsg(const unsigned char* buffer, uint32_t msg_dim);
         //int receiveMsg(unsigned char *&rcv_buffer);
 
-        uint32_t encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, int aad_len, unsigned char *output);  // encrypt message to send and return message length
+        uint32_t encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output);  // encrypt message to send and return message length
         //unsigned int decryptMsg(unsigned char *ciphertext, int ct_len, int aad_len, unsigned char *plaintext, unsigned char *rcv_iv, unsigned char *tag);  // dencrypt received message and return message (pt) length
-        uint32_t decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, int &aad_len, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
+        uint32_t decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
         
         int fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf);    // return payload size
         //encrypt/decrypt()

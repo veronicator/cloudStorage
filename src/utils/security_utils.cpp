@@ -1,5 +1,6 @@
 #include "security_utils.h"
 
+/*
 void handleErrors() {   
     perror("An error occurred\n"); 
     exit(1);
@@ -13,12 +14,13 @@ void handleErrors(const char *error) {
     exit(1);
 }
 
-/* manage the error and close the socket used with the client that has the error */
+// manage the error and close the socket used with the client that has the error //
 void handleErrors(const char *error, int sockd) {
     perror(error);
     close(sockd);
     pthread_exit(NULL);
 }
+*/
 
 
 /********************************************************************/
@@ -53,7 +55,7 @@ void readFilenameInput(string& input, string msg) {
 
 
 void readInput(string& input, const int MAX_SIZE, string msg = "") {
-    string ok_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!";
+    string ok_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&";
     bool ok = false;
     do {
         if(!msg.empty())
@@ -65,7 +67,7 @@ void readInput(string& input, const int MAX_SIZE, string msg = "") {
         }
         if(input.length() == 0 || input.length() > MAX_SIZE || input.find_first_not_of(ok_chars) != string::npos) {
             cout << "Error: insert number of characters between 1 and " << MAX_SIZE << " without spaces\n";
-            cout <<"Allowev characters: " << ok_chars << endl;
+            cout <<"Allowed characters: " << ok_chars << endl;
             ok = false; 
         }
         else
@@ -150,6 +152,7 @@ EVP_PKEY* Session::retrievePrivKey(string path) {
  * @msg_digest: result of the hashing
 */
 int Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msg_digest) {
+    cout << "computeHash" << endl;
     unsigned int dig_len;    // digest length
 
     // create & init context
@@ -162,7 +165,7 @@ int Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msg_di
     // allocate mem for digest
     msg_digest = (unsigned char*)malloc(DIGEST_SIZE);
     if(!msg_digest){
-        perror("Malloc error");
+        perror("Malloc error msg_digest");
         return -1;
     }
     //hashing: init, update, finalize digest
@@ -190,13 +193,8 @@ long Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, 
     EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
     if(!md_ctx) { 
         cerr << "Error: EVP_MD_CTX_new returned NULL\n"; 
-        //exit(1); 
         return -1;
     }
-
-    // allocate buffer for signature
-    //dig_sign = (unsigned char*)malloc(EVP_PKEY_size(privK));
-    //if(!dig_sign) { cerr << "Error: malloc returned NULL (signature too big?)\n"; exit(1); }
 
     // sign the pt
     // perform a single update on the whole pt, assuming that the pt is not huge
@@ -326,7 +324,7 @@ int Session::deriveSecret() {
     cout << "session->deriveSecret" << endl;
     // shared secret derivation: create context and buffer 
     EVP_PKEY_CTX* derive_ctx;
-    unsigned char* shared_secret;
+    unsigned char* shared_secret = nullptr;
     size_t secret_len;
 
     if(!(derive_ctx = EVP_PKEY_CTX_new(ECDH_myKey, NULL))) {  // secret derivation
@@ -352,7 +350,7 @@ int Session::deriveSecret() {
     // derive shared secret
     shared_secret = (unsigned char*)malloc(secret_len);
     if(!shared_secret) {
-        perror("Malloc error");
+        perror("Malloc error shared_secret");
         return -1;
     }
     if(EVP_PKEY_derive(derive_ctx, shared_secret, &secret_len) <= 0) {
@@ -376,22 +374,23 @@ int Session::deriveSecret() {
 
 /********************************************************************/
 
-unsigned int Session::serializePubKey(EVP_PKEY* key, unsigned char*& buf_key) {
+long Session::serializePubKey(EVP_PKEY* key, unsigned char*& buf_key) {
     cout << "session->serializePubKey" << endl;
-    unsigned char* buf;
+    unsigned char* buf = nullptr;
     BIO* mBio = BIO_new(BIO_s_mem());
     if(!mBio) {
         cerr << "Error: BIO_new returned null\n";
-        exit(1);
+        return -1;
     }
     if(PEM_write_bio_PUBKEY(mBio, key) != 1) {
         cerr << "Error: PEM_write_bio_PUBKEY failed\n";
-        exit(1);
+        return -1;
     }
-    unsigned int key_size = BIO_get_mem_data(mBio, &buf);
+    uint32_t key_size = BIO_get_mem_data(mBio, &buf);
     buf_key = (unsigned char*)malloc(key_size);
     if(!buf_key) {
-        perror("Malloc error");
+        perror("Malloc error buf_key");
+        return -1;
     }
     memcpy(buf_key, buf, key_size);
 
@@ -399,52 +398,39 @@ unsigned int Session::serializePubKey(EVP_PKEY* key, unsigned char*& buf_key) {
 
     if(key_size < 0) {
         cerr << "Error: BIO_get_mem_data failed\n"; 
-        exit(1);
+        return -1;
     }
     cout << "session->serializePubKey end" << endl;
     return key_size;
 }
 
-void Session::deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key) {
+int Session::deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key) {
     BIO* mBio = BIO_new(BIO_s_mem());
     if(!mBio) {
         cerr << "Error: BIO_new returned null\n";
-        exit(1);
+        return -1;
     }
     if(BIO_write(mBio, buf_key, key_size) <= 0) {
         cerr << "Error: BIO_write failed\n";
-        exit(1);
+        return -1;
     }
     key = PEM_read_bio_PUBKEY(mBio, NULL, NULL, NULL);
     BIO_free(mBio);
     
     if(!key) {
         cerr << "Error: PEM_read_bio_PUBKEY returned NULL\n";
-        exit(1);
+        return -1;
     }
+    return 1;
 }
 
 bool Session::checkCounter(uint32_t counter) {
     return counter == rcv_counter;
 }
-/*
-void Session::sendMsg(const unsigned char* buffer, uint32_t msg_dim) {
-    //incrementa contatore invio
-    cout << "session->sendMsg" << endl;
-    return;
-}
 
-int Session::receiveMsg(unsigned char *&buffer) {
-    // controllare lunghezza messaggio, se <= msg_size + numeric_field_size => errore
-    // verifica contatore ricezione
-    // incrementa contatore ricezione
-    //return received message length
-    return 0;
-}
-*/
 /********************************************************************/
 
-uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, int aad_len, unsigned char *output) {
+uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output) {
     cout << "session->encryptMsg pt_len " << pt_len << endl;
     EVP_CIPHER_CTX *ctx;
     int len = 0;
@@ -485,7 +471,7 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     
     // provide any AAD data. this can be called zero or more time as required
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
-    if(EVP_EncryptUpdate(ctx, NULL, &len, aad, aad_len) != 1) {
+    if(EVP_EncryptUpdate(ctx, NULL, &len, aad, AAD_LEN) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         perror("EVP_EncryptUpdate AAD failed");
         return 0;
@@ -538,15 +524,15 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
 }
 
 
-uint32_t Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, int &aad_len, unsigned char *plaintext) {
+uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsigned char *aad, unsigned char *plaintext) {
     cout << "session->decryptMsg" << endl;
     EVP_CIPHER_CTX *ctx;
-    int ct_len; // va calcolata dopo aver letto aad_len -> ct_len = msg_size - IV_LEN - aad_len - TAG_SIZE
+    int ct_len;
     int len = 0;    // numero di byte decifrati ad ogni giro
-    int pt_len = 0;
+    uint32_t pt_len = 0;
     int ret;
 
-    unsigned char *ciphertext;   
+    unsigned char *ciphertext = nullptr;   
     unsigned char *rcv_iv = (unsigned char*)malloc(IV_LEN);
     if(!rcv_iv) {
         perror("Malloc error rcv_iv");
@@ -558,66 +544,72 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned
         return 0;
     }
 
-    /*
-    TODO
-    togliere aad_len, perché l'aad ha dimensione fissa -> non necessario
-    modificare e fixare tutto di conseguenza
-    -> togliere anche l'argomento nella chiamata di funzione
-    */
+ 
     // read fields in buffer
-    int read_bytes = 0;
+    uint32_t read_bytes = 0;
     memcpy(rcv_iv, input_buffer, IV_LEN);
     read_bytes += IV_LEN;
 
-    uint32_t counter = *(unsigned int*)(input_buffer + read_bytes);
+    uint32_t counter = *(uint32_t*)(input_buffer + read_bytes);
     if(!checkCounter(counter)) {
         perror("received counter not valid");
         return 0;
     }
     incrementCounter(rcv_counter);
    
-    mempcpy(aad, input_buffer + read_bytes, aad_len);
-    read_bytes += aad_len;
+    mempcpy(aad, input_buffer + read_bytes, AAD_LEN);
+    read_bytes += AAD_LEN;
     
-    ct_len = msg_size - aad_len - IV_LEN - TAG_SIZE;
-    if(ct_len <= 0)
-        handleErrors("field length not valid");
+    ct_len = payload_size - AAD_LEN - IV_LEN - TAG_SIZE;
+    if(ct_len <= 0) {
+        cerr << "negative ct length not valid" << endl;
+        return 0;
+    }
     ciphertext = (unsigned char*)malloc(ct_len);
-    if(!ciphertext)
-        handleErrors("Malloc error");
+    if(!ciphertext) {
+        perror("Malloc error ct");
+        return 0;
+    }
     mempcpy(ciphertext, input_buffer + read_bytes, ct_len);
     read_bytes += ct_len;
 
     mempcpy(tag, input_buffer + read_bytes, TAG_SIZE);
     read_bytes += TAG_SIZE;
 
-    if(read_bytes != msg_size)
-        handleErrors("read_bytes error");
+    if(read_bytes != payload_size) {
+        cerr << "read_bytes error" << endl;
+        return 0;
+    }
 
     // create and initialise the context
-    if(!(ctx = EVP_CIPHER_CTX_new()))
-        handleErrors("create ctx dec");
+    if(!(ctx = EVP_CIPHER_CTX_new())) {
+        perror("EVP_CIPHER_CTX_new failed");
+        return 0;
+    }
+
     if(EVP_DecryptInit(ctx, CIPHER_AE, session_key, rcv_iv) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("initialise ctx dec op");
+        perror("EVP_DecryptInit failed");
+        return 0;
     }
     
     // provide any AAD data
-    if(EVP_DecryptUpdate(ctx, NULL, &len, aad, aad_len) != 1) {
+    if(EVP_DecryptUpdate(ctx, NULL, &len, aad, AAD_LEN) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("dec update aad");
+        perror("EVP_DecryptUpdate failed");
+        return 0;
     }
     // provide the msg to be decrypted and obtain the pt output
     if(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ct_len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("dec update pt");
+        perror("EVP_DecryptUpdate failed");
     }
     pt_len += len;
     
     // set expected tag value
     if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, TAG_SIZE, tag) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("ctrl set tag");
+        perror("EVP_CIPHER_CTX_ctrl failed");
     }
     
     /* finalise the decryption: a positive return value indicates success 
@@ -640,37 +632,6 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned
 
 /********************************************************************/
 
-int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf) {
-    unsigned char *aad = (unsigned char*)malloc(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
-    if(!aad)
-        handleErrors("Malloc error");
-    cout << sizeof(*aad) << " aad size " << NUMERIC_FIELD_SIZE + OPCODE_SIZE << endl;
-    // BIO_dump_fp(stdout, (const char*)aad, (NUMERIC_FIELD_SIZE + OPCODE_SIZE)); 
-    unsigned int aad_len = createAAD(aad, FILE_LIST);
-    // BIO_dump_fp(stdout, (const char*)aad, (NUMERIC_FIELD_SIZE + OPCODE_SIZE)); 
-
-    cout << "session->userList" << endl;
-    size_t buffer_size = IV_LEN + NUMERIC_FIELD_SIZE + aad_len + pt_len + BLOCK_SIZE + TAG_SIZE;
-    if(buffer_size > MAX_BUF_SIZE)
-        handleErrors("Message size too big");
-    if(!output_buf) {
-        output_buf = (unsigned char*)malloc(NUMERIC_FIELD_SIZE + buffer_size);
-        if(!output_buf)
-            handleErrors("Malloc error");
-    }
-    int payload_size = encryptMsg(plaintext, pt_len, aad, aad_len, output_buf + NUMERIC_FIELD_SIZE);
-    // cout << "session->userList2" << endl;
-    memcpy(output_buf, (unsigned char*)&payload_size, NUMERIC_FIELD_SIZE);
-    // cout << "session->userList3" << endl;
-    free(aad);
-
-#pragma optimize("", off)
-    memset(plaintext, 0,pt_len);
-#pragma optimize("", on)
-    free(plaintext);
-
-    return payload_size;
-}
 
 Session::~Session(){
     //TODO: check if everything is deallocated
