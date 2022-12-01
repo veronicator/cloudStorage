@@ -877,9 +877,9 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
         ack_msg = "Filename not correct";
     }
 
-    if(searchFile(filename, ui->username) == -1){
-        cerr<<"File not present"<<endl;
-        ack_msg = "File not present";
+    if(searchFile(filename, ui->username) >= 0){
+        cerr<<"Filename already present"<<endl;
+        ack_msg = "Filename already present";
         file_ok = false;
     }
 

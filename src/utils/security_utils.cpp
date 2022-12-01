@@ -23,6 +23,20 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
+bool searchDir(string dir_name){
+    string path = "userStorage/";
+    for (const auto& entry : std::filesystem::directory_iterator(path)){
+        const std::string s = entry.path();
+        std::regex rgx("[^/]*$");
+        std::smatch match;
+
+        if (std::regex_search(s, match, rgx))
+            if(string(match[0]) == dir_name)
+                return true;
+    }
+    return false;
+}
+
 uint64_t searchFile(string filename, string username){
     string path = "./users/" + username +"/" + filename;
     struct stat buffer;

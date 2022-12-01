@@ -767,8 +767,6 @@ int Client::receiveFileList() {
 
         opcode = ntohs(*(uint16_t*)(aad.data()+NUMERIC_FIELD_SIZE));
 
-        //TODO if the list of file exceed the sace available in a single message
-
         if(opcode == FILE_LIST)
             cout<<((char*)plaintext.data());
         else if(opcode == END_OP){
