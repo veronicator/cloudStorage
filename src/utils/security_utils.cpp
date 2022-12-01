@@ -44,7 +44,7 @@ uint64_t searchFile(string filename, string username){
         cerr<<"File not present"<<endl;
         return -1;
     }
-    if(buffer.st_size > MAX_FILE_DIMENSION){
+    if(buffer.st_size >= MAX_FILE_DIMENSION){
         cerr<<"File too big"<<endl;
         return -2;
     }

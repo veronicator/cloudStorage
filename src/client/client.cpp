@@ -907,8 +907,12 @@ int Client::uploadFile(){
     readFilenameInput(filename, "Insert filename: ");
     file_dim = searchFile(filename, this->username);
 
-    if(file_dim >= MAX_FILE_DIMENSION  || file_dim < 0){
-        cout << "File is too big! Upload terminated"<<endl;
+    if(file_dim < 0 && file_dim != -1){
+        cerr << "File is too big! Upload terminated" << endl;
+        return -1;
+    }
+    else if  (file_dim == -1){
+        cerr << "File not found! Upload not possible" << endl;
         return -1;
     }                      
 
