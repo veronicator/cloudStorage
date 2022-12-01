@@ -167,7 +167,7 @@ void Server::client_thread_code(int sockd) {
 
     long ret;
     bool retb;
-
+    // todo: check if the user is already registered on the server
     retb = authenticationClient(sockd);
 
     if(!retb) {
@@ -367,8 +367,7 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     // M2 (Authentication)
     cout << "server->sendCertSign" << endl;
-    
-    //array<unsigned char, MAX_BUF_SIZE> buffer_temp;  // support array
+    long ret = 0;
     
     uint32_t payload_size = 0;
     uint32_t payload_size_n;    // this second variable is needed for the network format of the number and the first one cannot be overwritten
@@ -433,10 +432,16 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     }
     usr->client_session->generateECDHKey();
 
-    ECDH_srv_key_size = usr->client_session->serializePubKey (
+    ret = usr->client_session->serializePubKey (
                                     usr->client_session->ECDH_myKey, ECDH_srv_pub_key);
     //BIO_dump_fp(stdout, (const char*)ECDH_srv_pub_key, ECDH_srv_key_size);
     // cout << "after serialize pub" << endl;
+
+    if (ret < 0) {
+        cerr << "serializePubKey failed " << endl;
+        return false;
+    }
+    ECDH_srv_key_size = ret;
 
     // prepare message to sign
     msg_to_sign.reserve(NONCE_SIZE + ECDH_srv_key_size);
@@ -573,7 +578,6 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     if(payload_size <= 0) {
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
-        //close(sockd);
         usr->recv_buffer.clear();
         //close(sockd);
         //pthread_exit(NULL);
@@ -619,7 +623,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         usr->recv_buffer.clear();
         return false;
     }
-    cout << "nonce verified" << endl;
+    cout << "Received nonce verified" << endl;
     /* | ecdh_size | ecdh_Pubk | digital signature |
     */
     if(start_index >= usr->recv_buffer.size() - (uint)NUMERIC_FIELD_SIZE) {
@@ -729,7 +733,6 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 int Server::sendFileList(int sockd) {
     uint32_t payload_size, payload_size_n;
     UserInfo* ui;
-    const string path = path_file + ui->username + "/";
     string file_list = "";
     vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);
@@ -742,6 +745,8 @@ int Server::sendFileList(int sockd) {
         cerr<<"Impossible to find the user"<<endl;
         return -1;
     }
+    
+    const string path = path_file + ui->username + "/";
 
     for (const auto& entry : fs::directory_iterator(path)){
         const std::string s = entry.path();
@@ -761,7 +766,7 @@ int Server::sendFileList(int sockd) {
         else
             ui->client_session->createAAD(aad.data(), FILE_LIST);
 
-        payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+        payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
         payload_size_n = htonl(payload_size);
 
         aad.assign(aad.size(), '0');
@@ -831,7 +836,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
     }
 
     size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
-    int received_len, pt_len, aad_len;
+    int received_len, pt_len;
     uint16_t opcode;
     vector<unsigned char> aad;
     array<unsigned char, MAX_BUF_SIZE> plaintext;
@@ -845,7 +850,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
             return -1;
         }
 
-        pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+        pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), plaintext.data());
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
             outfile.close();
@@ -902,11 +907,9 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     if(!file_ok){
         cerr<<"file not correct! Reception of the file terminated"<<endl;
         ack_msg = "Filename not correct";
-    }
-
-    if(searchFile(filename, ui->username) == -1){
-        cerr<<"File not present"<<endl;
-        ack_msg = "File not present";
+    } else if(searchFile(filename, ui->username) >= 0) {
+        cerr<<"File already present"<<endl;
+        ack_msg = "File already present";
         file_ok = false;
     }
 
@@ -915,7 +918,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
-    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     payload_size_n = htonl(payload_size);
 
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
@@ -933,7 +936,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
         
     output.fill('0');
     aad.assign(aad.size(), '0');
-    aad.clear();
+    // aad.clear();
     plaintext.assign(plaintext.size(), '0');
     plaintext.clear();
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
@@ -951,7 +954,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     ui->client_session->createAAD(aad.data(), END_OP);
     ack_msg = OP_TERMINATED;
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
-    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     payload_size_n = htonl(payload_size);
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
@@ -971,7 +974,7 @@ void Server::downloadFile() {
 int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     string old_filename, new_filename;
     uint32_t old_name_len;
-    string ack_msg;
+    string ack_msg = "";
     uint32_t payload_size, payload_size_n;
     vector<unsigned char> aad(AAD_LEN);
     array<unsigned char, MAX_BUF_SIZE> output;
@@ -999,18 +1002,18 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     if(!file_ok){
         cerr<<"Filename not correct! Rename terminated"<<endl;
         ack_msg = "Filename not correct";
-    }
+    } else {
+        if(searchFile(old_filename, ui->username) == -1) {
+            cerr << "Filename to change doesn't correspond to any file"<<endl;
+            ack_msg = "Filename to change doesn't correspond to any file\n";
+            file_ok = false;
+        }
 
-    if(searchFile(old_filename, ui->username) == -1){
-        cerr << "Filename to change doesn't correspond to any file"<<endl;
-        ack_msg = "Filename to change doesn't correspond to any file";
-        file_ok = false;
-    }
-
-    if(searchFile(new_filename, ui->username) != -1){
-        cerr << "The new filename is already used by another file" << endl;
-        ack_msg = "The new filename is already used by another file";
-        file_ok = false;
+        if(searchFile(new_filename, ui->username) >= 0){
+            cerr << "The new filename is already used by another file" << endl;
+            ack_msg += "The new filename is already used by another file\n";
+            file_ok = false;
+        }
     }
     
     if(file_ok)
@@ -1018,7 +1021,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     
     ui->client_session->createAAD(aad.data(), END_OP);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
-    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), ui->send_buffer.data());
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ui->send_buffer.data());
     payload_size_n = htonl(payload_size);
 
     aad.assign(aad.size(), '0');
