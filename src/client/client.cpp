@@ -253,7 +253,6 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     //cout << "start index " << start_index << endl;
     if(opcode != LOGIN) {
         if(opcode == ERROR) {
-            //string errorMsg((const char*)recv_buffer.data() + start_index, payload_size - OPCODE_SIZE);
             string errorMsg(recv_buffer.begin() + start_index, recv_buffer.end());
             cerr << errorMsg << endl;
         } else {
@@ -261,14 +260,19 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         }
         
         recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();    //fill('0');
+        recv_buffer.clear();
 
         return false;
     }
-    //cout << opcode << " received opcode client" << endl;
+
+    if(start_index >= recv_buffer.size() - (uint)NONCE_SIZE - (uint)NONCE_SIZE) {
+        cerr << "Received msg size error" << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        recv_buffer.clear();
+        return false;
+    }
 
     // retrieve & check client nonce
-    //received_nonce.reserve(NONCE_SIZE);
     received_nonce.insert(received_nonce.begin(), 
                         recv_buffer.begin() + start_index, 
                         recv_buffer.begin() + start_index + NONCE_SIZE);
@@ -288,8 +292,6 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         return false;
     }
     cout << "Received nonce verified!" << endl;
-    // memset(nonce, 0, NONCE_SIZE);
-    //free(nonce);
 
     // retrieve server nonce
     srv_nonce.insert(srv_nonce.begin(), 
@@ -298,10 +300,24 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     //memcpy(srv_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);   // server nonce
     start_index += NONCE_SIZE;
 
+    if(start_index >= recv_buffer.size() - (uint)NUMERIC_FIELD_SIZE) {
+        cerr << "Received msg size error " << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        recv_buffer.clear();
+        return false;
+    }
+
     // retrieve server cert
     cert_size = *(uint32_t*)(recv_buffer.data() + start_index);
     cert_size = ntohl(cert_size);
     start_index += NUMERIC_FIELD_SIZE;
+    
+    if(start_index >= recv_buffer.size() - cert_size) {
+        cerr << "Received msg size error " << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        recv_buffer.clear();
+        return false;
+    }
 
     // get server certificate
     temp_buffer.insert(temp_buffer.begin(), 
@@ -326,11 +342,25 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     //memset(buffer.data(), '0', buffer.size());
     temp_buffer.assign(temp_buffer.size(), '0');
     temp_buffer.clear();
+    
+    if(start_index >= recv_buffer.size() - (uint)NUMERIC_FIELD_SIZE) {
+        cerr << "Received msg size error " << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        recv_buffer.clear();
+        return false;
+    }
 
     // retrieve ECDH server pub key: size + key
     ECDH_key_size = *(uint32_t*)(recv_buffer.data() + start_index);
     ECDH_key_size = ntohl(ECDH_key_size);
     start_index += NUMERIC_FIELD_SIZE;
+    
+    if(start_index >= recv_buffer.size() - ECDH_key_size) {
+        cerr << "Received msg size error " << endl;
+        recv_buffer.assign(recv_buffer.size(), '0');
+        recv_buffer.clear();
+        return false;
+    }
 
     //get key
     ECDH_server_key.insert(ECDH_server_key.begin(), 
@@ -710,7 +740,7 @@ int Client::requestFileList() {
     plaintext.insert(plaintext.begin(), msg.begin(), msg.end());
 
     this->active_session->createAAD(aad.data(), FILE_LIST);
-    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     payload_size_n = htonl(payload_size);
         
     clear_vec_vec_sendbuff(aad, plaintext);
@@ -738,14 +768,11 @@ int Client::requestFileList() {
 }
 
 int Client::receiveFileList() {
-    vector<unsigned char> aad;
-    vector<unsigned char> plaintext;
-    int received_len, aad_len, pt_len;
+    vector<unsigned char> aad(AAD_LEN);
+    vector<unsigned char> plaintext(MAX_BUF_SIZE);
+    int received_len, pt_len;
     uint16_t opcode;
     string filelist = "";
-
-    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
-    plaintext.resize(MAX_BUF_SIZE);
 
     while(true){
         received_len = receiveMsg();
@@ -753,7 +780,7 @@ int Client::receiveFileList() {
             cerr<<"Error! Exiting receive file list phase"<<endl;
             return -1;
         }
-        pt_len = this->active_session->decryptMsg(recv_buffer.data(), recv_buffer.size(), aad.data(), aad_len, plaintext.data());
+        pt_len = this->active_session->decryptMsg(recv_buffer.data(), recv_buffer.size(), aad.data(), plaintext.data());
 
         opcode = ntohs(*(uint16_t*)(aad.data()+NUMERIC_FIELD_SIZE));
 
@@ -783,7 +810,7 @@ void Client::logout() {
     plaintext.insert(plaintext.begin(), msg.begin(), msg.end());
     this->active_session->createAAD(aad.data(), LOGOUT);
 
-    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     payload_size_n = htonl(payload_size);
 
     clear_vec_vec_sendbuff(aad, plaintext);
@@ -861,7 +888,7 @@ uint32_t Client::sendMsgChunks(string filename){
             return -1;
         }
 
-        payload_size = this->active_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), aad.size(), output.data());
+        payload_size = this->active_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), output.data());
         payload_size_n = htonl(payload_size);
 
         clear_vec_array(aad, frag_buffer.data(), frag_buffer.size());
@@ -914,7 +941,7 @@ int Client::uploadFile(){
     //send the basic information of the upload operation
     //to be sent: payload_size | IV | count_cs | opcode | {output}_Kcs | TAG
 
-    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     payload_size_n = htonl(payload_size);
 
     //clear aad, plaintext and send_buffer
@@ -936,7 +963,7 @@ int Client::uploadFile(){
     //receive from the server the response to the upload request
     //received_len:  legnht of the message received from the server
     //server_response: message from the server containing the response to the request
-    int aad_len, pt_len;                                                          
+    int pt_len;                                                          
     uint16_t opcode;
     uint32_t ret;  
     uint64_t received_len;
@@ -951,7 +978,7 @@ int Client::uploadFile(){
         return -1;
     }
 
-    pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+    pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
     
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
     if(opcode != UPLOAD_REQ){
@@ -984,7 +1011,7 @@ int Client::uploadFile(){
         return -1;
         }
         
-        pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+        pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
         if(opcode != END_OP){
             cerr<<"Error! Exiting upload phase"<<endl;
@@ -1029,7 +1056,7 @@ int Client::renameFile(){
 
     this->active_session->createAAD(aad.data(), RENAME_REQ);
 
-    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), aad.size(), output.data());
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     payload_size_n = htonl(payload_size);
 
     //clear aad, plaintext and send_buffer
@@ -1054,7 +1081,7 @@ int Client::renameFile(){
 
     uint16_t opcode;
     uint32_t received_len;
-    int pt_len, aad_len;
+    int pt_len;
     string server_response;
 
     received_len = receiveMsg();
@@ -1063,7 +1090,7 @@ int Client::renameFile(){
         return -1;
     }
 
-    pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), aad_len, plaintext.data());
+    pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
     opcode = ntohs(*(uint16_t*)aad.data() + NUMERIC_FIELD_SIZE);
     if(opcode != END_OP){
         cerr << "Error! Exiting rename request phase"<<endl;
