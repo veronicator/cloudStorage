@@ -913,7 +913,7 @@ Client::downloadFile()
     if (checkFileExist(filename, this->username, FILE_PATH_CL)!=0)
     {
         string choice;
-        
+
         cout << "The requested file already exists in the Download folder, do you want to overwrite it?: [y/n]\n\n "<<endl;
         cout<<"_Ans: ";
         getline(cin, choice);
@@ -1031,7 +1031,7 @@ Client::downloadFile()
         return -1;
     }
 
-// _BEGIN_(2)-------------- [M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] --------------
+// _BEGIN_(2)------ [M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] ------
     
     /*--- Check Response file existence in the Cloud Storage by the Server ---*/
     server_response = ((char*)plaintext.data());
@@ -1049,7 +1049,7 @@ Client::downloadFile()
         return -1;
     }
     
-// _END_(2)-------------- [ M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] --------------
+// _END_(2)------ [ M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] )------
 
     cout << "\nThe requested file is in the cloud storage and can be downloaded."<<endl;
     cout<<"\n\t ...Download file " + filename +" in progress...\n\n"<<endl;  
