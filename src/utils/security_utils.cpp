@@ -652,6 +652,43 @@ removeFile(string filename, string username, string path_side)
     */
 }
 
+void
+print_progress_bar(int total, unsigned int fragment)
+{
+    cout << "\r" << "[Fragment " << fragment + 1 << " of " << total << "]";
+	cout.flush();
+    
+    /*
+        - Possibile alternativa -
+        void
+        progress_bar(int fragment)
+        {        
+            //while (fragment < 1)
+            //{
+                int barWidth = 70;
+
+                cout << "[";
+        
+                int pos = barWidth * fragment;
+                for (size_t i = 0; i < barWidth; ++i)
+                {
+                    if (i < pos)
+                        cout << "=";
+                    else if (i == pos)
+                        cout << ">";
+                    else
+                        cout << " ";
+                }
+        
+            cout << "] " << int(fragment+1) << " %\r";
+            cout.flush();
+
+            fragment += 0.16; // for demonstration only
+        //}
+        }
+    */
+}
+
 /********************************************************************/
 
 int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf) {
