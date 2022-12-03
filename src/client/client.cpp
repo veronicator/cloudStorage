@@ -930,20 +930,17 @@ Client::downloadFile()
             if(!cin)
             {   cerr << "\n === Error during input ===\n" << endl; return -1; }
         }
-
         if(choice == "N" || choice == "n")
         {
             //--Canceling Download operation
             //terminate();
-
             cout<<"\n\t~ The file *( "<< filename << " )* will not be overwritten. ~\n\n"<<endl;
             return;
         }
         
         if(removeFile(filename, this->username, FILE_PATH_CL) == -1)
         {
-            cout << "\n\t --- Error during Deleting file ---\n" << endl; 
-        }
+            cout << "\n\t --- Error during Deleting file ---\n" << endl; }
     }
     
     // === Preparing Data Sending and Encryption ===
@@ -990,7 +987,6 @@ Client::downloadFile()
 
 // _END_(1))-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------  
 
-
     int aad_len; uint16_t opcode;
     uint64_t received_len;  //Legnht of the message received from the server 
     uint32_t plaintext_len;
@@ -1035,7 +1031,6 @@ Client::downloadFile()
         return -1;
     }
 
-
 // _BEGIN_(2)-------------- [M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] --------------
     
     /*--- Check Response file existence in the Cloud Storage by the Server ---*/
@@ -1055,7 +1050,6 @@ Client::downloadFile()
     }
     
 // _END_(2)-------------- [ M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] --------------
-
 
     cout << "\nThe requested file is in the cloud storage and can be downloaded."<<endl;
     cout<<"\n\t ...Download file " + filename +" in progress...\n\n"<<endl;  
@@ -1163,7 +1157,6 @@ Client::downloadFile()
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
                         cyphertext.begin() + payload_size);
-    cyphertext.fill('0');
 
 // _BEGIN_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
 
