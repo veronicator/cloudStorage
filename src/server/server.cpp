@@ -542,13 +542,13 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
         return -1;
     }
 
-    int ret;                                                                            //bytes read by the fread function
-    size_t tot_chunks = ceil((float)buffer.st_size / FRAGM_SIZE);                       //total number of chunks needed form the upload
-    size_t to_send;                                                                     //number of byte to send in the specific msg
-    uint32_t payload_size, payload_size_n;                                              //size of the msg payload both in host and network format    
-    vector<unsigned char> aad;                                                          //aad of the msg
-    array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
-    array<unsigned char, MAX_BUF_SIZE> cyphertext;                                      //encrypted text
+    int ret;                                                                            
+    size_t tot_chunks = ceil((float)buffer.st_size / FRAGM_SIZE);                       
+    size_t to_send;                                                                     
+    uint32_t payload_size, payload_size_n;                                              
+    vector<unsigned char> aad;                                                          
+    array<unsigned char, FRAGM_SIZE> frag_buffer;                                       
+    array<unsigned char, MAX_BUF_SIZE> cyphertext;                                     
     
     //=== Managemetn Buffer ===
     frag_buffer.fill('0');
@@ -561,12 +561,12 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
         if(i == tot_chunks - 1)
         {
             to_send = buffer.st_size - i * FRAGM_SIZE;
-            ui->client_session->createAAD(aad.data(), END_OP);                        //last chunk -> END_OP opcode sent to server
+            ui->client_session->createAAD(aad.data(), END_OP);  //last chunk -> END_OP opcode
         }
         else
         {
             to_send = FRAGM_SIZE;
-            ui->client_session->createAAD(aad.data(), DOWNLOAD);                        //intermediate chunks
+            ui->client_session->createAAD(aad.data(), DOWNLOAD);  //intermediate chunks
         }
 
         ret = fread(frag_buffer.data(), sizeof(char), to_send, file);
@@ -582,7 +582,9 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
             return -1;
         }
 
-        payload_size = ui->client_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), aad.size(), cyphertext.data());
+        payload_size = ui->client_session->encryptMsg(frag_buffer.data(),
+                    frag_buffer.size(), aad.data(), aad.size(), cyphertext.data());
+
         payload_size_n = htonl(payload_size);
 
         //=== Managemetn Buffer ===
@@ -591,14 +593,14 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
         frag_buffer.fill('0');
 
         memcpy(&payload_size_n, ui->send_buffer.data(), NUMERIC_FIELD_SIZE);
-        ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, cyphertext.begin(), cyphertext.begin() + payload_size);
+        ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
+                                cyphertext.begin(), cyphertext.begin() + payload_size);
 
         //=== Managemetn Buffer ===   
         cyphertext.fill('0');
         ui->send_buffer.assign(ui->send_buffer.size(), '0');
         ui->send_buffer.clear();
         ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
-
 
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1)
         {
@@ -657,7 +659,7 @@ Server::downloadFile(int sockd, vector<unsigned char> plaintext)
         return -1;
     }
 
-// _BEGIN_(1)-------------- [ M1: SEND_CONFIRMATION_DOWNLOAD_REQUEST_TO_CLIENT ] --------------
+// _BEGIN_(1))------ [ M1: SEND_CONFIRMATION_DOWNLOAD_REQUEST_TO_CLIENT ] )------
 
     filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
 
@@ -666,20 +668,140 @@ Server::downloadFile(int sockd, vector<unsigned char> plaintext)
 
     if(!file_ok)
     {
-        cerr<<"File not correct! Termination of the Delete_Operation in progress"<<endl;
+        cerr<<"File not correct! Termination of the Download_Operation in progress"<<endl;
         ack_msg = "Filename not allowed";
     }
 
     if(checkFileExist(filename, ui->username, FILE_PATH_SV) != 0)
     {
         cerr<<"Error: this file is not present in the folder"<<endl;
-        ack_msg = "File not present in the cloud";
+        ack_msg = "File not present in the Cloud Storage";
 
         file_ok = false;
     }
 
     if(file_ok)
-    {   ack_msg = MESSAGE_OK; }
+    {   ack_msg = MESSAGE_OK; }                    
+
+    //=== Preparing Data Sending and Encryption ===
+    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+
+    ui->client_session->createAAD(aad.data(), DOWNLOAD_REQ);
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(),
+                                            aad.data(), aad.size(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+    
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+    
+    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
+                            cyphertext.begin(), cyphertext.begin() + payload_size);
+
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok)
+    {
+        cerr<<"Error during sending DOWNLOAD_REQUEST_RESPONSE phase (S->C)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+
+// _END_(1)------ [ M1: SEND_CONFIRMATION_DOWNLOAD_REQUEST_TO_CLIENT ] )------
+
+
+// _BEGIN_(2)-------------- [ M2: SEND_FILE_TO_CLIENT ] --------------
+
+    int aad_len, ptx_len;                                                          
+    uint16_t opcode;
+    uint32_t fileChunk;  
+    uint64_t received_len;
+    string client_feedback; //DOWNLOAD_TERMINATED
+
+    // === Cleaning ===
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    fileChunk = sendMsgChunks(ui->username, filename);
+
+// _END_(2)-------------- [ M2: SEND_FILE_TO_CLIENT ] --------------
+
+
+// _BEGIN_(3)---- [ M3: RECEIVE_FEEDBACK_OPERATION_FROM_CLIENT ] ----
+
+    if(fileChunk == 1)
+    {
+        aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+        plaintext.resize(MAX_BUF_SIZE);
+
+        received_len = receiveMsg(sockd, ui->recv_buffer);
+        if(received_len == 0 || received_len == -1)
+        {
+            cerr<<"Error during receive phase (C->S)"<<endl;
+            return -1;
+        }
+        
+        ptx_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len,
+                                                aad.data(), aad_len, plaintext.data());
+        opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
+        if(opcode != END_OP)
+        {
+            cerr<<"Error! Exiting DOWNLOAD_OPERATION." << endl;
+
+            aad.assign(aad.size(), '0');
+            aad.clear();
+            plaintext.assign(plaintext.size(), '0');
+            plaintext.clear();
+            
+            return -1;
+        }
+        
+        if(client_feedback != DOWNLOAD_TERMINATED)
+        {
+            cerr<<"DOWNLOAD_OPERATION interrupted. ERROR: "<<client_feedback<<endl;
+
+            aad.assign(aad.size(), '0');
+            aad.clear();
+            plaintext.assign(plaintext.size(), '0');
+            plaintext.clear();
+
+            return -1;
+        }
+    }
+    else
+    {
+        cerr<<"Error! Exiting from DOWNLOAD_OPERATION phase"<<endl;
+
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        
+        return -1;
+    }
+
+// _END_(3)---- [ M3: RECEIVE_FEEDBACK_OPERATION_FROM_CLIENT  ] ----
+
+    //=== Cleaning ===
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    cyphertext.fill('0');
+
+    return 1;
 }
 
 int
@@ -720,7 +842,7 @@ Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     if(checkFileExist(filename, ui->username, FILE_PATH_SV) != 0)
     {
         cerr<<"Error: this file is not present in the folder"<<endl;
-        ack_msg = "File not present in the cloud";
+        ack_msg = "File not present in the Cloud Storage";
 
         file_ok = false;
     }
