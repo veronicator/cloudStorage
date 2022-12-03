@@ -60,6 +60,9 @@ checkFileExist(string filename, string username, string path_side);
 int
 removeFile(string filename, string username, string path_side);
 
+void
+print_progress_bar(int total, unsigned int fragment);
+
 //int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
 /*
 struct UserInfo {
