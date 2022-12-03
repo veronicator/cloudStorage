@@ -837,43 +837,6 @@ void Client::renameFile(){
 
 //---------------------------------------------\\
 
-void
-Client::print_progress_bar(int total, unsigned int fragment)
-{
-    cout << "\r" << "[Fragment " << fragment + 1 << " of " << total << "]";
-	cout.flush();
-
-    /*
-        - Possibile alternativa -
-        void
-        progress_bar(int fragment)
-        {        
-            //while (fragment < 1)
-            //{
-                int barWidth = 70;
-
-                cout << "[";
-        
-                int pos = barWidth * fragment;
-                for (size_t i = 0; i < barWidth; ++i)
-                {
-                    if (i < pos)
-                        cout << "=";
-                    else if (i == pos)
-                        cout << ">";
-                    else
-                        cout << " ";
-                }
-        
-            cout << "] " << int(fragment+1) << " %\r";
-            cout.flush();
-
-            fragment += 0.16; // for demonstration only
-        //}
-        }
-    */
-}
-
 int
 Client::receiveMsgChunks( uint32_t filedimension, string filename)
 {
@@ -893,9 +856,13 @@ Client::receiveMsgChunks( uint32_t filedimension, string filename)
     for(int i = 0; i < tot_chunks; i++)
     {
         if(i == tot_chunks - 1)
+        {
             to_receive = filedimension - i* FRAGM_SIZE;
+        }
         else
+        {
             to_receive = FRAGM_SIZE;
+        }
 
         received_len = receiveMsg();
         if(received_len == -1 || received_len == 0)
