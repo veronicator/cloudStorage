@@ -89,7 +89,8 @@ class Server {
         downloadFile(int sockd, vector<unsigned char> plaintext);
         int
         deleteFile(int sockd, vector<unsigned char> plaintext);
-
+        int
+        sendMsgChunks(UserInfo* ui, string filename);
 
 
 
