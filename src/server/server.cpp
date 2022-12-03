@@ -598,7 +598,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
         ui->send_buffer.assign(ui->send_buffer.size(), '0');
         ui->send_buffer.clear();
         ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
-        
+
 
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1)
         {
@@ -657,7 +657,7 @@ Server::downloadFile(int sockd, vector<unsigned char> plaintext)
         return -1;
     }
 
-// _BEGIN_(1)-------------- [ M1: SEND_CONFIRMATION_DELETE_REQUEST_TO_CLIENT ] --------------
+// _BEGIN_(1)-------------- [ M1: SEND_CONFIRMATION_DOWNLOAD_REQUEST_TO_CLIENT ] --------------
 
     filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
 
