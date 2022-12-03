@@ -52,8 +52,6 @@ class Client {
     deleteFile();
     int
     receiveMsgChunks( uint32_t filedimension, string filename);
-    void
-    print_progress_bar(int total, unsigned int fragment);
 
 
 
