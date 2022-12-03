@@ -86,20 +86,6 @@ int Server::acceptConnection() {
             return -1;
         }
         cout << "Connection accepted" << endl;
-        /*
-        pthread_mutex_lock(&mutex);
-        //mtx.lock();
-        UserInfo new_usr(new_sd);
-        //connectedClient.insert(pair<int, UserInfo>(new_sd, new_usr));
-        connectedClient.insert({new_sd, new_usr});
-        cout << "connected size " << connectedClient.size() << endl;
-        //mtx.unlock();
-        pthread_mutex_unlock(&mutex);
-*/
-       // thread cl_thread(Server::client_thread_code, new_sd);
-        //threads.push_back(cl_thread);
-        //if(pthread_create(&client_thread, NULL, &client_thread_code, (void*)new_sd) != 0)
-          //  handleErrors("thread_create failed");
         
         return new_sd;
     }
@@ -109,12 +95,6 @@ int Server::acceptConnection() {
 int Server::getListener() {
     return listener_sd;
 }
-/*
-void* Server::client_thread_code(void* arg) {
-    int sd = *(int*)(arg);
-    cout << "thread socket " << sd << endl;
-}
-*/
 
 /********************************************************************/
 
@@ -193,7 +173,7 @@ void Server::client_thread_code(int sd) {
     -> end authentication */
 
     pthread_mutex_lock(&mutex);
-    connectedClient.erase(username);
+    connectedClient.erase(sockd);
     pthread_mutex_unlock(&mutex);
     
 }
@@ -543,6 +523,107 @@ void Server::joinThread() {
 
 //---------------------------------------------------------
 
+int
+Server::sendMsgChunks(UserInfo* ui, string filename)
+{
+    string path = FILE_PATH_SV + ui->username + "/" + filename;                         
+    FILE* file = fopen(path.c_str(), "rb");                                             
+    struct stat buffer;
+
+    if(!file)
+    {
+        cerr<<"Error during file opening"<<endl;
+        return -1;
+    }
+
+    if(stat(path.c_str(), &buffer) != 0)
+    {
+        cerr<<filename + "doesn't exist in " + ui->username + "folder" <<endl;
+        return -1;
+    }
+
+    int ret;                                                                            //bytes read by the fread function
+    size_t tot_chunks = ceil((float)buffer.st_size / FRAGM_SIZE);                       //total number of chunks needed form the upload
+    size_t to_send;                                                                     //number of byte to send in the specific msg
+    uint32_t payload_size, payload_size_n;                                              //size of the msg payload both in host and network format    
+    vector<unsigned char> aad;                                                          //aad of the msg
+    array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
+    array<unsigned char, MAX_BUF_SIZE> cyphertext;                                      //encrypted text
+    
+    //=== Managemetn Buffer ===
+    frag_buffer.fill('0');
+    ui->send_buffer.assign(ui->send_buffer.size(), '0');
+    ui->send_buffer.clear();
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    for(int i = 0; i < tot_chunks; i++)
+    {
+        if(i == tot_chunks - 1)
+        {
+            to_send = buffer.st_size - i * FRAGM_SIZE;
+            ui->client_session->createAAD(aad.data(), END_OP);                        //last chunk -> END_OP opcode sent to server
+        }
+        else
+        {
+            to_send = FRAGM_SIZE;
+            ui->client_session->createAAD(aad.data(), DOWNLOAD);                        //intermediate chunks
+        }
+
+        ret = fread(frag_buffer.data(), sizeof(char), to_send, file);
+
+        if(ferror(file) != 0 || ret != to_send)
+        {
+            cerr<<"ERROR while reading file"<<endl;
+
+            aad.assign(aad.size(), '0');
+            aad.clear();
+            frag_buffer.fill('0');
+
+            return -1;
+        }
+
+        payload_size = ui->client_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), aad.size(), cyphertext.data());
+        payload_size_n = htonl(payload_size);
+
+        //=== Managemetn Buffer ===
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        frag_buffer.fill('0');
+
+        memcpy(&payload_size_n, ui->send_buffer.data(), NUMERIC_FIELD_SIZE);
+        ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, cyphertext.begin(), cyphertext.begin() + payload_size);
+
+        //=== Managemetn Buffer ===   
+        cyphertext.fill('0');
+        ui->send_buffer.assign(ui->send_buffer.size(), '0');
+        ui->send_buffer.clear();
+        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+        
+
+        if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1)
+        {
+            cerr<<"Error during send phase (C->S) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
+
+            //=== Cleaining ===
+            aad.assign(aad.size(), '0');
+            aad.clear();
+            frag_buffer.fill('0');
+            cyphertext.fill('0');
+
+            return -1;
+        }
+
+        print_progress_bar(tot_chunks, i);
+    }
+
+    //=== Cleaining ===
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    frag_buffer.fill('0');
+    cyphertext.fill('0');
+    
+    return 1;
+}
 
 // TODO
 void Server::uploadFile() {
@@ -557,7 +638,48 @@ void Server::renameFile() {
 int
 Server::downloadFile(int sockd, vector<unsigned char> plaintext)
 {
+    string filename;
+    uint32_t payload_size, payload_size_n;
+    string ack_msg;
+    vector<unsigned char> aad;
+    array<unsigned char, MAX_BUF_SIZE> cyphertext;
+    bool file_ok = true;
 
+    UserInfo *ui;
+
+    try
+    {
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex)
+    {
+        cerr<<"_User NOT FOUND!_"<<endl;
+        return -1;
+    }
+
+// _BEGIN_(1)-------------- [ M1: SEND_CONFIRMATION_DELETE_REQUEST_TO_CLIENT ] --------------
+
+    filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
+
+    const auto allowed = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+    file_ok = regex_match(filename, allowed);
+
+    if(!file_ok)
+    {
+        cerr<<"File not correct! Termination of the Delete_Operation in progress"<<endl;
+        ack_msg = "Filename not allowed";
+    }
+
+    if(checkFileExist(filename, ui->username, FILE_PATH_SV) != 0)
+    {
+        cerr<<"Error: this file is not present in the folder"<<endl;
+        ack_msg = "File not present in the cloud";
+
+        file_ok = false;
+    }
+
+    if(file_ok)
+    {   ack_msg = MESSAGE_OK; }
 }
 
 int
