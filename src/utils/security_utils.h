@@ -28,6 +28,10 @@
 #include <filesystem>
 #include "symbols.h"
 #include <fstream>
+#include <cerrno>
+#include <cstring>
+#include <unistd.h>
+#include <signal.h> //for signal handler
 
 using namespace std;
 
@@ -49,19 +53,20 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 */
 //void readUsername(string& usr);
 
-void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
-
+void
+readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 void
 readFilenameInput(string& input, string msg);
-
 int32_t
 checkFileExist(string filename, string username, string path_side);
-
 int
 removeFile(string filename, string username, string path_side);
-
 void
 print_progress_bar(int total, unsigned int fragment);
+int 
+catch_the_signal(); // Register signal and signal handler
+void
+custom_act(int signum); //the function to be called when signal is sent to process (handler)
 
 //int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
 /*
