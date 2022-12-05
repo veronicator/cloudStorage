@@ -46,10 +46,6 @@ class Client {
     void downloadFile();
     int renameFile();
     void deleteFile();
-    void clear_vec_vec_sendbuff(vector<unsigned char>& aad, vector<unsigned char>& plaintext);
-    void clear_sendbuff_and_array(unsigned char* output, int output_len);
-    void clear_vec_array(vector<unsigned char>& aad, unsigned char* arr, int arr_len);
-    void clear_vec_vec(vector<unsigned char>& v1, vector<unsigned char>& v2);
 
     public:
         Client(string username, string srv_ip);

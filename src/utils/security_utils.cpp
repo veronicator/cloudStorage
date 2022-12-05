@@ -25,6 +25,43 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
+void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3){
+    v1.assign(v1.size(), '0');
+    v1.clear();
+    v2.assign(v2.size(), '0');
+    v2.clear();    
+    v3.assign(v3.size(), '0');
+    v3.clear();
+
+}
+
+void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2){
+    v1.assign(v1.size(), '0');
+    v1.clear();
+    v2.assign(v2.size(), '0');
+    v2.clear();    
+}
+
+void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len){
+    v1.assign(v1.size(), '0');
+    v1.clear();
+    memset(arr, '0', sizeof(char)*arr_len);
+}
+
+bool searchDir(string dir_name){
+    string path = "userStorage/";
+    for (const auto& entry : std::filesystem::directory_iterator(path)){
+        const std::string s = entry.path();
+        std::regex rgx("[^/]*$");
+        std::smatch match;
+
+        if (std::regex_search(s, match, rgx))
+            if(string(match[0]) == dir_name)
+                return true;
+    }
+    return false;
+}
+
 uint64_t searchFile(string filename, string username){
     string path = "./users/" + username +"/" + filename;
     struct stat buffer;
@@ -32,7 +69,7 @@ uint64_t searchFile(string filename, string username){
         cerr<<"File not present"<<endl;
         return -1;
     }
-    if(buffer.st_size > MAX_FILE_DIMENSION){
+    if(buffer.st_size >= MAX_FILE_DIMENSION){
         cerr<<"File too big"<<endl;
         return -2;
     }
