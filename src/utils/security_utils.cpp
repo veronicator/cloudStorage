@@ -496,12 +496,18 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
 
     // create and initialise the context
     if(!(ctx = EVP_CIPHER_CTX_new())) {
+        free(iv);
+        free(ciphertext);
+        free(tag);
         perror("EVP_CIPHER_CTX_new failed");
         return 0;
     }
     // initialise the encryption operation
     if(EVP_EncryptInit(ctx, CIPHER_AE, session_key, iv) != 1) {
         EVP_CIPHER_CTX_free(ctx);
+        free(iv);
+        free(ciphertext);
+        free(tag);
         perror("EVP_EncryptInit failed");
         return 0;
     }
@@ -510,12 +516,18 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     if(EVP_EncryptUpdate(ctx, NULL, &len, aad, AAD_LEN) != 1) {
         EVP_CIPHER_CTX_free(ctx);
+        free(iv);
+        free(ciphertext);
+        free(tag);
         perror("EVP_EncryptUpdate AAD failed");
         return 0;
     }
     
     if(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, pt_len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
+        free(iv);
+        free(ciphertext);
+        free(tag);
         perror("EVP_EncryptUpdate CT failed");
         return 0;
     }
@@ -523,6 +535,9 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     // finalise encryption
     if(EVP_EncryptFinal(ctx, ciphertext + ct_len, &len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
+        free(iv);
+        free(ciphertext);
+        free(tag);
         perror("EVP_EncryptFinal failed");
         return 0;
     }
@@ -530,6 +545,9 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     // get the tag
     if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, TAG_SIZE, tag) != 1) {
         EVP_CIPHER_CTX_free(ctx);
+        free(iv);
+        free(ciphertext);
+        free(tag);
         perror("EVP_CIPHER_CTX_ctrl failed");
         return 0;
     }
@@ -538,11 +556,17 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
 
     // cout << "session->encryptMsg3" << endl;
 
+    if (MAX_BUF_SIZE - IV_LEN - AAD_LEN - ct_len - TAG_SIZE < NUMERIC_FIELD_SIZE) {
+        cerr << "Error: msg too long" << endl;
+        free(iv);
+        free(ciphertext);
+        free(tag);
+        return 0;
+    }
+
     uint32_t written_bytes = 0;
     memcpy(output, iv, IV_LEN);
     written_bytes += IV_LEN;
-    //memcpy(output + written_bytes, (unsigned char*)&aad_len, NUMERIC_FIELD_SIZE);
-    //written_bytes += NUMERIC_FIELD_SIZE;
     memcpy(output + written_bytes, aad, AAD_LEN);
     written_bytes += AAD_LEN;
     // cout << "session->encryptMsg4" << endl;
@@ -552,7 +576,6 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     memcpy(output + written_bytes, tag, TAG_SIZE);
     written_bytes += TAG_SIZE;
 
-    cout << "free iv" << endl;
     free(iv);
     free(ciphertext);
     free(tag);
@@ -589,6 +612,8 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
 
     uint32_t counter = *(uint32_t*)(input_buffer + read_bytes);
     if(!checkCounter(counter)) {
+        free(rcv_iv);
+        free(tag);
         perror("received counter not valid");
         return 0;
     }
@@ -599,11 +624,15 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     
     ct_len = payload_size - AAD_LEN - IV_LEN - TAG_SIZE;
     if(ct_len <= 0) {
+        free(rcv_iv);
+        free(tag);
         cerr << "negative ct length not valid" << endl;
         return 0;
     }
     ciphertext = (unsigned char*)malloc(ct_len);
     if(!ciphertext) {
+        free(rcv_iv);
+        free(tag);
         perror("Malloc error ct");
         return 0;
     }
@@ -614,18 +643,27 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     read_bytes += TAG_SIZE;
 
     if(read_bytes != payload_size) {
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
         cerr << "read_bytes error" << endl;
         return 0;
     }
 
     // create and initialise the context
     if(!(ctx = EVP_CIPHER_CTX_new())) {
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
         perror("EVP_CIPHER_CTX_new failed");
         return 0;
     }
 
     if(EVP_DecryptInit(ctx, CIPHER_AE, session_key, rcv_iv) != 1) {
         EVP_CIPHER_CTX_free(ctx);
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
         perror("EVP_DecryptInit failed");
         return 0;
     }
@@ -633,20 +671,31 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     // provide any AAD data
     if(EVP_DecryptUpdate(ctx, NULL, &len, aad, AAD_LEN) != 1) {
         EVP_CIPHER_CTX_free(ctx);
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
         perror("EVP_DecryptUpdate failed");
         return 0;
     }
     // provide the msg to be decrypted and obtain the pt output
     if(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ct_len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
         perror("EVP_DecryptUpdate failed");
+        return 0;
     }
     pt_len += len;
     
     // set expected tag value
     if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, TAG_SIZE, tag) != 1) {
         EVP_CIPHER_CTX_free(ctx);
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
         perror("EVP_CIPHER_CTX_ctrl failed");
+        return 0;
     }
     
     /* finalise the decryption: a positive return value indicates success 
@@ -656,6 +705,9 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
    // clean up
    EVP_CIPHER_CTX_free(ctx);
    //EVP_CIPHER_CTX_cleanup(ctx);
+    free(rcv_iv);
+    free(tag);
+    free(ciphertext);
 
    if(ret > 0) {
        // success

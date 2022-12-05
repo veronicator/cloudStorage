@@ -735,7 +735,7 @@ int Server::sendFileList(int sockd) {
     UserInfo* ui;
     string file_list = "";
     vector<unsigned char> aad(AAD_LEN);
-    vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);
+    vector<unsigned char> plaintext;    //(NUMERIC_FIELD_SIZE);
     array<unsigned char, MAX_BUF_SIZE> output;     
     // retrive UserInfo relative to the client
     try{
@@ -767,11 +767,16 @@ int Server::sendFileList(int sockd) {
             ui->client_session->createAAD(aad.data(), FILE_LIST);
 
         payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+        if (payload_size == 0) {
+            cerr << " Error during encryption" << endl;
+            clear_three_vec(aad, plaintext, ui->send_buffer);
+            return -1;
+        }
         payload_size_n = htonl(payload_size);
 
         clear_three_vec(aad, plaintext, ui->send_buffer);
-        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);   
 
+        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
         memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
         ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size) ;
 
@@ -848,6 +853,12 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 
         pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), frag_buffer.data());
 
+        if (pt_len == 0) {
+            cerr << " Error during decryption" << endl;
+            clear_vec_array(aad, frag_buffer.data(), frag_buffer.size());
+            return -1;
+        }
+
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
             outfile.close();
@@ -866,6 +877,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
     return 1;
 }
 
+// TODO: check code
 int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     uint64_t filedimension;
     uint32_t r_dim_l, r_dim_h;
@@ -914,6 +926,11 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_three_vec(aad, plaintext, ui->send_buffer);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
     
     clear_three_vec(aad, plaintext, ui->send_buffer);
@@ -943,10 +960,15 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     ui->client_session->createAAD(aad.data(), END_OP);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_three_vec(aad, plaintext, ui->send_buffer);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
-    
+    clear_two_vec(aad, plaintext);
     if(sendMsg(payload_size, sockd, ui->send_buffer) != -1){
         cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
         return -1;
@@ -1011,6 +1033,11 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     ui->client_session->createAAD(aad.data(), END_OP);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ui->send_buffer.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_three_vec(aad, plaintext, ui->send_buffer);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
 
     clear_three_vec(aad, plaintext, ui->send_buffer);

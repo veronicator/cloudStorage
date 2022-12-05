@@ -741,6 +741,11 @@ int Client::requestFileList() {
 
     this->active_session->createAAD(aad.data(), FILE_LIST);
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_three_vec(aad, plaintext, send_buffer);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
         
     clear_three_vec(aad, plaintext, send_buffer);
@@ -782,7 +787,13 @@ int Client::receiveFileList() {
             cerr<<"Error! Exiting receive file list phase"<<endl;
             return -1;
         }
+
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), recv_buffer.size(), aad.data(), plaintext.data());
+        if (pt_len == 0) {
+            cerr << " Error during decryption" << endl;
+            clear_two_vec(plaintext, aad);
+            return -1;
+        }
 
         opcode = ntohs(*(uint16_t*)(aad.data()+NUMERIC_FIELD_SIZE));
 
@@ -815,11 +826,16 @@ void Client::logout() {
     this->active_session->createAAD(aad.data(), LOGOUT);
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    if (payload_size == 0) {
+        clear_three_vec(aad, plaintext, send_buffer);
+        perror(" Error during encryption");
+        exit(1);
+    }
     payload_size_n = htonl(payload_size);
 
     clear_three_vec(aad, plaintext, send_buffer);
-    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
@@ -894,6 +910,11 @@ uint32_t Client::sendMsgChunks(string filename){
         }
 
         payload_size = this->active_session->encryptMsg(frag_buffer.data(), frag_buffer.size(), aad.data(), output.data());
+        if (payload_size == 0) {
+            cerr << " Error during encryption" << endl;
+            clear_vec_array(aad, frag_buffer.data(), frag_buffer.size());
+            return -1;
+        }
         payload_size_n = htonl(payload_size);
 
         clear_vec_array(aad, frag_buffer.data(), frag_buffer.size());
@@ -952,6 +973,11 @@ int Client::uploadFile(){
     //to be sent: payload_size | IV | count_cs | opcode | {output}_Kcs | TAG
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_vec_array(plaintext, output.data(), output.size());
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
 
     //clear aad, plaintext and send_buffer
@@ -989,7 +1015,12 @@ int Client::uploadFile(){
     }
 
     pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
-    
+    if (pt_len == 0) {
+        cerr << " Error during decryption" << endl;
+        clear_three_vec(aad, plaintext, send_buffer);
+        return -1;
+    }
+
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
     if(opcode != UPLOAD_REQ){
         cerr<<"Error! Exiting upload request phase"<<endl;
@@ -1022,6 +1053,11 @@ int Client::uploadFile(){
         }
         
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
+        if (pt_len == 0) {
+            cerr << " Error during decryption" << endl;
+            clear_three_vec(aad, plaintext, send_buffer);
+            return -1;
+        }
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
         if(opcode != END_OP){
             cerr<<"Error! Exiting upload phase." << endl;
@@ -1069,6 +1105,11 @@ int Client::renameFile(){
     this->active_session->createAAD(aad.data(), RENAME_REQ);
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_three_vec(aad, plaintext, send_buffer);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
 
     //clear aad, plaintext and send_buffer
