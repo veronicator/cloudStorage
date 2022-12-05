@@ -791,7 +791,7 @@ int Client::receiveFileList() {
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), recv_buffer.size(), aad.data(), plaintext.data());
         if (pt_len == 0) {
             cerr << " Error during decryption" << endl;
-            clear_two_vec(plaintext, aad);
+            clear_three_vec(plaintext, aad, recv_buffer);
             return -1;
         }
 
@@ -1017,7 +1017,7 @@ int Client::uploadFile(){
     pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
     if (pt_len == 0) {
         cerr << " Error during decryption" << endl;
-        clear_three_vec(aad, plaintext, send_buffer);
+        clear_three_vec(aad, plaintext, recv_buffer);
         return -1;
     }
 
@@ -1055,7 +1055,7 @@ int Client::uploadFile(){
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
         if (pt_len == 0) {
             cerr << " Error during decryption" << endl;
-            clear_three_vec(aad, plaintext, send_buffer);
+            clear_three_vec(aad, plaintext, recv_buffer);
             return -1;
         }
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
@@ -1144,6 +1144,11 @@ int Client::renameFile(){
     }
 
     pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
+    if (pt_len == 0) {
+        cerr << " Error during decryption" << endl;
+        clear_three_vec(aad, plaintext, send_buffer);
+        return -1;
+    }
     opcode = ntohs(*(uint16_t*)aad.data() + NUMERIC_FIELD_SIZE);
     if(opcode != END_OP){
         cerr << "Error! Exiting rename request phase"<<endl;

@@ -25,26 +25,29 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
-void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3){
-    v1.assign(v1.size(), '0');
-    v1.clear();
-    v2.assign(v2.size(), '0');
-    v2.clear();    
-    v3.assign(v3.size(), '0');
-    v3.clear();
+void clear_vec(vector<unsigned char> &v) {
+    v.assign(v.size(), '0');
+    v.clear();
+}
 
+void clear_arr(unsigned char* arr, int arr_len) {
+    memset(arr, '0', sizeof(char)*arr_len);
+}
+
+
+void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3){
+    clear_vec(v1);
+    clear_vec(v2);
+    clear_vec(v3);
 }
 
 void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2){
-    v1.assign(v1.size(), '0');
-    v1.clear();
-    v2.assign(v2.size(), '0');
-    v2.clear();    
+    clear_vec(v1);
+    clear_vec(v2); 
 }
 
 void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len){
-    v1.assign(v1.size(), '0');
-    v1.clear();
+    clear_vec(v1);
     memset(arr, '0', sizeof(char)*arr_len);
 }
 
@@ -187,6 +190,7 @@ EVP_PKEY* Session::retrievePrivKey(string path) {
  * @msg: message to hash
  * @msg_len: length in byte of the message to hash
  * @msg_digest: result of the hashing
+ * @return: 1 on success, -1 on error
 */
 int Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msg_digest) {
     cout << "computeHash" << endl;
@@ -202,22 +206,27 @@ int Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msg_di
     // allocate mem for digest
     msg_digest = (unsigned char*)malloc(DIGEST_SIZE);
     if(!msg_digest){
+        free(msg_digest);
         perror("Malloc error msg_digest");
         return -1;
     }
     //hashing: init, update, finalize digest
     if(EVP_DigestInit(hCtx, HASH_FUN) != 1){
+        free(msg_digest);
         perror("DigestInit error");
         return -1;
     }
     if(EVP_DigestUpdate(hCtx, msg, msg_len) != 1){
+        free(msg_digest);
         perror("DigestUpdate error");
         return -1;
     }
-    if(EVP_DigestFinal(hCtx, msg_digest, &dig_len) != 1){
+    if(EVP_DigestFinal(hCtx, msg_digest, &dig_len) != 1) {
+        free(msg_digest);
         perror("DigestFinal error");
         return -1;
     }
+    //TODO: check for clean up
     
     // context deallocation
     EVP_MD_CTX_free(hCtx);
