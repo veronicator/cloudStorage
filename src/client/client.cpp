@@ -786,7 +786,7 @@ int Client::receiveFileList() {
 
         opcode = ntohs(*(uint16_t*)(aad.data()+NUMERIC_FIELD_SIZE));
 
-        //TODO if the list of file exceed the sace available in a single message
+        //TODO if the list of file exceed the space available in a single message
 
         if(opcode == FILE_LIST)
             cout<<((char*)plaintext.data());
@@ -839,11 +839,12 @@ void Client::sendErrorMsg(string errorMsg) {
         uint16_t op = ERROR;
 
         int written = 0;
+        send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
         memcpy(send_buffer.data(), &payload_size, NUMERIC_FIELD_SIZE);
         written += NUMERIC_FIELD_SIZE;
         memcpy(send_buffer.data() + written, &op, OPCODE_SIZE);
         written += OPCODE_SIZE;
-        memcpy(send_buffer.data() + written, errorMsg.c_str(), errorMsg.size());
+        send_buffer.insert(send_buffer.end(), errorMsg.begin(), errorMsg.end());
         
         sendMsg(payload_size);
 

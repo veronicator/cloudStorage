@@ -50,7 +50,7 @@ void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len)
 
 bool searchDir(string dir_name){
     string path = "userStorage/";
-    for (const auto& entry : std::filesystem::directory_iterator(path)){
+    for (const auto& entry : fs::directory_iterator(path)){
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
         std::smatch match;
