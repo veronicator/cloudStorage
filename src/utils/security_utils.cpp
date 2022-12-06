@@ -707,7 +707,7 @@ catch_the_signal()
 
     if(interrupt_signal == -1 || stop_signal == -1)
     {
-        return 0;   } //sigaction() fails
+        return -1;   } //sigaction() fails
     else
     {
         return 1;   }
