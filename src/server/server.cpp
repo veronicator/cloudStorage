@@ -169,6 +169,7 @@ void Server::client_thread_code(int sockd) {
 
     long ret;
     bool retb;
+
     // todo: check if the user is already registered on the server
     retb = authenticationClient(sockd);
 
@@ -183,6 +184,72 @@ void Server::client_thread_code(int sockd) {
         return;
     }
     
+    int received_len, pt_len;
+    uint16_t opcode;
+    bool end_thread = false;
+    UserInfo* ui;
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(MAX_BUF_SIZE);
+
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        return;
+    }
+
+    while(!end_thread){
+        clear_vec(aad);
+        clear_vec_array(ui->recv_buffer, plaintext.data(), plaintext.size());
+
+        received_len = receiveMsg(sockd, ui->recv_buffer);
+        if(received_len <= 0){
+            cerr<<"Error during receive phase (S->C, upload)"<<endl;
+            break;
+        }
+
+        pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), plaintext.data());
+        if(pt_len <= 0){
+            cerr << "Error during decryption" << endl;
+            clear_vec(aad);
+            clear_vec_array(ui->recv_buffer, plaintext.data(), plaintext.size());
+            break;
+        }
+        opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+        switch(opcode){
+            case UPLOAD_REQ:
+                uploadFile(sockd, plaintext);
+                break;
+
+            case DOWNLOAD_REQ:
+                downloadFile();     //TODO: change to correct name
+                break;
+
+            case RENAME_REQ:
+                renameFile(sockd, plaintext);
+                break;
+
+            case DELETE_REQ:
+                deleteFile();       //TODO: change to correct name
+                break;
+
+            case FILE_LIST:
+                sendFileList(sockd);
+                break;
+             
+            case LOGOUT:
+                cout << "Client requested logout" << endl;
+                logoutClient(sockd);
+                end_thread = true;
+                break;
+   
+            default:
+                cerr << "Error! Unexpected message" << endl;
+                end_thread = true;
+                break;
+        }
+    }
 
     pthread_mutex_lock(&mutex_client_list);
     connectedClient.erase(sockd);
@@ -802,6 +869,31 @@ void Server::logoutClient(int sockd) {
         cerr<<"Impossible to find the user"<<endl;
         return;
     }
+
+    vector<unsigned char> plaintext;
+    vector<unsigned char> aad;
+    array<unsigned char, MAX_BUF_SIZE> output;
+    uint32_t payload_size, payload_size_n;
+    string ack_msg = "Logout confirmed";
+
+    ui->client_session->createAAD(aad.data(), END_OP);
+    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    while (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    }
+    clear_three_vec(aad, plaintext, ui->send_buffer);
+    payload_size_n = htonl(payload_size);
+    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
+    if(sendMsg(payload_size, sockd, ui->send_buffer))
+        cerr << "Error during send phase (S->C | Logout)" << endl;
+
+    clear_two_vec(plaintext, aad);
+    clear_arr(output.data(), output.size());
+
     ui->client_session->~Session();
     ui->~UserInfo();
     ui = nullptr;
@@ -1306,7 +1398,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     
     ui->client_session->createAAD(aad.data(), END_OP);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
-    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ui->send_buffer.data());
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
         clear_three_vec(aad, plaintext, ui->send_buffer);

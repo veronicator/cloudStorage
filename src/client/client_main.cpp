@@ -38,6 +38,5 @@ int main(int argc, char* argv[]) {
         cout << "Exit due to an error:\n" << endl;
         cerr << e.what() << endl;
         return 0;
-    }
-        
+    }     
 }

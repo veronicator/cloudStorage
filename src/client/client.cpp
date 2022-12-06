@@ -777,13 +777,13 @@ int Client::requestFileList() {
 int Client::receiveFileList() {
     vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(MAX_BUF_SIZE);
-    int received_len, pt_len;
+    long received_len, pt_len;
     uint16_t opcode;
     string filelist = "";
 
     while(true){
         received_len = receiveMsg();
-        if(received_len == -1 || received_len == 0){
+        if(received_len <= 0){
             cerr<<"Error! Exiting receive file list phase"<<endl;
             return -1;
         }
@@ -841,6 +841,30 @@ void Client::logout() {
 
     while(sendMsg(payload_size) != 1)
         cerr<<"Error during logout phase! Trying again"<<endl;
+
+    long received_len;
+    int pt_len;
+    uint16_t opcode;
+
+    received_len = receiveMsg();
+    if(received_len > 0){
+        pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
+        if(pt_len != 0){
+            opcode = ntohs(*(uint16_t*)aad.data() + NUMERIC_FIELD_SIZE);
+            if(opcode == END_OP){
+                cout << ((char*)plaintext.data());
+            }
+            else{
+                cerr <<"Error! Unexpected message" << endl;
+            }
+        }
+        else{
+            cerr << "Error during decryption" <<endl;
+        }
+    }
+    else{
+        cerr << "Error during receive phase (S->C, logout)" << endl;
+    }
 
     this->active_session->~Session();
     this->~Client();
@@ -1001,14 +1025,14 @@ int Client::uploadFile(){
     int pt_len;                                                          
     uint16_t opcode;
     uint32_t ret;  
-    uint64_t received_len;
+    long received_len;
     string server_response;
 
     aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len == 0 || received_len == -1){
+    if(received_len <= 0){
         cerr<<"Error during receive phase (S->C, upload)"<<endl;
         return -1;
     }
@@ -1130,12 +1154,12 @@ int Client::renameFile(){
     plaintext.resize(MAX_BUF_SIZE);
 
     uint16_t opcode;
-    uint32_t received_len;
+    long received_len;
     int pt_len;
     string server_response;
 
     received_len = receiveMsg();
-    if(received_len == 0 || received_len == -1){
+    if(received_len <= 0){
         cerr <<"Error during receive phase (S->C, rename)";
         return -1;
     }
