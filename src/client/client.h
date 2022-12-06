@@ -39,13 +39,15 @@ class Client {
     int requestFileList();
     int receiveFileList();
     void logout();  // dealloca tutto ed esce
+
     // TODO: implementare/modificare come serve 
-        // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
     int uploadFile();
     uint32_t sendMsgChunks(string filename);
-    void downloadFile();
+    int receiveMsgChunks( uint32_t filedimension, string filename);
+    int downloadFile();
     int renameFile();
-    void deleteFile();
+    int deleteFile();
+
 
     public:
         Client(string username, string srv_ip);

@@ -80,17 +80,26 @@ uint64_t searchFile(string filename, string username){
 }
 
 void readFilenameInput(string& input, string msg) {
+
     bool string_ok = false;
-    do{
-        cout<<msg<<endl;
-        getline(std::cin, input);
+
+    do
+    {
+        cout << msg << endl;
+        getline(cin, input);
+
+        if(!cin)
+        { cerr << "\n === Error during input ===\n"; exit(1); }
+
         if(input.empty()) continue;
+
         const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
         string_ok = regex_match(input, re);
+
         if(!string_ok)
-            cout<<"! FILE NAME HAS A WRONG FORMAT !"<<endl;
-    }
-    while(!string_ok);
+        { cout<<"! FILE NAME HAS A WRONG FORMAT !"<<endl; }
+    
+    } while(!string_ok);
 }
 
 
@@ -171,6 +180,7 @@ int Session::generateRandomValue(unsigned char* new_value, int value_size) {
 }
 
 EVP_PKEY* Session::retrievePrivKey(string path) {
+
     FILE *fileKey = fopen(path.c_str(), "r");
     if(!fileKey) {
         cerr << "Error: the file doesn't exist.\n";
@@ -726,6 +736,183 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
        // verify failed
        return 0;
    }
+}
+
+int32_t
+checkFileExist(string filename, string username, string path_side)
+{
+    string path = path_side + username + "/" + filename;
+    struct stat buffer;
+
+    if (stat(path.c_str(),&buffer)!=0)  //stat failed
+    { 
+        return 0;   //File dosen't exist
+	}
+	
+	return -1;  //File exist
+}
+
+int
+removeFile(string filename, string username, string path_side)
+{
+    string path = path_side + username + "/" + filename;
+
+    //If the file is successfully deleted return 0. On failure a nonzero value (!=0) is returned.
+    if (remove(path.c_str()) != 0)
+    {   
+        perror ("\n\t * * * ERROR: ");
+        return -1;
+    }
+    else
+    {
+        return 1;
+    }
+
+    /* --- EXEC_version ---
+    void
+    deleteFileExeclEasy(string filename)
+    {  
+        if(filename.length() > 20)
+        {   cout << "\n\t -- Error: Filename too long --\n" << endl; return;    }
+
+        string pathFile = FILE_PATH_CL + filename;
+
+        execl("/bin/rm", "rm", pathFile.c_str(), (char*)0);
+
+        return;   
+    }
+    */
+}
+
+void
+print_progress_bar(int total, unsigned int fragment)
+{
+    cout << "\r" << "[Fragment " << fragment + 1 << " of " << total << "]";
+	cout.flush();
+    
+    /*
+        - Possibile alternativa -
+        void
+        progress_bar(int fragment)
+        {        
+            //while (fragment < 1)
+            //{
+                int barWidth = 70;
+
+                cout << "[";
+        
+                int pos = barWidth * fragment;
+                for (size_t i = 0; i < barWidth; ++i)
+                {
+                    if (i < pos)
+                        cout << "=";
+                    else if (i == pos)
+                        cout << ">";
+                    else
+                        cout << " ";
+                }
+        
+            cout << "] " << int(fragment+1) << " %\r";
+            cout.flush();
+
+            fragment += 0.16; // for demonstration only
+        //}
+        }
+    */
+}
+
+int // Register signal and signal handler
+catch_the_signal()
+{
+    int interrupt_signal, stop_signal;
+    struct sigaction sig_int_handler;
+
+    sig_int_handler.sa_handler = custom_act; //What to do
+
+    sigemptyset(&sig_int_handler.sa_mask);  //initiailization of the signal set
+                                            //pointed to by sigset_t var.
+                                            //mask of signals which should be blocked
+    sig_int_handler.sa_flags = 0;
+
+    interrupt_signal = sigaction(SIGINT, &sig_int_handler, NULL);   //CTRL+C
+    stop_signal =  sigaction(SIGTSTP, &sig_int_handler, NULL);      //CTRL+Z
+
+    if(interrupt_signal == -1 || stop_signal == -1)
+    {
+        return -1;   } //sigaction() fails
+    else
+    {
+        return 1;   }
+
+
+    /*_Note:
+
+        sigaction() returns 0 on success; on error, -1 is returned,
+        and errno is set to indicate the error.
+
+        - sigaction() insted of signal() system call because the latter is
+        less portable when establishing a signal handler.
+        In fact signal() behavior varies across UNIX versions, and has also varied
+        historically across different versions of Linux -
+
+        - prototype: int sigaction(int signum, const struct sigaction *restrict act,
+                     struct sigaction *restrict oldact);
+
+        - What to do once the signal is captured:
+        1) default behavior (SIG_DFL, SIG_IGN)
+        2) specific behaviors defined in a particular handler function
+            based on our needs (my_handler function: custom_act in this case)
+
+
+        - [ When we will use it ]
+
+            if(catch_the_signal() == 0)
+            {
+                cout<< "ERROR in signal handler phase: "<< strerror(errno) <<endl; return 0;  }
+    */
+}
+
+void    //the function to be called when signal is sent to process
+custom_act(int signum)
+{
+    string choice;
+
+    cout<< "\n\t=== Caught signal with code: "<< signum <<" ==="<<endl;
+
+    //ToDo in a better suitable way
+    //do_stuff: terminate program (e.g.)
+
+    cout<< "\n\t(The operation on cloud terminated) "<<endl;
+
+    cout<< "\nThe File was not successfully Uploaded/Downloaded. \n"<<endl;
+
+    cout << "Do you want to go back to the Main Menu??: [y/n]\n"<<endl;
+    cout << "(y)-> Main Menu\n(n)-> Exit from Application"<<endl;
+    cout<<"\n_Ans: ";
+    getline(cin, choice);
+
+    if(!cin)
+    { cerr << "\n === Error during input ===\n"<<endl; return; }
+
+    while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
+    {
+        cout<<"\nError: The parameter of cohice is wrong!"<<endl;
+        cout <<"(y)-> Main Menu\n(n)-> Exit from Application"<<endl;
+        cout<<"\n-- Try again: [y/n]: ";
+        getline(cin, choice);
+
+        if(!cin)
+        { cerr << "\n === Error during input ===\n"<<endl; return; }
+    }
+
+    if(choice == "N" || choice == "n")
+    {
+        cout<<"\n\t=== Exit from the Application ===\n"<<endl;
+        exit(1);
+    }
+
+    cout<<"\n\t=== Welcome back in the main Menu ===\n"<<endl;
+    return;
 }
 
 /********************************************************************/

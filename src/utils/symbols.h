@@ -26,6 +26,11 @@
 #define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"
 #define FILENAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890+-_.!@#$%^&()~"
 
+//Response Msg
+#define MESSAGE_OK "ack_upload_req"
+#define DOWNLOAD_TERMINATED "ack_download_term"
+#define MESSAGE_INVALID_COMMAND "\n\tERROR: Invalid Entered Command\n"
+
 // Server info
 #define SRV_PORT 4242
 

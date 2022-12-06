@@ -1079,9 +1079,8 @@ int Client::uploadFile(){
 }
 
 
-void Client::downloadFile(){}
-
 int Client::renameFile(){
+
     string old_filename, new_filename;
     vector<unsigned char> aad(AAD_LEN);                                              //aad of the msg
     vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);                       //plaintext to be encrypted
@@ -1168,4 +1167,643 @@ int Client::renameFile(){
     return 1;
 }
 
-void Client::deleteFile(){}
+
+//---------------------------------------------\\
+
+int Client::receiveMsgChunks( uint32_t filedimension, string filename)
+{
+    string path = FILE_PATH_CLT + this->username + "/" + filename;
+    ofstream outfile(path, ofstream::binary);
+
+    size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
+    size_t to_receive;
+    int received_len, pt_len, aad_len;
+    uint32_t opcode;
+
+    vector<unsigned char> aad;
+    array<unsigned char, MAX_BUF_SIZE> plaintext;
+
+    plaintext.fill('0');
+
+    for(int i = 0; i < tot_chunks; i++)
+    {
+        if(i == tot_chunks - 1)
+        {
+            to_receive = filedimension - i* FRAGM_SIZE;
+        }
+        else
+        {
+            to_receive = FRAGM_SIZE;
+        }
+
+        received_len = receiveMsg();
+        if(received_len == -1 || received_len == 0)
+        {
+            cerr<<"Error! Exiting receive phase"<<endl;
+            return -1;
+        }
+        pt_len = this->active_session->decryptMsg(this->recv_buffer.data(),
+                                received_len, aad.data(), plaintext.data());
+
+        opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+        
+        if((opcode == DOWNLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1))
+        {
+            outfile.close();
+            cerr << "Wrong message format. Exiting"<<endl;
+            
+            if(remove(path.c_str()) != 0)
+            {
+                cerr << "File not correctly cancelled"<<endl;
+            }
+            return -1;
+        }
+
+        outfile << plaintext.data();
+        print_progress_bar(tot_chunks, i);
+    }
+
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    plaintext.fill('0');
+
+    return 1;
+}
+
+int
+Client::downloadFile()
+{
+    string filename;
+    uint32_t file_size, payload_size, payload_size_n, filedimension;   
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    array<unsigned char, MAX_BUF_SIZE> cyphertext;
+
+    readFilenameInput(filename, "Insert the name of the file you want to Download: ");
+
+    // === Checking and managing the existence of the file within the Download folder ===
+    if (checkFileExist(filename, this->username, FILE_PATH_CLT)!=0)
+    {
+        string choice;
+
+        cout << "The requested file already exists in the Download folder, do you want to overwrite it?: [y/n]\n\n "<<endl;
+        cout<<"_Ans: ";
+        getline(cin, choice);
+
+        if(!cin)
+        {   cerr << "\n === Error during input ===\n" << endl; return -1; }
+
+        while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
+        {
+            cout<<"\nError: The parameter of cohice is wrong!"<<endl;
+            cout<<"-- Try again: [y/n]: ";
+            getline(cin, choice);
+
+            if(!cin)
+            {   cerr << "\n === Error during input ===\n" << endl; return -1; }
+        }
+        if(choice == "N" || choice == "n")
+        {
+            //--Canceling Download operation
+            //terminate();
+            cout<<"\n\t~ The file *( "<< filename << " )* will not be overwritten. ~\n\n"<<endl;
+            return;
+        }
+        
+        if(removeFile(filename, this->username, FILE_PATH_CLT) == -1)
+        {
+            cout << "\n\t --- Error during Deleting file ---\n" << endl; }
+    }
+    
+    // === Preparing Data Sending and Encryption ===
+    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
+
+    this->active_session->createAAD(aad.data(), DOWNLOAD_REQ);
+    
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
+                                            aad.data(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    // === Management Buffers & Content that to be sent ===
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
+                        cyphertext.begin() + payload_size);
+    cyphertext.fill('0');
+
+
+// _BEGIN_(1)-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------
+
+    if(sendMsg(payload_size) != 1)
+    {
+        cout<<"Error during send phase (C->S)"<<endl;
+        
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+
+// _END_(1))-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------  
+
+    int aad_len; uint16_t opcode;
+    uint64_t received_len;  //Legnht of the message received from the server 
+    uint32_t plaintext_len;
+    string server_response; //Message from the server containing the response to the request
+    int fileChunk; //Management Chunk
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (S->C)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+
+    //received from server in terms of byte
+    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+                                                aad.data(), plaintext.data());
+
+    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    if(opcode != DOWNLOAD_REQ)
+    {
+        cout<<"Error! Exiting download request phase"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+
+        return -1;
+    }
+
+// _BEGIN_(2)------ [M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] ------
+    
+    /*--- Check Response file existence in the Cloud Storage by the Server ---*/
+    server_response = ((char*)plaintext.data());
+    if(server_response != MESSAGE_OK)
+    {       
+        cout<<"The file cannot be downloaded: "<< server_response <<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+    
+// _END_(2)------ [ M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] )------
+
+    cout << "\nThe requested file is in the cloud storage and can be downloaded."<<endl;
+    cout<<"\n\t ...Download file " + filename +" in progress...\n\n"<<endl;  
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (S->C)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+
+    //received from server in terms of byte
+    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+                                                aad.data(), plaintext.data());
+
+    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    if(opcode != DOWNLOAD)
+    {
+        cout<<"Error! Exiting download request phase"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+    
+    filedimension = ntohl(*(uint32_t*)(plaintext.data()));
+    
+
+// _BEGIN_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
+
+    fileChunk = receiveMsgChunks(filedimension, filename);
+
+    if(fileChunk == -1)
+    {
+        cout<<"Error! Exiting Download phase"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+        
+        return -1;
+    }
+
+// _END_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
+
+
+    cout << "\n\tFile Download Completed!" << endl;
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    // === Preparing Data Sending and Encryption ===    
+    this->active_session->createAAD(aad.data(), END_OP);
+    string ack_msg = DOWNLOAD_TERMINATED;
+    
+    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
+                                            aad.data(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
+                        cyphertext.begin() + payload_size);
+
+// _BEGIN_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
+
+    if(sendMsg(payload_size) != 1)
+    {
+        cout<<"Error during send phase (C->S)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+    
+// _END_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    cyphertext.fill('0');
+    
+    return 1;
+}
+
+int
+Client::deleteFile()
+{
+    string filename;
+    uint32_t file_size, payload_size, payload_size_n, filedimension;   
+    vector<unsigned char> aad;  // vector<> aad(AAD_LEN);
+    //array<unsigned char, AAD_LEN> new_aad;
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    array<unsigned char, MAX_BUF_SIZE> cyphertext;
+
+
+// _BEGIN_(1)-------------- [ M1: SEND_DELETE_REQUEST_TO_SERVER ] --------------
+
+    readFilenameInput(filename, "Insert the name of the file you want to Delete: ");
+
+    // === Preparing Data Sending and Encryption  ===
+    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
+
+    this->active_session->createAAD(aad.data(), DELETE_REQ);
+    
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
+                                            aad.data(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    // === Management Buffers & Content that to be sent ===
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
+                        cyphertext.begin() + payload_size);
+    cyphertext.fill('0');
+
+    if(sendMsg(payload_size) != 1)
+    {
+        cout<<"Error during send phase (C->S)"<<endl;
+        
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+
+// _END_(1))-------------- [ M1: SEND_DELETE_REQUEST_TO_SERVER ] --------------
+
+
+// _BEGIN_(2)------ [M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] ------
+
+    int aad_len;
+    uint16_t opcode;
+    uint64_t received_len;  
+    uint32_t plaintext_len;
+    string server_response, choice; 
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (S->C)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+
+    //received from server in terms of byte
+    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+                                                aad.data(), plaintext.data());
+
+    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    if(opcode != DELETE_REQ)
+    {
+        cout<<"Error! Exiting DELETE request phase"<<endl;
+
+         // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+    
+    /*--- Check Response existence of file in the Cloud Storage by the Server ---*/
+    server_response = ((char*)plaintext.data());
+    if(server_response != MESSAGE_OK)
+    {       
+        cout<<"The file dosen't exist in the cloud: "<< server_response <<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+    
+// _END_(2)-------- [ M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] --------
+        
+    
+    cout << "Are you sure you want to delete the file??: [y/n]\n\n "<<endl;
+    cout<<"_Ans: ";
+    getline(cin, choice);
+
+    if(!cin)
+    {
+        cerr << "\n === Error during input ===\n" << endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+
+    while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
+    {
+        cout<<"\nError: The parameter of cohice is wrong!"<<endl;
+        cout<<"-- Try again: [y/n]: ";
+        getline(cin, choice);
+
+        if(!cin)
+        {
+            cerr << "\n === Error during input ===\n" << endl;
+
+            // === Cleaning ===
+            plaintext.assign(plaintext.size(), '0');
+            plaintext.clear();
+            aad.assign(aad.size(), '0');
+            aad.clear();
+            cyphertext.fill('0');
+
+            return -1;
+        }
+    }
+
+    if(choice == "N" || choice == "n")
+    {
+        //--termination Delete_Operation
+        //terminate();
+
+        cout<<"\n\t~ The file *( "<< filename << " )* will not be deleted. ~\n\n"<<endl;
+
+         // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+        
+        return;
+    }
+        
+    
+// _BEGIN_(3)-------------- [ M3: SEND_USER-CHOICE_TO_SERVER ] --------------
+    
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    // === Preparing Data Sending and Encryption ===    
+    this->active_session->createAAD(aad.data(), DELETE_CONFIRM);
+    
+    plaintext.insert(plaintext.begin(), choice.begin(), choice.end());
+
+    payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
+                                            aad.data(), cyphertext.data());
+    payload_size_n = htonl(payload_size);
+
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+
+    send_buffer.assign(send_buffer.size(), '0');
+    send_buffer.clear();
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
+                        cyphertext.begin() + payload_size);
+    cyphertext.fill('0');
+
+
+    if(sendMsg(payload_size) != 1)
+    {
+        cout<<"Error during send phase (C->S)"<<endl;
+        
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+
+        return -1;
+    }
+    
+// _END_(3)-------------- [ M3: SEND_USER-CHOICE_TO_SERVER] --------------
+
+
+//_BEGIN_(4)---------- [M4: RECEIVE_CONFIRMATION_DELETE_OPERATION_FROM_SERVER ] ----------
+
+    // === Reuse of vectors declared at the beginning ===
+    aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
+    plaintext.resize(MAX_BUF_SIZE);
+
+    received_len = receiveMsg();
+    if(received_len == 0 || received_len == -1)
+    {
+        cout<<"Error during receive phase (S->C)"<<endl;
+
+        // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');   
+            
+        return -1;
+    }
+
+    //received from server in terms of byte
+    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+                                                aad.data(), plaintext.data());
+
+    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    if(opcode != END_OP)
+    {
+        cout<<"Error! Exiting DELETE phase"<<endl;
+
+         // === Cleaning ===
+        plaintext.assign(plaintext.size(), '0');
+        plaintext.clear();
+        aad.assign(aad.size(), '0');
+        aad.clear();
+        cyphertext.fill('0');
+        
+        return -1;
+    }
+    
+    server_response = ((char*)plaintext.data());
+    
+    cout<<"\nEND_DELETE_OPERATION_MSG: "<< server_response <<endl;
+
+//_END_(4)----------- [ M4: RECEIVE_CONFIRMATION_DELETE_OPERATION_FROM_SERVER ] -----------
+
+    // === Cleaning ===
+    plaintext.assign(plaintext.size(), '0');
+    plaintext.clear();
+    aad.assign(aad.size(), '0');
+    aad.clear();
+    cyphertext.fill('0');
+    
+    return 1;
+}

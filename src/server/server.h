@@ -64,10 +64,12 @@ class Server {
     // TODO: modificare come serve 
     // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
     int receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename);
+    int sendMsgChunks(UserInfo* ui, string filename);
+    
     int uploadFile(int sockd, vector<unsigned char> plaintext);
-    void downloadFile();
+    int downloadFile(int sockd, vector<unsigned char> plaintext);
     int renameFile(int sockd, vector<unsigned char> plaintext);
-    void deleteFile();
+    int deleteFile(int sockd, vector<unsigned char> plaintext);
 
     int sendFileList(int sockd);
     void logoutClient(int sockd); 

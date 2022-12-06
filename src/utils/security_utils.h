@@ -28,6 +28,9 @@
 #include <cmath>
 #include <filesystem>
 #include <experimental/filesystem>
+#include <cerrno>
+#include <cstring>
+#include <signal.h> //for signal handler
 #include "symbols.h"
 
 using namespace std;
@@ -52,12 +55,17 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 //void readUsername(string& usr);
 
 void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
-
-void readFilenameInput(string& input, string msg);  
-
-uint64_t searchFile(string filename, string username);
+void readFilenameInput(string& input, string msg);
 
 bool searchDir(string dir_name);
+uint64_t searchFile(string filename, string username);
+int32_t checkFileExist(string filename, string username, string path_side);
+int removeFile(string filename, string username, string path_side);
+
+void print_progress_bar(int total, unsigned int fragment);
+
+int  catch_the_signal(); // Register signal and signal handler
+void custom_act(int signum); //the function to be called when signal is sent to process (handler)
 
 void clear_vec(vector<unsigned char>& v);
 void clear_arr(unsigned char* arr, int arr_len);
@@ -65,14 +73,12 @@ void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vecto
 void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len);
 void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2);
 
-//int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
 
 
 class Session {
     unsigned char* session_key;
     uint32_t send_counter = 1;
     uint32_t rcv_counter = 0;
-
 
     void incrementCounter(uint32_t& counter);
     int computeSessionKey(unsigned char* secret, int slen);  //shared secret -> session key
@@ -92,6 +98,7 @@ class Session {
         // Session utils
         uint32_t createAAD(unsigned char* aad, uint16_t opcode); // return aad_len
         // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input and put in "input" string
+
 
         EVP_PKEY* get_peerKey();
 
@@ -117,7 +124,7 @@ class Session {
         uint32_t encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output);  // encrypt message to send and return message length
         //unsigned int decryptMsg(unsigned char *ciphertext, int ct_len, int aad_len, unsigned char *plaintext, unsigned char *rcv_iv, unsigned char *tag);  // dencrypt received message and return message (pt) length
         uint32_t decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
-        
+
         int fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf);    // return payload size
         //encrypt/decrypt()
         /* 
