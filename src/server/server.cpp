@@ -734,7 +734,7 @@ Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     ui->send_buffer.clear();
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
-    fileChunk = sendMsgChunks(ui->username, filename);
+    fileChunk = sendMsgChunks(ui, filename);
 
 // _END_(2)-------------- [ M2: SEND_FILE_TO_CLIENT ] --------------
 
