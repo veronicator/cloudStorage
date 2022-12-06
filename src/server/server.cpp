@@ -223,7 +223,7 @@ void Server::client_thread_code(int sockd) {
                 break;
 
             case DOWNLOAD_REQ:
-                downloadFile();     //TODO: change to correct name
+                downloadFile(sockd, plaintext);     //TODO: change to correct name
                 break;
 
             case RENAME_REQ:
@@ -231,7 +231,7 @@ void Server::client_thread_code(int sockd) {
                 break;
 
             case DELETE_REQ:
-                deleteFile();       //TODO: change to correct name
+                deleteFile(sockd, plaintext);       //TODO: change to correct name
                 break;
 
             case FILE_LIST:
