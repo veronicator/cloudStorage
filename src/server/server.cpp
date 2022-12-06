@@ -167,6 +167,7 @@ void Server::client_thread_code(int sockd) {
 
     long ret;
     bool retb;
+
     // todo: check if the user is already registered on the server
     retb = authenticationClient(sockd);
 
@@ -181,6 +182,72 @@ void Server::client_thread_code(int sockd) {
         return;
     }
     
+    int received_len, pt_len;
+    uint16_t opcode;
+    bool end_thread = false;
+    UserInfo* ui;
+    vector<unsigned char> aad;
+    vector<unsigned char> plaintext(MAX_BUF_SIZE);
+
+    try{
+        ui = connectedClient.at(sockd);
+    }
+    catch(const out_of_range& ex){
+        cerr<<"Impossible to find the user"<<endl;
+        return;
+    }
+
+    while(!end_thread){
+        clear_vec(aad);
+        clear_vec_array(ui->recv_buffer, plaintext.data(), plaintext.size());
+
+        received_len = receiveMsg(sockd, ui->recv_buffer);
+        if(received_len <= 0){
+            cerr<<"Error during receive phase (S->C, upload)"<<endl;
+            break;
+        }
+
+        pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), plaintext.data());
+        if(pt_len <= 0){
+            cerr << "Error during decryption" << endl;
+            clear_vec(aad);
+            clear_vec_array(ui->recv_buffer, plaintext.data(), plaintext.size());
+            break;
+        }
+        opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+        switch(opcode){
+            case UPLOAD_REQ:
+                uploadFile(sockd, plaintext);
+                break;
+
+            case DOWNLOAD_REQ:
+                downloadFile();     //TODO: change to correct name
+                break;
+
+            case RENAME_REQ:
+                renameFile(sockd, plaintext);
+                break;
+
+            case DELETE_REQ:
+                deleteFile();       //TODO: change to correct name
+                break;
+
+            case FILE_LIST:
+                sendFileList(sockd);
+                break;
+             
+            case LOGOUT:
+                cout << "Client requested logout" << endl;
+                logoutClient(sockd);
+                end_thread = true;
+                break;
+   
+            default:
+                cerr << "Error! Unexpected message" << endl;
+                end_thread = true;
+                break;
+        }
+    }
 
     pthread_mutex_lock(&mutex_client_list);
     connectedClient.erase(sockd);

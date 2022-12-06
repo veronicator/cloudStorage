@@ -1009,7 +1009,7 @@ int Client::uploadFile(){
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len == 0 || received_len == -1){
+    if(received_len <= 0){
         cerr<<"Error during receive phase (S->C, upload)"<<endl;
         return -1;
     }
