@@ -24,11 +24,11 @@ UserInfo::~UserInfo() {
 Server::Server() {
     if(pthread_mutex_init(&mutex_client_list, NULL) != 0) {
         cerr << "mutex init failed " << endl;
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     if(!createSrvSocket()) {
         perror("Socket creation error");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -750,7 +750,7 @@ int Server::sendFileList(int sockd) {
     
     const string path = path_file + ui->username + "/";
 
-    for (const auto& entry : fs::directory_iterator(path)){
+    for (const auto & entry : fs::directory_iterator(path)){
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
         std::smatch match;
@@ -948,7 +948,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
         aad.clear();
         frag_buffer.fill('0');
 
-        memcpy(&payload_size_n, ui->send_buffer.data(), NUMERIC_FIELD_SIZE);
+        memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
         ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
                                 cyphertext.begin(), cyphertext.begin() + payload_size);
 
@@ -1202,6 +1202,11 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
         
         pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
+        if (pt_len == 0) {
+            cerr << " Error during decryption" << endl;
+            clear_three_vec(aad, plaintext, ui->recv_buffer);
+            return -1;
+        }
         opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
         if(opcode != END_OP)
         {
@@ -1436,7 +1441,11 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
 
     plaintext_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
-
+    if (plaintext_len == 0) {
+        cerr << " Error during decryption" << endl;
+        clear_three_vec(aad, plaintext, ui->recv_buffer);
+        return -1;
+    }
     //Opcode sent by the client, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
     if(opcode != DELETE_CONFIRM)

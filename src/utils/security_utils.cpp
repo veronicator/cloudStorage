@@ -89,7 +89,7 @@ void readFilenameInput(string& input, string msg) {
         getline(cin, input);
 
         if(!cin)
-        { cerr << "\n === Error during input ===\n"; exit(1); }
+        { cerr << "\n === Error during input ===\n"; exit(EXIT_FAILURE); }
 
         if(input.empty()) continue;
 
@@ -112,7 +112,7 @@ void readInput(string& input, const int MAX_SIZE, string msg = "") {
         getline(cin, input);
         if (!cin) {
             cerr << "Error during input\n";
-            exit(1);
+            exit(EXIT_FAILURE);
         }
         if(input.length() == 0 || input.length() > MAX_SIZE || input.find_first_not_of(ok_chars) != string::npos) {
             cout << "Error: insert number of characters between 1 and " << MAX_SIZE << " without spaces\n";
@@ -908,7 +908,7 @@ custom_act(int signum)
     if(choice == "N" || choice == "n")
     {
         cout<<"\n\t=== Exit from the Application ===\n"<<endl;
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     cout<<"\n\t=== Welcome back in the main Menu ===\n"<<endl;

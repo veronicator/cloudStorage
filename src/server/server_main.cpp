@@ -35,8 +35,10 @@ int main() {
             pthread_t client_thread;
             ThreadArgs* args = new ThreadArgs(server, new_sd);
             cout << "pthread_create" << endl;
-            if(pthread_create(&client_thread, NULL, &client_thread_code, (void*)args) != 0)
-                handleErrors("thread_create failed");
+            if(pthread_create(&client_thread, NULL, &client_thread_code, (void*)args) != 0) {
+                perror("thread_create failed");
+                continue;
+            }
             cout << "new pthread_created" << endl;
             threads.push_back(client_thread);
             pthread_detach(client_thread);  // con detach non serve fare il join finale (controllare funzioni bene)

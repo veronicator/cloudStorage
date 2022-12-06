@@ -6,7 +6,7 @@ Client::Client(string username, string srv_ip) {
 
     if(!createSocket(srv_ip)) {
         perror("Socket creation error");
-        exit(1);
+        exit(EXIT_FAILURE);
     };
 }
 
@@ -749,8 +749,8 @@ int Client::requestFileList() {
     payload_size_n = htonl(payload_size);
         
     clear_three_vec(aad, plaintext, send_buffer);
-    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
@@ -829,7 +829,7 @@ void Client::logout() {
     if (payload_size == 0) {
         clear_three_vec(aad, plaintext, send_buffer);
         perror(" Error during encryption");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     payload_size_n = htonl(payload_size);
 
@@ -890,7 +890,6 @@ uint32_t Client::sendMsgChunks(string filename){
     array<unsigned char, MAX_BUF_SIZE> output;                                          //encrypted text
     
     clear_vec_array(send_buffer, frag_buffer.data(), frag_buffer.size());
-    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     for(int i = 0; i < tot_chunks; i++){
         if(i == tot_chunks - 1){
@@ -919,16 +918,17 @@ uint32_t Client::sendMsgChunks(string filename){
 
         clear_vec_array(aad, frag_buffer.data(), frag_buffer.size());
 
-        memcpy(&payload_size_n, send_buffer.data(), NUMERIC_FIELD_SIZE);
-        send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
-
-        clear_vec_array(send_buffer, output.data(), output.size());
         send_buffer.resize(NUMERIC_FIELD_SIZE);
+        memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+        send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
         if(sendMsg(payload_size) != 1){
             cerr<<"Error during send phase (C->S) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
             return -1;
         }
+
+        clear_vec_array(send_buffer, output.data(), output.size());
+
     }
     return 1;
 }
@@ -982,8 +982,8 @@ int Client::uploadFile(){
 
     //clear aad, plaintext and send_buffer
     clear_three_vec(aad, plaintext, send_buffer);
-    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
@@ -994,7 +994,6 @@ int Client::uploadFile(){
 
     //clear send_buffer and output array
     clear_vec_array(send_buffer, output.data(), output.size());
-    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     //receive from the server the response to the upload request
     //received_len:  legnht of the message received from the server
@@ -1038,7 +1037,6 @@ int Client::uploadFile(){
     
     //clear aad, plaintext and send_buffer
     clear_three_vec(aad, plaintext, send_buffer);
-    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     ret = sendMsgChunks(filename);
 
@@ -1113,8 +1111,8 @@ int Client::renameFile(){
 
     //clear aad, plaintext and send_buffer
     clear_three_vec(aad, plaintext, send_buffer);
-    send_buffer.resize(NUMERIC_FIELD_SIZE);
 
+    send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
@@ -1177,10 +1175,10 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
 
     size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
     size_t to_receive;
-    int received_len, pt_len, aad_len;
+    int received_len, pt_len;
     uint32_t opcode;
 
-    vector<unsigned char> aad;
+    vector<unsigned char> aad(AAD_LEN);
     array<unsigned char, MAX_BUF_SIZE> plaintext;
 
     plaintext.fill('0');
@@ -1204,6 +1202,12 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
         }
         pt_len = this->active_session->decryptMsg(this->recv_buffer.data(),
                                 received_len, aad.data(), plaintext.data());
+        if (pt_len == 0) {
+            cerr << " Error during decryption" << endl;
+            clear_arr(plaintext.data(), plaintext.size());
+            clear_two_vec(aad, recv_buffer);
+            return -1;
+        }
 
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         
@@ -1230,12 +1234,11 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
     return 1;
 }
 
-int
-Client::downloadFile()
+int Client::downloadFile()
 {
     string filename;
     uint32_t file_size, payload_size, payload_size_n, filedimension;   
-    vector<unsigned char> aad;
+    vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);
     array<unsigned char, MAX_BUF_SIZE> cyphertext;
 
@@ -1267,7 +1270,7 @@ Client::downloadFile()
             //--Canceling Download operation
             //terminate();
             cout<<"\n\t~ The file *( "<< filename << " )* will not be overwritten. ~\n\n"<<endl;
-            return;
+            return -1;
         }
         
         if(removeFile(filename, this->username, FILE_PATH_CLT) == -1)
@@ -1281,20 +1284,18 @@ Client::downloadFile()
     this->active_session->createAAD(aad.data(), DOWNLOAD_REQ);
     
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
-                                            aad.data(), cyphertext.data());
+                                                    aad.data(), cyphertext.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_three_vec(aad, plaintext, send_buffer);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
 
     // === Cleaning ===
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-    aad.assign(aad.size(), '0');
-    aad.clear();
+    clear_three_vec(aad, plaintext, send_buffer);
 
-    // === Management Buffers & Content that to be sent ===
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
     send_buffer.resize(NUMERIC_FIELD_SIZE);
-
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
                         cyphertext.begin() + payload_size);
@@ -1319,7 +1320,7 @@ Client::downloadFile()
 
 // _END_(1))-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------  
 
-    int aad_len; uint16_t opcode;
+    uint16_t opcode;
     uint64_t received_len;  //Legnht of the message received from the server 
     uint32_t plaintext_len;
     string server_response; //Message from the server containing the response to the request
@@ -1347,7 +1348,12 @@ Client::downloadFile()
     //received from server in terms of byte
     plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
-
+    if (plaintext_len == 0) {
+        cerr << " Error during decryption" << endl;
+        clear_arr(cyphertext.data(), cyphertext.size());
+        clear_three_vec(aad, plaintext, recv_buffer);
+        return -1;
+    }
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
     if(opcode != DOWNLOAD_REQ)
@@ -1413,7 +1419,12 @@ Client::downloadFile()
 
     //received from server in terms of byte
     plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
-                                                aad.data(), plaintext.data());
+                                                    aad.data(), plaintext.data());
+    if (plaintext_len == 0) {
+        cerr << " Error during decryption" << endl;
+        clear_three_vec(aad, plaintext, recv_buffer);
+        return -1;
+    }
 
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
@@ -1474,18 +1485,17 @@ Client::downloadFile()
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
-                                            aad.data(), cyphertext.data());
+                                                    aad.data(), cyphertext.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_three_vec(aad, plaintext, send_buffer);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
 
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-    aad.assign(aad.size(), '0');
-    aad.clear();
+    clear_three_vec(aad, plaintext, send_buffer);
 
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
     send_buffer.resize(NUMERIC_FIELD_SIZE);
-
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
                         cyphertext.begin() + payload_size);
@@ -1518,13 +1528,11 @@ Client::downloadFile()
     return 1;
 }
 
-int
-Client::deleteFile()
+int Client::deleteFile()
 {
     string filename;
     uint32_t file_size, payload_size, payload_size_n, filedimension;   
-    vector<unsigned char> aad;  // vector<> aad(AAD_LEN);
-    //array<unsigned char, AAD_LEN> new_aad;
+    vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);
     array<unsigned char, MAX_BUF_SIZE> cyphertext;
 
@@ -1539,20 +1547,18 @@ Client::deleteFile()
     this->active_session->createAAD(aad.data(), DELETE_REQ);
     
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
-                                            aad.data(), cyphertext.data());
+                                                    aad.data(), cyphertext.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_three_vec(aad, plaintext, send_buffer);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
 
     // === Cleaning ===
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-    aad.assign(aad.size(), '0');
-    aad.clear();
+    clear_three_vec(aad, plaintext, send_buffer);
 
-    // === Management Buffers & Content that to be sent ===
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
     send_buffer.resize(NUMERIC_FIELD_SIZE);
-
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
                         cyphertext.begin() + payload_size);
@@ -1577,7 +1583,6 @@ Client::deleteFile()
 
 // _BEGIN_(2)------ [M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] ------
 
-    int aad_len;
     uint16_t opcode;
     uint64_t received_len;  
     uint32_t plaintext_len;
@@ -1605,6 +1610,11 @@ Client::deleteFile()
     //received from server in terms of byte
     plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
+    if (plaintext_len == 0) {
+        cerr << " Error during decryption" << endl;
+        clear_three_vec(aad, plaintext, recv_buffer);
+        return -1;
+    }
 
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
@@ -1694,7 +1704,7 @@ Client::deleteFile()
         aad.clear();
         cyphertext.fill('0');
         
-        return;
+        return -1;
     }
         
     
@@ -1716,18 +1726,15 @@ Client::deleteFile()
     plaintext.insert(plaintext.begin(), choice.begin(), choice.end());
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
-                                            aad.data(), cyphertext.data());
+                                                    aad.data(), cyphertext.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_three_vec(aad, plaintext, send_buffer);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
 
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-    aad.assign(aad.size(), '0');
-    aad.clear();
-
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
     send_buffer.resize(NUMERIC_FIELD_SIZE);
-
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
                         cyphertext.begin() + payload_size);
@@ -1758,7 +1765,7 @@ Client::deleteFile()
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len == 0 || received_len == -1)
+    if(received_len <= 0)
     {
         cout<<"Error during receive phase (S->C)"<<endl;
 
@@ -1775,6 +1782,11 @@ Client::deleteFile()
     //received from server in terms of byte
     plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
+    if (plaintext_len == 0) {
+        cerr << " Error during decryption" << endl;
+        clear_three_vec(aad, plaintext, recv_buffer);
+        return -1;
+    }
 
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    

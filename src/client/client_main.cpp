@@ -15,8 +15,10 @@ int main(int argc, char* argv[]) {
         // readUsername(usr);
         readInput(usr, MAX_NAME_SIZE, "Please, insert your username: ");
         Client* client = new Client(usr, argv[1]);
-        if(!client->authentication())
-            handleErrors("Authentication failed");
+        if(!client->authentication()) {
+            perror("Authentication failed");
+            exit(EXIT_FAILURE);
+        }
         // stampa lista utenti
 
         string msg_input;
