@@ -202,7 +202,7 @@ void Server::client_thread_code(int sockd) {
         clear_vec_array(ui->recv_buffer, plaintext.data(), plaintext.size());
 
         received_len = receiveMsg(sockd, ui->recv_buffer);
-        if(received_len <= 0){
+        if(received_len < MIN_LEN){
             cerr<<"Error during receive phase (S->C, upload)"<<endl;
             break;
         }
@@ -357,7 +357,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     
     payload_size = receiveMsg(sockd, recv_buffer);
     
-    if(payload_size <= 0) {
+    if(payload_size < MIN_LEN) {
         recv_buffer.assign(recv_buffer.size(), '0');
         cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
         //close(sockd);
@@ -642,7 +642,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 
     //vector<unsigned char> recv_buf;
     payload_size = receiveMsg(sockd, usr->recv_buffer);
-    if(payload_size <= 0) {
+    if(payload_size < MIN_LEN) {
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
         usr->recv_buffer.clear();
@@ -938,7 +938,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 
     for(int i = 0; i < tot_chunks; i++){
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
-        if(received_len == -1 || received_len == 0){
+        if(received_len < MIN_LEN){
             cerr<<"Error! Exiting receive phase"<<endl;
             return -1;
         }

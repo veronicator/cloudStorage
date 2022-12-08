@@ -236,7 +236,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     uint32_t signed_msg_len;
 
     payload_size =  receiveMsg();
-    if(payload_size <= 0) {
+    if(payload_size < MIN_LEN) {
         cerr << "Error on the receiveMsg -> closing connection..." << endl;
         return false;
     }
@@ -783,7 +783,7 @@ int Client::receiveFileList() {
 
     while(true){
         received_len = receiveMsg();
-        if(received_len <= 0){
+        if(received_len < MIN_LEN){
             cerr<<"Error! Exiting receive file list phase"<<endl;
             return -1;
         }
@@ -847,7 +847,7 @@ void Client::logout() {
     uint16_t opcode;
 
     received_len = receiveMsg();
-    if(received_len > 0){
+    if(received_len >= MIN_LEN){
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
         if(pt_len != 0){
             opcode = ntohs(*(uint16_t*)aad.data() + NUMERIC_FIELD_SIZE);
@@ -1033,7 +1033,7 @@ int Client::uploadFile(){
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len <= 0){
+    if(received_len < MIN_LEN){
         cerr<<"Error during receive phase (S->C, upload)"<<endl;
         return -1;
     }
@@ -1071,7 +1071,7 @@ int Client::uploadFile(){
         aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
         plaintext.resize(MAX_BUF_SIZE);        
         received_len = receiveMsg();
-            if(received_len == 0 || received_len == -1){
+            if(received_len < MIN_LEN){
         cerr<<"Error during receive phase (S->C)"<<endl;
         return -1;
         }
@@ -1162,7 +1162,7 @@ int Client::renameFile(){
     string server_response;
 
     received_len = receiveMsg();
-    if(received_len <= 0){
+    if(received_len < MIN_LEN){
         cerr <<"Error during receive phase (S->C, rename)";
         return -1;
     }
