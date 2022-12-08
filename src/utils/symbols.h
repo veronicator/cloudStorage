@@ -15,8 +15,9 @@
 #define ERROR 12
 
 //Dir Path
-#define FILE_PATH_CLT "./users/"
-#define FILE_PATH_SVR "./userStorage/"
+#define SRV_DIR "./server/"
+#define FILE_PATH_CLT "/users/"
+#define FILE_PATH_SVR "/userStorage/"
 
 //responses
 #define MESSAGE_OK "ack_operation_req"

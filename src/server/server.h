@@ -1,6 +1,6 @@
 #include "../utils/security_utils.h"
 
-#define path_file "./server/"
+#define path_file "./server/userStorage/"
 
 // TODO
 
@@ -13,6 +13,8 @@ struct UserInfo {
 
     UserInfo(int sd, string name);
     ~UserInfo();
+
+    void cleanup();
 };
     
 
@@ -61,8 +63,6 @@ class Server {
     bool receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce);
     bool authenticationClient(int sockd);  // call session.generatenonce & sendMsg
  
-    // TODO: modificare come serve 
-    // (li scrivo solo per evitare conflitti su git, ci sono anche le definizioni nel file .cpp)
     int receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename);
     int sendMsgChunks(UserInfo* ui, string filename);
     
@@ -86,9 +86,9 @@ class Server {
         int acceptConnection();
         int getListener();
         //void* client_thread_code(void *arg);  // friend?
-        void client_thread_code(int sd);
+        void run_thread(int sd);
 
-        void joinThread();
+        //void joinThread();
 
     //test
 };
@@ -101,4 +101,4 @@ struct ThreadArgs {
 };
 
 void* client_thread_code(void *arg);
-void joinThread();
+//void joinThread();

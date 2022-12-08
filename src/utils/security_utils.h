@@ -42,10 +42,6 @@ void handleErrors(const char *error);
 
 void handleErrors(const char *error, int sockd);
 
-void terminate();   // TODO: dealloca tutto e termina in caso di errore
-
-void incrementCounter(uint32_t& counter);
-
 /*
 void generateRandomValue(unsigned char* new_value, int value_size) {
     if(RAND_poll() != 1) { cerr << "Error in RAND_poll\n"; exit(1); }
@@ -77,7 +73,7 @@ void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2);
 
 class Session {
     unsigned char* session_key;
-    uint32_t send_counter = 1;
+    uint32_t send_counter = 0;
     uint32_t rcv_counter = 0;
 
     void incrementCounter(uint32_t& counter);
@@ -88,9 +84,6 @@ class Session {
     public:
         EVP_PKEY* ECDH_myKey = NULL;    // ephimeral 
         EVP_PKEY* ECDH_peerKey = NULL;  // ephimeral
-        //unsigned char* ECDH_myPubKey;  // serialized ecdh public key, to send
-        //unsigned char* iv;
-        //array<unsigned char, NONCE_SIZE> nonce;
 
         Session() {};
         ~Session(); //deallocare tutti i vari buffer utilizzati: session_key ecc
@@ -100,14 +93,11 @@ class Session {
         // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input and put in "input" string
 
 
-        EVP_PKEY* get_peerKey();
-
         EVP_PKEY* retrievePrivKey(string path);  // retrieve its own private key from pem file and return it
         int computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);
         long signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign);   // return dig sign length
         bool verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, EVP_PKEY* pub_key, unsigned char* msg_buf, unsigned int msg_len);
 
-        //void generateNonce();
         int generateNonce(unsigned char *nonce);
         bool checkNonce(unsigned char *received_nonce, unsigned char *sent_nonce);
 
@@ -118,14 +108,10 @@ class Session {
         int deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key); 
    
         bool checkCounter(uint32_t counter);
-        //void sendMsg(const unsigned char* buffer, uint32_t msg_dim);
-        //int receiveMsg(unsigned char *&rcv_buffer);
 
         uint32_t encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output);  // encrypt message to send and return message length
-        //unsigned int decryptMsg(unsigned char *ciphertext, int ct_len, int aad_len, unsigned char *plaintext, unsigned char *rcv_iv, unsigned char *tag);  // dencrypt received message and return message (pt) length
         uint32_t decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
 
-        int fileList(unsigned char *plaintext, int pt_len, unsigned char* output_buf);    // return payload size
         //encrypt/decrypt()
         /* 
          * deriva shared secret

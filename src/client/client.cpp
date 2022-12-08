@@ -5,8 +5,7 @@ Client::Client(string username, string srv_ip) {
     active_session = new Session();
 
     if(!createSocket(srv_ip)) {
-        perror("Socket creation error");
-        exit(EXIT_FAILURE);
+        handleErrors("Socket creation error");
     };
 }
 
@@ -15,12 +14,10 @@ Client::~Client() {
     active_session = nullptr;
     username.clear();
     if(!send_buffer.empty()) {
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();
+        clear_vec(send_buffer);
     }
     if(!recv_buffer.empty()) {
-        recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
     }
 }
 
@@ -754,6 +751,9 @@ int Client::requestFileList() {
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
+    //cout << "client->requestfilelist" << endl;
+    //BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size()); 
+
     output.fill('0');
 
     if(sendMsg(payload_size) != 1){
@@ -828,8 +828,7 @@ void Client::logout() {
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     if (payload_size == 0) {
         clear_three_vec(aad, plaintext, send_buffer);
-        perror(" Error during encryption");
-        exit(EXIT_FAILURE);
+        handleErrors(" Error during encryption");
     }
     payload_size_n = htonl(payload_size);
 

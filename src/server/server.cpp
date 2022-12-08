@@ -11,15 +11,19 @@ UserInfo::UserInfo(int sd, string name)
 UserInfo::~UserInfo() {
     username.clear();
     if(!send_buffer.empty()) {
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();
+        clear_vec(send_buffer);
     }
     if(!recv_buffer.empty()) {
-        recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
     }
     client_session = nullptr;
 }
+
+void UserInfo::cleanup() {
+
+}
+
+/********************************************************************/
 
 Server::Server() {
     if(pthread_mutex_init(&mutex_client_list, NULL) != 0) {
@@ -98,8 +102,7 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
     cout << payload_size << " sendMsg: payload size" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();    //fill('0');
+        clear_vec(send_buffer);
         //close(sockd);
         return -1;
     }
@@ -107,14 +110,12 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
     payload_size += NUMERIC_FIELD_SIZE;
     if(send(sockd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();    //fill('0');
+        clear_vec(send_buffer);
         //close(sockd);
         return -1;
     }
 
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
+    clear_vec(send_buffer);
     return 1;
 }
 
@@ -155,6 +156,9 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
         return -1;
     }
 
+    if(!recv_buffer.empty())
+        clear_vec(recv_buffer);
+
     recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
     receiver.fill('0');
 
@@ -163,9 +167,9 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
 /********************************************************************/
 
-void Server::client_thread_code(int sockd) {
-    cout << "client thread code (inside the server) -> run()\n";
-    cout << "thread socket " << sockd << endl;
+void Server::run_thread(int sockd) {
+    cout << "run_thread (inside the server) -> run()\n"
+        << "thread socket " << sockd << endl;
 
     long ret;
     bool retb;
@@ -178,6 +182,15 @@ void Server::client_thread_code(int sockd) {
             << "Closing socket: " << sockd << endl;
         
         // TODO: erase the client from the map
+        UserInfo *usr = nullptr;
+        try {
+            usr = connectedClient.at(sockd);
+            
+            connectedClient.erase(sockd);
+        } catch(const out_of_range& ex) {
+            cerr<<"usr not found"<<endl;
+            return;
+        }
         
         close(sockd);
         //pthread_exit(NULL); 
@@ -187,11 +200,11 @@ void Server::client_thread_code(int sockd) {
     int received_len, pt_len;
     uint16_t opcode;
     bool end_thread = false;
-    UserInfo* ui;
-    vector<unsigned char> aad;
+    UserInfo* ui = nullptr;
+    array<unsigned char, AAD_LEN> aad;
     vector<unsigned char> plaintext(MAX_BUF_SIZE);
 
-    try{
+    try {
         ui = connectedClient.at(sockd);
     }
     catch(const out_of_range& ex){
@@ -200,20 +213,24 @@ void Server::client_thread_code(int sockd) {
     }
 
     while(!end_thread){
-        clear_vec(aad);
-        clear_vec_array(ui->recv_buffer, plaintext.data(), plaintext.size());
+        clear_arr(aad.data(), aad.size());
+        clear_two_vec(ui->recv_buffer, plaintext);
 
         received_len = receiveMsg(sockd, ui->recv_buffer);
         if(received_len <= 0){
-            cerr<<"Error during receive phase (S->C, upload)"<<endl;
+            cerr<<"Error during receiving request msg "<<endl;
             break;
         }
+        
+        //cout << "server->runthread" << endl;
+        //BIO_dump_fp(stdout, (const char*)ui->recv_buffer.data(), ui->recv_buffer.size()); 
 
         pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), plaintext.data());
         if(pt_len <= 0){
             cerr << "Error during decryption" << endl;
-            clear_vec(aad);
-            clear_vec_array(ui->recv_buffer, plaintext.data(), plaintext.size());
+            clear_arr(aad.data(), aad.size());
+            clear_vec(ui->recv_buffer);
+            clear_vec(plaintext);
             break;
         }
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
@@ -335,6 +352,7 @@ bool Server::authenticationClient(int sockd) {
         /* 
     invia lista utenti online
     -> end authentication */
+    //sendFileList(sockd);
 
     return true;
 }  // call session.generatenonce & sendMsg
@@ -360,10 +378,9 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     payload_size = receiveMsg(sockd, recv_buffer);
     
     if(payload_size <= 0) {
-        recv_buffer.assign(recv_buffer.size(), '0');
+        clear_vec(recv_buffer);
         cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
         //close(sockd);
-        recv_buffer.clear();
         return false;
     }
         
@@ -371,11 +388,9 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
     
     start_index = NUMERIC_FIELD_SIZE;   // payload field
-    if(payload_size > recv_buffer.size() - start_index) {   // - (uint)OPCODE_SIZE
+    if(payload_size < recv_buffer.size() - start_index) {   // - (uint)OPCODE_SIZE
         cerr << "receiveUsrname1: Received msg size error on socket: " << sockd << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        //close(sockd);
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
         return false;
     }
 
@@ -384,18 +399,14 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     start_index += OPCODE_SIZE;
     if(opcode != LOGIN) {
         cerr << "receiveUsrname2:Received message not expected on socket: " << sockd << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        //close(sockd);
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
         return false;
     }
     
     if(start_index >= recv_buffer.size() - (uint)NONCE_SIZE) {
             // if it is equal => there is no username in the message -> error
         cerr << "ReceiveUsrname3: Received msg size error on socket: " << sockd << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        //close(sockd);
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
         return false;
     }
 
@@ -403,9 +414,9 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     start_index += NONCE_SIZE;
     username = string(recv_buffer.begin() + start_index, recv_buffer.end());
     cout << "username " << username << endl;
+    // check user existence
 
-    recv_buffer.assign(recv_buffer.size(), '0');
-    recv_buffer.clear();
+    clear_vec(recv_buffer);
     
     pthread_mutex_lock(&mutex_client_list);
     if(connectedClient.find(sockd) != connectedClient.end()) {
@@ -816,6 +827,7 @@ int Server::sendFileList(int sockd) {
     }
     
     const string path = path_file + ui->username + "/";
+    //cout << "path_file: " << path << endl;
 
     for (const auto & entry : fs::directory_iterator(path)){
         const std::string s = entry.path();
@@ -1639,7 +1651,7 @@ void* client_thread_code(void *arg) {
     ThreadArgs* args = (ThreadArgs*)arg;
     Server* serv = args->server;
     int sockd = args->sockd;
-    serv->client_thread_code(sockd);
+    serv->run_thread(sockd);
     cout<< "exit thread \n";
     pthread_exit(NULL);
     return NULL;

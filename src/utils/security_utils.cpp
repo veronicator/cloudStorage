@@ -5,15 +5,17 @@ void handleErrors() {
     perror("An error occurred\n"); 
     exit(1);
 }
+*/
 
 void handleErrors(const char *error) {
     string msg_err = "An error occurred: ";
     msg_err.append(error);
     msg_err.append("\n");
     perror(msg_err.c_str());
-    exit(1);
+    exit(EXIT_FAILURE);
 }
 
+/*
 // manage the error and close the socket used with the client that has the error //
 void handleErrors(const char *error, int sockd) {
     perror(error);
@@ -52,7 +54,7 @@ void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len)
 }
 
 bool searchDir(string dir_name){
-    string path = "userStorage/";
+    string path = "./server/userStorage/";
     for (const auto& entry : fs::directory_iterator(path)){
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
@@ -104,7 +106,7 @@ void readFilenameInput(string& input, string msg) {
 
 
 void readInput(string& input, const int MAX_SIZE, string msg = "") {
-    string ok_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&";
+    string ok_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!";
     bool ok = false;
     do {
         if(!msg.empty())
@@ -136,7 +138,9 @@ unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     cout << "session->createAAD" << endl;
     int aad_len = 0;
     //cout << sizeof(uint16_t) << " sizeof " << endl;
-    memcpy(aad, &send_counter, NUMERIC_FIELD_SIZE);
+    uint32_t send_counter_n = htonl(send_counter);
+    cout << "send counter: " << send_counter << "\tcounter_n: " << send_counter_n << endl; 
+    memcpy(aad, &send_counter_n, NUMERIC_FIELD_SIZE);
     aad_len += NUMERIC_FIELD_SIZE;
     incrementCounter(send_counter);
     // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
@@ -145,8 +149,8 @@ unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     uint16_t opcode_n = htons(opcode);
     memcpy(aad + aad_len, &opcode_n, OPCODE_SIZE);
     aad_len += OPCODE_SIZE;
-    // cout << "session->createAAD3" << endl;
-    // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
+    cout << "session->createAAD3" << endl;
+    BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     return aad_len;
 }
 
@@ -481,6 +485,8 @@ int Session::deserializePubKey(unsigned char* buf_key, unsigned int key_size, EV
 }
 
 bool Session::checkCounter(uint32_t counter) {
+    cout << "counter: " << rcv_counter << endl
+        << "recv_counter: " << counter << endl;
     return counter == rcv_counter;
 }
 
@@ -625,22 +631,28 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
 
  
     // read fields in buffer
-    uint32_t read_bytes = 0;
-    memcpy(rcv_iv, input_buffer, IV_LEN);
+    uint32_t read_bytes = NUMERIC_FIELD_SIZE;
+    memcpy(rcv_iv, input_buffer + read_bytes, IV_LEN);
     read_bytes += IV_LEN;
 
-    uint32_t counter = *(uint32_t*)(input_buffer + read_bytes);
+    mempcpy(aad, input_buffer + read_bytes, AAD_LEN);
+    read_bytes += AAD_LEN;
+    
+    //cout << "session->decrypt" << endl;
+    //BIO_dump_fp(stdout, (const char*)aad, AAD_LEN); 
+
+    uint32_t counter = *(uint32_t*)(aad);
+    cout << "recev counter_n decry: " << counter << endl;
+    counter = ntohl(counter);
+    cout << "recv counter h: " << counter << endl;
     if(!checkCounter(counter)) {
         free(rcv_iv);
         free(tag);
         perror("received counter not valid");
         return 0;
     }
-    incrementCounter(rcv_counter);
-   
-    mempcpy(aad, input_buffer + read_bytes, AAD_LEN);
-    read_bytes += AAD_LEN;
-    
+    incrementCounter(rcv_counter);   
+
     ct_len = payload_size - AAD_LEN - IV_LEN - TAG_SIZE;
     if(ct_len <= 0) {
         free(rcv_iv);
@@ -661,7 +673,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     mempcpy(tag, input_buffer + read_bytes, TAG_SIZE);
     read_bytes += TAG_SIZE;
 
-    if(read_bytes != payload_size) {
+    if(read_bytes - NUMERIC_FIELD_SIZE != payload_size) {
         free(rcv_iv);
         free(tag);
         free(ciphertext);
@@ -738,8 +750,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
    }
 }
 
-int32_t
-checkFileExist(string filename, string username, string path_side)
+int32_t checkFileExist(string filename, string username, string path_side)
 {
     string path = path_side + username + "/" + filename;
     struct stat buffer;
@@ -752,8 +763,7 @@ checkFileExist(string filename, string username, string path_side)
 	return -1;  //File exist
 }
 
-int
-removeFile(string filename, string username, string path_side)
+int removeFile(string filename, string username, string path_side)
 {
     string path = path_side + username + "/" + filename;
 
@@ -784,8 +794,7 @@ removeFile(string filename, string username, string path_side)
     */
 }
 
-void
-print_progress_bar(int total, unsigned int fragment)
+void print_progress_bar(int total, unsigned int fragment)
 {
     cout << "\r" << "[Fragment " << fragment + 1 << " of " << total << "]";
 	cout.flush();
@@ -821,8 +830,8 @@ print_progress_bar(int total, unsigned int fragment)
     */
 }
 
-int // Register signal and signal handler
-catch_the_signal()
+/** Register signal and signal handler */
+int catch_the_signal()
 {
     int interrupt_signal, stop_signal;
     struct sigaction sig_int_handler;
@@ -872,8 +881,8 @@ catch_the_signal()
     */
 }
 
-void    //the function to be called when signal is sent to process
-custom_act(int signum)
+/** the function to be called when signal is sent to process */
+void custom_act(int signum)
 {
     string choice;
 
