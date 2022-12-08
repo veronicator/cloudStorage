@@ -1000,7 +1000,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     filedimension = ((uint64_t)ntohl(r_dim_h) << 32) + ntohl(r_dim_l);
     filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
 
-    const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+    const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"}; //TODO: check if (^\w[\w\\\/\.\-\+_!@#$%^&()~]{0,19}$) (contains also \/ chars)
     file_ok = regex_match(filename, re);
 
     if(!file_ok){
@@ -1105,7 +1105,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     if(!file_ok){
         cerr<<"Filename not correct! Rename terminated"<<endl;
         ack_msg = "Filename not correct";
-    } else {
+    } else { //TODO: handle -2 and -3 cases
         if(searchFile(old_filename, ui->username) == -1) {
             cerr << "Filename to change doesn't correspond to any file"<<endl;
             ack_msg = "Filename to change doesn't correspond to any file\n";

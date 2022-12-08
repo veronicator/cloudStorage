@@ -55,7 +55,7 @@ void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE cha
 
 void readFilenameInput(string& input, string msg);  
 
-uint64_t searchFile(string filename, string username);
+int searchFile(string filename, string username);
 
 bool searchDir(string dir_name);
 

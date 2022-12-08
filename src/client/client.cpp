@@ -960,11 +960,11 @@ uint32_t Client::sendMsgChunks(string filename){
 
 
 int Client::uploadFile(){
-    uint64_t file_dim;                                                      //dimension (in byte) of the file to upload
+    long file_dim;  //TODO: long is better than uint (return values of searchFile can be negative) ?                                                          //dimension (in byte) of the file to upload
     uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
     uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
     string filename;                                                        //name of the file to upload
-    vector<unsigned char> aad(AAD_LEN);                                              //aad of the msg
+    vector<unsigned char> aad(AAD_LEN);                                     //aad of the msg
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
 
