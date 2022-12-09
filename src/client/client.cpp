@@ -802,7 +802,7 @@ int Client::receiveFileList() {
         if(opcode == FILE_LIST)
             cout<<((char*)plaintext.data());
         else if(opcode == END_OP){
-            cout<<((char*)plaintext.data());
+            cout<<((char*)plaintext.data())<<endl;
             break;
         }
         else{

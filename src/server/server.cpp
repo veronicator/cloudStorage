@@ -800,9 +800,10 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 int Server::sendFileList(int sockd) {
     uint32_t payload_size, payload_size_n;
     UserInfo* ui;
-    string file_list = "";
+    string file_list;
     vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext;    //(NUMERIC_FIELD_SIZE);
+    vector<unsigned char> send_frag;
     array<unsigned char, MAX_BUF_SIZE> output;     
     // retrive UserInfo relative to the client
     try{
@@ -813,35 +814,49 @@ int Server::sendFileList(int sockd) {
         return -1;
     }
     
+    file_list = "File of the user '" + ui->username + "' on the cloud:\n";
     const string path = path_file + ui->username + "/";
 
+    int found_files = 0;
     for (const auto& entry : fs::directory_iterator(path)){
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
         std::smatch match;
 
-        if (std::regex_search(s, match, rgx))
-            file_list += string(match[0]) + "\n"; 
+        if (std::regex_search(s, match, rgx)){
+            file_list += string(match[0]) + "\n";
+            found_files++;
+        } 
     }    
+
+    if(found_files == 0)
+        file_list += "No files found";
+    else
+        file_list += "(" + to_string(found_files) + " files found)";
+    
     
     int num_chunks = ceil(file_list.size()/FRAGM_SIZE);
     plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
     for(int i = 0; i < num_chunks; i++){
-        if(i == num_chunks - 1)
+        if(i == num_chunks - 1){
             ui->client_session->createAAD(aad.data(), END_OP);
-        else
+            send_frag.insert(send_frag.begin(), plaintext.begin() + FRAGM_SIZE * i, plaintext.end());
+        }
+        else{
             ui->client_session->createAAD(aad.data(), FILE_LIST);
+            send_frag.insert(send_frag.begin(), plaintext.begin() + FRAGM_SIZE * i, plaintext.begin() + FRAGM_SIZE * (i + 1) - 1);  //TODO: -1 è necessario?
+        }
 
-        payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+        payload_size = ui->client_session->encryptMsg(send_frag.data(), send_frag.size(), aad.data(), output.data());
         if (payload_size == 0) {
             cerr << " Error during encryption" << endl;
-            clear_three_vec(aad, plaintext, ui->send_buffer);
+            clear_three_vec(aad, send_frag, ui->send_buffer);
             return -1;
         }
         payload_size_n = htonl(payload_size);
 
-        clear_three_vec(aad, plaintext, ui->send_buffer);
+        clear_three_vec(aad, send_frag, ui->send_buffer);
 
         ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
         memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -854,6 +869,7 @@ int Server::sendFileList(int sockd) {
             return -1;
         }
     }
+    clear_two_vec(ui->send_buffer, plaintext);
     return 1;
 }
 
