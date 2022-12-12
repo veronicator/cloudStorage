@@ -53,7 +53,7 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 void readFilenameInput(string& input, string msg);
 
-bool searchDir(string dir_name);
+//bool searchUserExist(string usr_name);
 long searchFile(string filename, string username);
 int32_t checkFileExist(string filename, string username, string path_side);
 int removeFile(string filename, string username, string path_side);
@@ -83,8 +83,8 @@ class Session {
     int generateRandomValue(unsigned char* new_value, int value_size);
     
     public:
-        EVP_PKEY* ECDH_myKey = NULL;    // ephimeral 
-        EVP_PKEY* ECDH_peerKey = NULL;  // ephimeral
+        EVP_PKEY* ECDH_myKey = nullptr;    // ephimeral 
+        EVP_PKEY* ECDH_peerKey = nullptr;  // ephimeral
 
         Session() {};
         ~Session(); //deallocare tutti i vari buffer utilizzati: session_key ecc

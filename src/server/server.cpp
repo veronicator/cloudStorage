@@ -91,6 +91,27 @@ int Server::getListener() {
 
 /********************************************************************/
 
+/** 
+ * check if an user that wants to access to the cloud is already 
+ *  registered on the server
+ * @usr_name: client username
+*/
+bool Server::searchUserExist(string usr_name){
+    string path = "./server/userStorage/";
+    for (const auto& entry : fs::directory_iterator(path)){
+        const std::string s = entry.path();
+        std::regex rgx("[^/]*$");
+        std::smatch match;
+
+        if (std::regex_search(s, match, rgx))
+            if(string(match[0]) == usr_name)
+                return true;
+    }
+    return false;
+}
+
+/********************************************************************/
+
 /**
  * send a message through the specific socket
  * @payload_size: body lenght of the message to send
@@ -134,7 +155,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     cout << "msg size: " << msg_size << endl;
     
     if (msg_size == 0) {
-        cerr << "The connection with the socket " << sockd << " has been closed" << endl;
+        cerr << "The connection with the socket " << sockd << " will be closed" << endl;
         return 0;
     }
 
@@ -189,13 +210,15 @@ void Server::run_thread(int sockd) {
             connectedClient.erase(sockd);
         } catch(const out_of_range& ex) {
             cerr<<"usr not found"<<endl;
+            //close(sockd);
             return;
         }
         
-        close(sockd);
+        //close(sockd);
         //pthread_exit(NULL); 
         return;
     }
+    cout << "Client logged successfully!" << endl;
     
     int received_len, pt_len;
     uint16_t opcode;
@@ -227,7 +250,7 @@ void Server::run_thread(int sockd) {
 
         pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), plaintext.data());
         if(pt_len <= 0){
-            cerr << "Error during decryption" << endl;
+            cerr << "run_thread->Error during decryption" << endl;
             clear_arr(aad.data(), aad.size());
             clear_vec(ui->recv_buffer);
             clear_vec(plaintext);
@@ -352,6 +375,7 @@ bool Server::authenticationClient(int sockd) {
         /* 
     invia lista utenti online
     -> end authentication */
+    //cout << "authentication send filelist" << endl;
     //sendFileList(sockd);
 
     return true;
@@ -414,9 +438,13 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     start_index += NONCE_SIZE;
     username = string(recv_buffer.begin() + start_index, recv_buffer.end());
     cout << "username " << username << endl;
-    // check user existence
-
     clear_vec(recv_buffer);
+    // check user existence
+    if (!searchUserExist(username)) {
+        cerr << "User not registered on the cloud -> can not authenticate" << endl;
+        return false;
+    }
+
     
     pthread_mutex_lock(&mutex_client_list);
     if(connectedClient.find(sockd) != connectedClient.end()) {
@@ -655,7 +683,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 
     //vector<unsigned char> recv_buf;
     payload_size = receiveMsg(sockd, usr->recv_buffer);
-    if(payload_size < 0) {
+    if(payload_size <= 0) {
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
         usr->recv_buffer.clear();
@@ -811,6 +839,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 
 
 int Server::sendFileList(int sockd) {
+    cout << "server->sendFileList" << endl;
     uint32_t payload_size, payload_size_n;
     UserInfo* ui;
     string file_list;
@@ -878,16 +907,21 @@ int Server::sendFileList(int sockd) {
 
         output.fill('0');
 
+        BIO_dump_fp(stdout, (const char*)ui->send_buffer.data(), ui->send_buffer.size());
+
+
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1){
             cerr<<"Error during send phase (S->C) | File List Phase"<<endl;
             return -1;
         }
     }
     clear_two_vec(ui->send_buffer, plaintext);
+    cout << "end sendFileList" << endl;
     return 1;
 }
 
 void Server::logoutClient(int sockd) {
+    cout << "logoutClient" << endl;
     UserInfo* ui;
     // retrive UserInfo relative to the client
     try{
@@ -899,7 +933,7 @@ void Server::logoutClient(int sockd) {
     }
 
     vector<unsigned char> plaintext;
-    vector<unsigned char> aad;
+    vector<unsigned char> aad(AAD_LEN);
     array<unsigned char, MAX_BUF_SIZE> output;
     uint32_t payload_size, payload_size_n;
     string ack_msg = "Logout confirmed";
@@ -907,24 +941,29 @@ void Server::logoutClient(int sockd) {
     ui->client_session->createAAD(aad.data(), END_OP);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
-    while (payload_size == 0) {
-        cerr << " Error during encryption" << endl;
-        payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl
+            << "exit anyway" << endl;
+        delete ui;
+        
+        //payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     }
     clear_three_vec(aad, plaintext, ui->send_buffer);
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     payload_size_n = htonl(payload_size);
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer))
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1)
         cerr << "Error during send phase (S->C | Logout)" << endl;
 
     clear_two_vec(plaintext, aad);
     clear_arr(output.data(), output.size());
 
-    ui->client_session->~Session();
-    ui->~UserInfo();
-    ui = nullptr;
+    //ui->client_session->~Session();
+    //ui->~UserInfo();
+    delete ui;
+    //ui = nullptr;
 }
     
 
@@ -976,7 +1015,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
         pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), frag_buffer.data());
 
         if (pt_len == 0) {
-            cerr << " Error during decryption" << endl;
+            cerr << " receiveMsgChunks->Error during decryption" << endl;
             clear_vec_array(aad, frag_buffer.data(), frag_buffer.size());
             return -1;
         }
@@ -1323,7 +1362,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
         pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
         if (pt_len == 0) {
-            cerr << " Error during decryption" << endl;
+            cerr << "dowload->Error during decryption" << endl;
             clear_three_vec(aad, plaintext, ui->recv_buffer);
             return -1;
         }
@@ -1562,7 +1601,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     plaintext_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
     if (plaintext_len == 0) {
-        cerr << " Error during decryption" << endl;
+        cerr << " deleteFile->Error during decryption" << endl;
         clear_three_vec(aad, plaintext, ui->recv_buffer);
         return -1;
     }
@@ -1668,6 +1707,7 @@ void* client_thread_code(void *arg) {
     Server* serv = args->server;
     int sockd = args->sockd;
     serv->run_thread(sockd);
+    close(sockd);
     cout<< "exit thread \n";
     pthread_exit(NULL);
     return NULL;

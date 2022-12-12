@@ -1,0 +1,51 @@
+Please, insert your username: 
+Client->autentication
+sendUsername
+Session->generateRandomValue
+random
+Session->generateRandomValue end
+authentication->sendMsg M1: nonce, username 
+sendMsg new
+sentMsg->payload size: 14
+authentication->receiveMsg
+receiveCertSign
+receiveMsg new
+received msg size: 1320
+1316 received payload length
+checkNonce -> received
+0000 - c9 52 bb 82                                       .R..
+checkNonce -> sent
+0000 - c9 52 bb 82                                       .R..
+Received nonce verified!
+Certificate of '/C=IT/CN=Server' (released by '/C=IT/O=FoC/OU=Certification Authority/CN=FoundationOfCybersecurity') verified successfully
+Server certificate verified!
+verifydigsign ret 1
+ Digital Signature Verified!
+session->generateECDHkey
+session->generateECDHKey done
+Client -> sendSign 
+session->serializePubKey
+session->serializePubKey end
+ECDH_my_key_size 178
+session->signMsg
+serv_nonce inserted
+memcpy ecdh_key_size done
+memcpy ecdh_pub_key done
+start index after ecdh key 192
+signed msg inserted 
+authentication sendMsg (ecdh pub key)
+sendMsg new
+sentMsg->payload size: 448
+sendSign end
+sendsign serv nonce
+session->deriveSecret
+call to computeSessionkey
+Session->computeSessionKey
+computeHash
+active_session -> derive secret 
+receiveFileList
+receiveMsg new
+received msg size: 0
+~Client
+~Session
+~Session end

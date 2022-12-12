@@ -52,6 +52,10 @@ class Server {
 
 
     /****************************************************/
+    
+    bool searchUserExist(string usr_name);
+    
+    /****************************************************/
 
     int sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer);       //dopo invio: deallocare buffer
     long receiveMsg(int sockd, vector<unsigned char> &recv_buffer);    // restituisce lunghezza totale messaggio ricevuto, msg_size

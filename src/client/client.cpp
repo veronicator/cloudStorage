@@ -10,8 +10,10 @@ Client::Client(string username, string srv_ip) {
 }
 
 Client::~Client() {
+    cout << "~Client" << endl;
     //TODO: check if everything is deallocated
-    active_session = nullptr;
+    delete active_session;
+    //active_session = nullptr;
     username.clear();
     if(!send_buffer.empty()) {
         clear_vec(send_buffer);
@@ -19,6 +21,7 @@ Client::~Client() {
     if(!recv_buffer.empty()) {
         clear_vec(recv_buffer);
     }
+    close(sd);
 }
 
 bool Client::createSocket(string srv_ip) {
@@ -130,6 +133,7 @@ bool Client::authentication() {
     // M1
     if(sendUsername(client_nonce) != 1) {
         cerr << "Authentication->sendUsername failed" << endl;
+        //close(sd);
         return false;
     }
     
@@ -144,6 +148,10 @@ bool Client::authentication() {
     }
     
     my_priv_key = active_session->retrievePrivKey("./client/users/" + username + "/" + username + "_key.pem");
+    if (my_priv_key == nullptr) {
+        cerr << "retrievePrivKey failed" << endl;
+        return false;
+    }
     active_session->generateECDHKey();
     ret = sendSign(server_nonce, my_priv_key);
     cout << "sendsign serv nonce" << endl;
@@ -158,7 +166,7 @@ bool Client::authentication() {
     cout << "active_session -> derive secret " << endl;
     // TODO
     //receive login ack or file list?
-    //receiveFileList();
+    //return receiveFileList() != -1;
     return true;
 }
 
@@ -678,11 +686,12 @@ void Client::showCommands() {
 
 // TODO
 bool Client::handlerCommand(string& command) {
-    cout << "client->hanlerCommand\n";
+    cout << "client->handlerCommand\n";
     //if else con la gestione dei diversi comandi, es. se rtt => readInput per leggere l'username con cui si vuole chattare (lato server va controllato che il nome sia corretto)
-    if(command.compare("!help") == 0)
+    if(command.compare("!help") == 0) {
         showCommands();
-    else if(command.compare("!list") == 0) {
+        
+    } else if(command.compare("!list") == 0) {
         // opcode 8
         cout << "FileList operation requested" << endl;
         requestFileList();
@@ -714,10 +723,12 @@ bool Client::handlerCommand(string& command) {
         // logout from server - opcode 10
         cout << "Logout requested" << endl; 
         // TODO
-        logout();        
+        logout();    
+        return false;    
     } else {
-        cout << "Invalid command" << endl;
-        return false;
+        cout << "Invalid command\nRetry" << endl;
+        showCommands();
+        //return false;
     }
     return true;
 }
@@ -775,6 +786,7 @@ int Client::requestFileList() {
 }
 
 int Client::receiveFileList() {
+    cout << "receiveFileList" << endl;
     vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(MAX_BUF_SIZE);
     long received_len, pt_len;
@@ -783,6 +795,7 @@ int Client::receiveFileList() {
 
     while(true){
         received_len = receiveMsg();
+        cout << "receiveFileList msg received" << endl;
         if(received_len < MIN_LEN){
             cerr<<"Error! Exiting receive file list phase"<<endl;
             return -1;
@@ -812,10 +825,12 @@ int Client::receiveFileList() {
 
         clear_two_vec(plaintext, aad);
     }
+    cout << "end receiveFileList" << endl;
     return 0;
 }
 
 void Client::logout() {
+    cout << "client logout" << endl;
     vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);
     array<unsigned char, MAX_BUF_SIZE> output;
@@ -838,7 +853,7 @@ void Client::logout() {
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    while(sendMsg(payload_size) != 1)
+    if (sendMsg(payload_size) != 1)
         cerr<<"Error during logout phase! Trying again"<<endl;
 
     long received_len;
@@ -865,8 +880,9 @@ void Client::logout() {
         cerr << "Error during receive phase (S->C, logout)" << endl;
     }
 
-    this->active_session->~Session();
-    this->~Client();
+    //this->active_session->~Session();
+    //this->~Client();
+    cout << "end logout" << endl;
 }
     
 

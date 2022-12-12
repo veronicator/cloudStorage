@@ -53,20 +53,6 @@ void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len)
     memset(arr, '0', sizeof(char)*arr_len);
 }
 
-bool searchDir(string dir_name){
-    string path = "./server/userStorage/";
-    for (const auto& entry : fs::directory_iterator(path)){
-        const std::string s = entry.path();
-        std::regex rgx("[^/]*$");
-        std::smatch match;
-
-        if (std::regex_search(s, match, rgx))
-            if(string(match[0]) == dir_name)
-                return true;
-    }
-    return false;
-}
-
 long searchFile(string filename, string username){
     string path = "./users/" + username + "/" + filename;
     
@@ -194,6 +180,7 @@ int Session::generateRandomValue(unsigned char* new_value, int value_size) {
         cerr << "Error in RAND_bytes\n";
         return -1;
     }
+    cout << "Session->generateRandomValue end" << endl;
     return 1;
 }
 
@@ -618,7 +605,7 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     free(iv);
     free(ciphertext);
     free(tag);
-
+    cout << "session-> encryptMsg end" << endl;
     return written_bytes;
 }
 
@@ -942,6 +929,7 @@ void custom_act(int signum)
 
 
 Session::~Session(){
+    cout << "~Session" << endl;
     //TODO: check if everything is deallocated
     free(session_key);
     EVP_PKEY_free(ECDH_myKey);
@@ -949,4 +937,5 @@ Session::~Session(){
     //nonce.fill('0');
     //free(nonce);
     //free(iv);
+    cout << "~Session end" << endl;
 }
