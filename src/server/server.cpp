@@ -171,7 +171,7 @@ void Server::run_thread(int sockd) {
     cout << "run_thread (inside the server) -> run()\n"
         << "thread socket " << sockd << endl;
 
-    long ret;
+    //long ret;
     bool retb;
 
     // todo: check if the user is already registered on the server
@@ -217,8 +217,8 @@ void Server::run_thread(int sockd) {
         clear_two_vec(ui->recv_buffer, plaintext);
 
         received_len = receiveMsg(sockd, ui->recv_buffer);
-        if(received_len <= 0){
-            cerr<<"Error during receiving request msg "<<endl;
+        if(received_len < MIN_LEN){
+            cerr<<"Error during receiving request msg"<<endl;
             break;
         }
         
@@ -655,7 +655,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 
     //vector<unsigned char> recv_buf;
     payload_size = receiveMsg(sockd, usr->recv_buffer);
-    if(payload_size <= 0) {
+    if(payload_size < 0) {
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
         usr->recv_buffer.clear();
@@ -813,9 +813,10 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
 int Server::sendFileList(int sockd) {
     uint32_t payload_size, payload_size_n;
     UserInfo* ui;
-    string file_list = "";
+    string file_list;
     vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext;    //(NUMERIC_FIELD_SIZE);
+    vector<unsigned char> send_frag;
     array<unsigned char, MAX_BUF_SIZE> output;     
     // retrive UserInfo relative to the client
     try{
@@ -826,36 +827,50 @@ int Server::sendFileList(int sockd) {
         return -1;
     }
     
+    file_list = "File of the user '" + ui->username + "' on the cloud:\n";
     const string path = path_file + ui->username + "/";
     //cout << "path_file: " << path << endl;
 
-    for (const auto & entry : fs::directory_iterator(path)){
+    int found_files = 0;
+    for (const auto& entry : fs::directory_iterator(path)){
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
         std::smatch match;
 
-        if (std::regex_search(s, match, rgx))
-            file_list += string(match[0]) + "\n"; 
+        if (std::regex_search(s, match, rgx)){
+            file_list += string(match[0]) + "\n";
+            found_files++;
+        } 
     }    
+
+    if(found_files == 0)
+        file_list += "No files found";
+    else
+        file_list += "(" + to_string(found_files) + " files found)";
+    
     
     int num_chunks = ceil(file_list.size()/FRAGM_SIZE);
     plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
     for(int i = 0; i < num_chunks; i++){
-        if(i == num_chunks - 1)
+        if(i == num_chunks - 1){
             ui->client_session->createAAD(aad.data(), END_OP);
-        else
+            send_frag.insert(send_frag.begin(), plaintext.begin() + FRAGM_SIZE * i, plaintext.end());
+        }
+        else{
             ui->client_session->createAAD(aad.data(), FILE_LIST);
+            send_frag.insert(send_frag.begin(), plaintext.begin() + FRAGM_SIZE * i, plaintext.begin() + FRAGM_SIZE * (i + 1) - 1);  //TODO: -1 è necessario?
+        }
 
-        payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+        payload_size = ui->client_session->encryptMsg(send_frag.data(), send_frag.size(), aad.data(), output.data());
         if (payload_size == 0) {
             cerr << " Error during encryption" << endl;
-            clear_three_vec(aad, plaintext, ui->send_buffer);
+            clear_three_vec(aad, send_frag, ui->send_buffer);
             return -1;
         }
         payload_size_n = htonl(payload_size);
 
-        clear_three_vec(aad, plaintext, ui->send_buffer);
+        clear_three_vec(aad, send_frag, ui->send_buffer);
 
         ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
         memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -868,6 +883,7 @@ int Server::sendFileList(int sockd) {
             return -1;
         }
     }
+    clear_two_vec(ui->send_buffer, plaintext);
     return 1;
 }
 
@@ -952,7 +968,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 
     for(int i = 0; i < tot_chunks; i++){
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
-        if(received_len == -1 || received_len == 0){
+        if(received_len < MIN_LEN){
             cerr<<"Error! Exiting receive phase"<<endl;
             return -1;
         }
@@ -1118,7 +1134,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     filedimension = ((uint64_t)ntohl(r_dim_h) << 32) + ntohl(r_dim_l);
     filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
 
-    const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+    const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"}; //TODO: check if (^\w[\w\\\/\.\-\+_!@#$%^&()~]{0,19}$) (contains also \/ chars)
     file_ok = regex_match(filename, re);
 
     if(!file_ok){
@@ -1391,7 +1407,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     if(!file_ok){
         cerr<<"Filename not correct! Rename terminated"<<endl;
         ack_msg = "Filename not correct";
-    } else {
+    } else { //TODO: handle -2 and -3 cases
         if(searchFile(old_filename, ui->username) == -1) {
             cerr << "Filename to change doesn't correspond to any file"<<endl;
             ack_msg = "Filename to change doesn't correspond to any file\n";

@@ -783,7 +783,7 @@ int Client::receiveFileList() {
 
     while(true){
         received_len = receiveMsg();
-        if(received_len <= 0){
+        if(received_len < MIN_LEN){
             cerr<<"Error! Exiting receive file list phase"<<endl;
             return -1;
         }
@@ -802,7 +802,7 @@ int Client::receiveFileList() {
         if(opcode == FILE_LIST)
             cout<<((char*)plaintext.data());
         else if(opcode == END_OP){
-            cout<<((char*)plaintext.data());
+            cout<<((char*)plaintext.data())<<endl;
             break;
         }
         else{
@@ -846,7 +846,7 @@ void Client::logout() {
     uint16_t opcode;
 
     received_len = receiveMsg();
-    if(received_len > 0){
+    if(received_len >= MIN_LEN){
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
         if(pt_len != 0){
             opcode = ntohs(*(uint16_t*)aad.data() + NUMERIC_FIELD_SIZE);
@@ -959,11 +959,11 @@ uint32_t Client::sendMsgChunks(string filename){
 
 
 int Client::uploadFile(){
-    uint64_t file_dim;                                                      //dimension (in byte) of the file to upload
+    long file_dim;  //TODO: long is better than uint (return values of searchFile can be negative) ?                                                          //dimension (in byte) of the file to upload
     uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
     uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
     string filename;                                                        //name of the file to upload
-    vector<unsigned char> aad(AAD_LEN);                                              //aad of the msg
+    vector<unsigned char> aad(AAD_LEN);                                     //aad of the msg
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
 
@@ -1031,7 +1031,7 @@ int Client::uploadFile(){
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len <= 0){
+    if(received_len < MIN_LEN){
         cerr<<"Error during receive phase (S->C, upload)"<<endl;
         return -1;
     }
@@ -1068,7 +1068,7 @@ int Client::uploadFile(){
         aad.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
         plaintext.resize(MAX_BUF_SIZE);        
         received_len = receiveMsg();
-            if(received_len == 0 || received_len == -1){
+            if(received_len < MIN_LEN){
         cerr<<"Error during receive phase (S->C)"<<endl;
         return -1;
         }
@@ -1158,7 +1158,7 @@ int Client::renameFile(){
     string server_response;
 
     received_len = receiveMsg();
-    if(received_len <= 0){
+    if(received_len < MIN_LEN){
         cerr <<"Error during receive phase (S->C, rename)";
         return -1;
     }

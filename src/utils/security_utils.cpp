@@ -67,15 +67,29 @@ bool searchDir(string dir_name){
     return false;
 }
 
-uint64_t searchFile(string filename, string username){
-    string path = "./users/" + username +"/" + filename;
+long searchFile(string filename, string username){
+    string path = "./users/" + username + "/" + filename;
+    
+    char* canon_file = realpath(path.c_str(), NULL);
+    if(!canon_file){
+        cerr << "Error during canonicalization" << endl;
+        return -1;
+    }
+
+    string ok_dir = "./users/" + username;
+
+    if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
+        cerr << "Invalid path" << endl;
+        return -3;
+    }
+    
     struct stat buffer;
     if(stat(path.c_str(), &buffer) != 0){
-        cerr<<"File not present"<<endl;
+        cerr << "File not present" << endl;
         return -1;
     }
     if(buffer.st_size >= MAX_FILE_DIMENSION){
-        cerr<<"File too big"<<endl;
+        cerr << "File too big" << endl;
         return -2;
     }
     return buffer.st_size;
