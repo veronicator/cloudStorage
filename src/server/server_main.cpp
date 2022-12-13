@@ -19,8 +19,8 @@ int main() {
     // select sockets ready 
 
 
-    timeout.tv_sec = 60;
-    timeout.tv_usec = 0;
+    //timeout.tv_sec = 60;
+    //timeout.tv_usec = 0;
     // thread
     list<pthread_t> threads;
     try {
@@ -30,8 +30,8 @@ int main() {
             if(new_sd < 0)
                 continue;
 
-            if (setsockopt (new_sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0)
-                cerr <<"setsockopt failed"<<endl;
+            /*if (setsockopt (new_sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) < 0)
+                cerr <<"setsockopt failed"<<endl;*/
             pthread_t client_thread;
             ThreadArgs* args = new ThreadArgs(server, new_sd);
             cout << "pthread_create" << endl;

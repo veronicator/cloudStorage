@@ -789,7 +789,8 @@ int Client::receiveFileList() {
     cout << "receiveFileList" << endl;
     vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(MAX_BUF_SIZE);
-    long received_len, pt_len;
+    long received_len;
+    uint32_t pt_len;
     uint16_t opcode;
     string filelist = "";
 
@@ -801,6 +802,8 @@ int Client::receiveFileList() {
             return -1;
         }
 
+        BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
+
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), recv_buffer.size(), aad.data(), plaintext.data());
         if (pt_len == 0) {
             cerr << " Error during decryption" << endl;
@@ -808,14 +811,16 @@ int Client::receiveFileList() {
             return -1;
         }
 
-        opcode = ntohs(*(uint16_t*)(aad.data()+NUMERIC_FIELD_SIZE));
+        opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
 
         //TODO if the list of file exceed the space available in a single message
 
+        BIO_dump_fp(stdout, (const char*)plaintext.data(), pt_len);      
+
         if(opcode == FILE_LIST)
-            cout<<((char*)plaintext.data());
+            cout<<string(plaintext.begin(), plaintext.end());
         else if(opcode == END_OP){
-            cout<<((char*)plaintext.data())<<endl;
+            cout<<string(plaintext.begin(), plaintext.begin() + pt_len)<<endl;
             break;
         }
         else{

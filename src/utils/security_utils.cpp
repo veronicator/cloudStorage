@@ -499,6 +499,10 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     int len = 0;
     int ct_len = 0;
 
+    cout<<"ENC_PLAIN"<<endl;                
+    BIO_dump_fp(stdout, plaintext, pt_len); 
+    cout << "ENC_PT_LEN: " << pt_len << endl;
+
     unsigned char *ciphertext = (unsigned char*)malloc(pt_len + BLOCK_SIZE);
     if(!ciphertext) {
         perror("Malloc error CT");
@@ -601,6 +605,8 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     // cout << "session->encryptMsg5" << endl;
     memcpy(output + written_bytes, tag, TAG_SIZE);
     written_bytes += TAG_SIZE;
+    cout<<"ENC_CT"<<endl;
+    BIO_dump_fp(stdout, ciphertext, ct_len); 
 
     free(iv);
     free(ciphertext);
@@ -643,9 +649,9 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     //BIO_dump_fp(stdout, (const char*)aad, AAD_LEN); 
 
     uint32_t counter = *(uint32_t*)(aad);
-    cout << "recev counter_n decry: " << counter << endl;
+    //cout << "recev counter_n decry: " << counter << endl;
     counter = ntohl(counter);
-    cout << "recv counter h: " << counter << endl;
+    //cout << "recv counter h: " << counter << endl;
     if(!checkCounter(counter)) {
         free(rcv_iv);
         free(tag);
@@ -670,6 +676,9 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     }
     mempcpy(ciphertext, input_buffer + read_bytes, ct_len);
     read_bytes += ct_len;
+
+    cout<<"DEC_CT"<<endl;
+    BIO_dump_fp(stdout, ciphertext, ct_len);
 
     mempcpy(tag, input_buffer + read_bytes, TAG_SIZE);
     read_bytes += TAG_SIZE;
@@ -741,9 +750,15 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     free(tag);
     free(ciphertext);
 
-   if(ret > 0) {
+    cout<<"DEC_PLAIN"<<endl;
+    BIO_dump_fp(stdout, plaintext, pt_len);
+
+    cout << "RET: " << ret << endl;
+
+   if(ret >= 0) {
        // success
        pt_len += len;
+       cout << "PT_LEN: " << pt_len << endl;
        return pt_len;
    } else {
        // verify failed
