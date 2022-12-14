@@ -52,7 +52,7 @@ bool Client::createSocket(string srv_ip) {
  * @return: 1 on success, 0 or -1 on error
  */
 int Client::sendMsg(uint32_t payload_size) {
-    cout << "sendMsg new" << endl;
+    //cout << "sendMsg new" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
         send_buffer.assign(send_buffer.size(), '0');
@@ -60,7 +60,7 @@ int Client::sendMsg(uint32_t payload_size) {
         return -1;
     }
     payload_size += NUMERIC_FIELD_SIZE;
-    cout << "sentMsg->payload size: " << payload_size << endl;
+    //cout << "sentMsg->payload size: " << payload_size << endl;
     if(send(sd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
         send_buffer.assign(send_buffer.size(), '0');
@@ -78,7 +78,7 @@ int Client::sendMsg(uint32_t payload_size) {
  * @return: return the payload length of the received message, or 0 or -1 on error
 */
  long Client::receiveMsg() {
-    cout << "receiveMsg new" << endl;
+    //cout << "receiveMsg new" << endl;
 
     array<unsigned char, MAX_BUF_SIZE> receiver;
     ssize_t msg_size = 0;
@@ -88,7 +88,7 @@ int Client::sendMsg(uint32_t payload_size) {
     recv_buffer.clear();
 
     msg_size = recv(sd, receiver.data(), MAX_BUF_SIZE-1, 0);
-    cout << "received msg size: " << msg_size << endl;
+    //cout << "received msg size: " << msg_size << endl;
 
     if (msg_size == 0) {
         cerr << "The connection has been closed" << endl;
@@ -103,7 +103,7 @@ int Client::sendMsg(uint32_t payload_size) {
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    cout << payload_size << " received payload length" << endl;
+    //cout << payload_size << " received payload length" << endl;
     //check if all data are received
     if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
@@ -786,7 +786,7 @@ int Client::requestFileList() {
 }
 
 int Client::receiveFileList() {
-    cout << "receiveFileList" << endl;
+    //cout << "receiveFileList" << endl;
     vector<unsigned char> aad(AAD_LEN);
     vector<unsigned char> plaintext(MAX_BUF_SIZE);
     long received_len;
@@ -796,15 +796,15 @@ int Client::receiveFileList() {
 
     while(true){
         received_len = receiveMsg();
-        cout << "receiveFileList msg received" << endl;
+        //cout << "receiveFileList msg received" << endl;
         if(received_len < MIN_LEN){
             cerr<<"Error! Exiting receive file list phase"<<endl;
             return -1;
         }
 
-        BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
+        //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
 
-        pt_len = this->active_session->decryptMsg(recv_buffer.data(), recv_buffer.size(), aad.data(), plaintext.data());
+        pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
         if (pt_len == 0) {
             cerr << " Error during decryption" << endl;
             clear_three_vec(plaintext, aad, recv_buffer);
@@ -814,13 +814,13 @@ int Client::receiveFileList() {
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
 
         //TODO if the list of file exceed the space available in a single message
-
-        BIO_dump_fp(stdout, (const char*)plaintext.data(), pt_len);      
+        
+        //BIO_dump_fp(stdout, (const char*)plaintext.data(), pt_len);      
 
         if(opcode == FILE_LIST)
             cout<<string(plaintext.begin(), plaintext.end());
         else if(opcode == END_OP){
-            cout<<string(plaintext.begin(), plaintext.begin() + pt_len)<<endl;
+            cout<<string(plaintext.begin(), plaintext.begin() + (pt_len))<<endl;
             break;
         }
         else{
@@ -830,7 +830,7 @@ int Client::receiveFileList() {
 
         clear_two_vec(plaintext, aad);
     }
-    cout << "end receiveFileList" << endl;
+    //cout << "end receiveFileList" << endl;
     return 0;
 }
 

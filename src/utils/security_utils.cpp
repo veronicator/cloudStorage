@@ -135,11 +135,11 @@ void Session::incrementCounter(uint32_t& counter) {
 }
 
 unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
-    cout << "session->createAAD" << endl;
+    //cout << "session->createAAD" << endl;
     int aad_len = 0;
     //cout << sizeof(uint16_t) << " sizeof " << endl;
     uint32_t send_counter_n = htonl(send_counter);
-    cout << "send counter: " << send_counter << "\tcounter_n: " << send_counter_n << endl; 
+    //cout << "send counter: " << send_counter << "\tcounter_n: " << send_counter_n << endl; 
     memcpy(aad, &send_counter_n, NUMERIC_FIELD_SIZE);
     aad_len += NUMERIC_FIELD_SIZE;
     incrementCounter(send_counter);
@@ -149,8 +149,8 @@ unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     uint16_t opcode_n = htons(opcode);
     memcpy(aad + aad_len, &opcode_n, OPCODE_SIZE);
     aad_len += OPCODE_SIZE;
-    cout << "session->createAAD3" << endl;
-    BIO_dump_fp(stdout, (const char*)aad, aad_len); 
+    //cout << "session->createAAD3" << endl;
+    //BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     return aad_len;
 }
 
@@ -166,12 +166,12 @@ int Session::computeSessionKey(unsigned char* secret, int slen) {
  * @return: 1 on success, -1 on failure
 */
 int Session::generateRandomValue(unsigned char* new_value, int value_size) {
-    cout << "Session->generateRandomValue" << endl;
+    //cout << "Session->generateRandomValue" << endl;
     if(new_value == NULL) {
         perror("generate random null pointer error ");
         return -1;
     }
-    cout << "random" << endl;
+    //cout << "random" << endl;
     if(RAND_poll() != 1) {
         cerr << "Error in RAND_poll\n";
         return -1;
@@ -180,7 +180,7 @@ int Session::generateRandomValue(unsigned char* new_value, int value_size) {
         cerr << "Error in RAND_bytes\n";
         return -1;
     }
-    cout << "Session->generateRandomValue end" << endl;
+    //cout << "Session->generateRandomValue end" << endl;
     return 1;
 }
 
@@ -322,9 +322,9 @@ int Session::generateNonce(unsigned char *nonce) {
 
 bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonce) {
     cout << "checkNonce -> received" << endl;
-    BIO_dump_fp(stdout, (const char*)received_nonce, NONCE_SIZE);
+    //BIO_dump_fp(stdout, (const char*)received_nonce, NONCE_SIZE);
     cout << "checkNonce -> sent" << endl;
-    BIO_dump_fp(stdout, (const char*)sent_nonce, NONCE_SIZE);
+    //BIO_dump_fp(stdout, (const char*)sent_nonce, NONCE_SIZE);
     return memcmp(received_nonce, sent_nonce, NONCE_SIZE) == 0;
 }
 
@@ -486,22 +486,22 @@ int Session::deserializePubKey(unsigned char* buf_key, unsigned int key_size, EV
 }
 
 bool Session::checkCounter(uint32_t counter) {
-    cout << "counter: " << rcv_counter << endl
-        << "recv_counter: " << counter << endl;
+    //cout << "counter: " << rcv_counter << endl
+    //    << "recv_counter: " << counter << endl;
     return counter == rcv_counter;
 }
 
 /********************************************************************/
 
 uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output) {
-    cout << "session->encryptMsg pt_len " << pt_len << endl;
+    //cout << "session->encryptMsg pt_len " << pt_len << endl;
     EVP_CIPHER_CTX *ctx;
     int len = 0;
     int ct_len = 0;
 
-    cout<<"ENC_PLAIN"<<endl;                
-    BIO_dump_fp(stdout, plaintext, pt_len); 
-    cout << "ENC_PT_LEN: " << pt_len << endl;
+    //cout<<"ENC_PLAIN"<<endl;                
+    //BIO_dump_fp(stdout, plaintext, pt_len); 
+    //cout << "ENC_PT_LEN: " << pt_len << endl;
 
     unsigned char *ciphertext = (unsigned char*)malloc(pt_len + BLOCK_SIZE);
     if(!ciphertext) {
@@ -605,19 +605,19 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     // cout << "session->encryptMsg5" << endl;
     memcpy(output + written_bytes, tag, TAG_SIZE);
     written_bytes += TAG_SIZE;
-    cout<<"ENC_CT"<<endl;
-    BIO_dump_fp(stdout, ciphertext, ct_len); 
+    //cout<<"ENC_CT"<<endl;
+    //BIO_dump_fp(stdout, ciphertext, ct_len); 
 
     free(iv);
     free(ciphertext);
     free(tag);
-    cout << "session-> encryptMsg end" << endl;
+    //cout << "session-> encryptMsg end" << endl;
     return written_bytes;
 }
 
 
 uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsigned char *aad, unsigned char *plaintext) {
-    cout << "session->decryptMsg" << endl;
+    //cout << "session->decryptMsg" << endl;
     EVP_CIPHER_CTX *ctx;
     int ct_len;
     int len = 0;    // numero di byte decifrati ad ogni giro
@@ -677,8 +677,8 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     mempcpy(ciphertext, input_buffer + read_bytes, ct_len);
     read_bytes += ct_len;
 
-    cout<<"DEC_CT"<<endl;
-    BIO_dump_fp(stdout, ciphertext, ct_len);
+    //cout<<"DEC_CT"<<endl;
+    //BIO_dump_fp(stdout, ciphertext, ct_len);
 
     mempcpy(tag, input_buffer + read_bytes, TAG_SIZE);
     read_bytes += TAG_SIZE;
@@ -750,15 +750,15 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     free(tag);
     free(ciphertext);
 
-    cout<<"DEC_PLAIN"<<endl;
-    BIO_dump_fp(stdout, plaintext, pt_len);
+    //cout<<"DEC_PLAIN"<<endl;
+    //BIO_dump_fp(stdout, plaintext, pt_len);
 
-    cout << "RET: " << ret << endl;
+    //cout << "RET: " << ret << endl;
 
    if(ret >= 0) {
        // success
        pt_len += len;
-       cout << "PT_LEN: " << pt_len << endl;
+       //cout << "PT_LEN: " << pt_len << endl;
        return pt_len;
    } else {
        // verify failed
@@ -946,7 +946,8 @@ void custom_act(int signum)
 Session::~Session(){
     cout << "~Session" << endl;
     //TODO: check if everything is deallocated
-    free(session_key);
+    //free(session_key);
+
     EVP_PKEY_free(ECDH_myKey);
     EVP_PKEY_free(ECDH_peerKey);
     //nonce.fill('0');

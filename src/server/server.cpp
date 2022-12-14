@@ -856,7 +856,7 @@ int Server::sendFileList(int sockd) {
         return -1;
     }
     
-    file_list = "File of the user '" + ui->username + "' on the cloud:\n";
+    file_list = "File of the user '" + ui->username + "' on the cloud:\n\n";
     const string path = path_file + ui->username + "/";
     //cout << "path_file: " << path << endl;
 
@@ -867,16 +867,16 @@ int Server::sendFileList(int sockd) {
         std::smatch match;
 
         if (std::regex_search(s, match, rgx)){
-            file_list += string(match[0]) + "\n";
+            file_list += "-) " + string(match[0]) + "\n";
             found_files++;
-            cout << "File list" << found_files << " :" << file_list << endl;
+            //cout << "File list" << found_files << " :" << file_list << endl;
         } 
     }    
 
     if(found_files == 0)
-        file_list += "No files found\n\0";
+        file_list += "No files found\0";
     else
-        file_list += "(" + to_string(found_files) + " files found)\n\0";
+        file_list += "\n(" + to_string(found_files) + " files found)\0";
     
     
     int num_chunks = ceil(float(file_list.size())/FRAGM_SIZE);
