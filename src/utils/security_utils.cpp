@@ -948,10 +948,16 @@ Session::~Session(){
 
     if(session_key != nullptr)
         free(session_key);
+    /*
+    cout << "session_key free" << endl;
+    
     if(ECDH_myKey != nullptr)
         EVP_PKEY_free(ECDH_myKey);
+    cout << "ecdh_mykey free " << endl;
     if(ECDH_peerKey != nullptr)
         EVP_PKEY_free(ECDH_peerKey);
+    cout << "ecdh_peerk free" << endl;
+    */
         
     //nonce.fill('0');
     //free(nonce);

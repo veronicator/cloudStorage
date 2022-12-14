@@ -25,13 +25,14 @@ int main(int argc, char* argv[]) {
 
         string msg_input;
         bool ok = true;
-        
+    
+        client->showCommands();
         while (ok) {
-            client->showCommands();
             readInput(msg_input, MAX_COMMAND_SIZE, "Insert command"); 
             if(msg_input[0] != command) {
                 cout << "Command not recognized" << endl
                     << "Commands start with '!'" << endl;
+                client->showCommands();
             } else
                 ok = client->handlerCommand(msg_input);
         }

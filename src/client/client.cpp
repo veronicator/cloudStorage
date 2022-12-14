@@ -166,8 +166,8 @@ bool Client::authentication() {
     cout << "active_session -> derive secret " << endl;
     // TODO
     //receive login ack or file list?
-    //return receiveFileList() != -1;
-    return true;
+    return receiveFileList() != -1;
+    //return true;
 }
 
 /********************************************************************/
@@ -686,8 +686,7 @@ void Client::showCommands() {
 
 // TODO
 bool Client::handlerCommand(string& command) {
-    cout << "client->handlerCommand\n";
-    //if else con la gestione dei diversi comandi, es. se rtt => readInput per leggere l'username con cui si vuole chattare (lato server va controllato che il nome sia corretto)
+    //if else con la gestione dei diversi comandi
     if(command.compare("!help") == 0) {
         showCommands();
         

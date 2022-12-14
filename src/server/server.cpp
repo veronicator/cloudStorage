@@ -376,7 +376,7 @@ bool Server::authenticationClient(int sockd) {
     invia lista utenti online
     -> end authentication */
     //cout << "authentication send filelist" << endl;
-    //sendFileList(sockd);
+    sendFileList(sockd);
 
     return true;
 }  // call session.generatenonce & sendMsg
