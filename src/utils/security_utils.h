@@ -73,7 +73,7 @@ void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2);
 
 
 class Session {
-    unsigned char* session_key;
+    unsigned char* session_key = nullptr;
     uint32_t send_counter = 0;
     uint32_t rcv_counter = 0;
 

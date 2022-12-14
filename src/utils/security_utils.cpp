@@ -221,7 +221,6 @@ int Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msg_di
     // allocate mem for digest
     msg_digest = (unsigned char*)malloc(DIGEST_SIZE);
     if(!msg_digest){
-        free(msg_digest);
         perror("Malloc error msg_digest");
         return -1;
     }
@@ -931,9 +930,12 @@ void custom_act(int signum)
 Session::~Session(){
     cout << "~Session" << endl;
     //TODO: check if everything is deallocated
-    free(session_key);
-    EVP_PKEY_free(ECDH_myKey);
-    EVP_PKEY_free(ECDH_peerKey);
+    if(session_key != nullptr)
+        free(session_key);
+    if(ECDH_myKey != nullptr)
+        EVP_PKEY_free(ECDH_myKey);
+    if(ECDH_peerKey != nullptr)
+        EVP_PKEY_free(ECDH_peerKey);
     //nonce.fill('0');
     //free(nonce);
     //free(iv);

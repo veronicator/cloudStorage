@@ -97,7 +97,7 @@ int Server::getListener() {
  * @usr_name: client username
 */
 bool Server::searchUserExist(string usr_name){
-    string path = "./server/userStorage/";
+    string path = "./server/userKeys/";
     for (const auto& entry : fs::directory_iterator(path)){
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
@@ -311,7 +311,7 @@ EVP_PKEY* Server::getPeerKey(string username) {
      * 
     */
 
-    string path = "./server/userStorage/" + username + "/" + username + "_pub.pem";
+    string path = "./server/userKeys/" + username + "/" + username + "_pub.pem";
     FILE* pubK_file = fopen(path.c_str(), "r");
     if(!pubK_file) {
         cerr << "Cannot open pub key pem file for client " << username << endl;
