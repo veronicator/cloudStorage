@@ -856,7 +856,7 @@ int Server::sendFileList(int sockd) {
         return -1;
     }
     
-    file_list = "File of the user '" + ui->username + "' on the cloud:\n";
+    file_list = "File of the user '" + ui->username + "' on the cloud:\n\n";
     const string path = path_file + ui->username + "/";
     //cout << "path_file: " << path << endl;
 
@@ -867,18 +867,20 @@ int Server::sendFileList(int sockd) {
         std::smatch match;
 
         if (std::regex_search(s, match, rgx)){
-            file_list += string(match[0]) + "\n";
+            file_list += "-) " + string(match[0]) + "\n";
             found_files++;
+            //cout << "File list" << found_files << " :" << file_list << endl;
         } 
     }    
 
     if(found_files == 0)
-        file_list += "No files found";
+        file_list += "No files found\0";
     else
-        file_list += "(" + to_string(found_files) + " files found)";
+        file_list += "\n(" + to_string(found_files) + " files found)\0";
     
     
-    int num_chunks = ceil(file_list.size()/FRAGM_SIZE);
+    int num_chunks = ceil(float(file_list.size())/FRAGM_SIZE);
+    cout << "NUM CHUNKS: " << num_chunks << endl;
     plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
     for(int i = 0; i < num_chunks; i++){
@@ -890,6 +892,8 @@ int Server::sendFileList(int sockd) {
             ui->client_session->createAAD(aad.data(), FILE_LIST);
             send_frag.insert(send_frag.begin(), plaintext.begin() + FRAGM_SIZE * i, plaintext.begin() + FRAGM_SIZE * (i + 1) - 1);  //TODO: -1 è necessario?
         }
+
+        cout << "FRAGM NUM " + to_string(i) + " CONTAINS: " << endl;     
 
         payload_size = ui->client_session->encryptMsg(send_frag.data(), send_frag.size(), aad.data(), output.data());
         if (payload_size == 0) {
@@ -907,8 +911,7 @@ int Server::sendFileList(int sockd) {
 
         output.fill('0');
 
-        BIO_dump_fp(stdout, (const char*)ui->send_buffer.data(), ui->send_buffer.size());
-
+        BIO_dump_fp(stdout, (const char*)ui->send_buffer.data(), ui->send_buffer.size());      
 
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1){
             cerr<<"Error during send phase (S->C) | File List Phase"<<endl;
