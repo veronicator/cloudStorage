@@ -994,14 +994,18 @@ int Client::uploadFile(){
     readFilenameInput(filename, "Insert filename: ");
     file_dim = searchFile(filename, this->username);
 
-    if(file_dim < 0 && file_dim != -1){
+    if(file_dim < 0 && file_dim != -1 && file_dim != -3){
         cerr << "File is too big! Upload terminated" << endl;
         return -1;
     }
     else if  (file_dim == -1){
         cerr << "File not found! Upload not possible" << endl;
         return -1;
-    }                      
+    }
+    else if (file_dim == -3){
+        cerr << "Invalid path! Upload terminated" << endl;
+        return -1;
+    }                   
 
     //insert in the plaintext filedimension and filename
     file_dim_h_n = htonl((uint32_t) (file_dim >> 32));

@@ -54,15 +54,20 @@ void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len)
 }
 
 long searchFile(string filename, string username){
-    string path = "./users/" + username + "/" + filename;
-    
+    char curr_dir[1024];
+    getcwd(curr_dir, sizeof(curr_dir));
+    cout << "Curr dir: " << string(curr_dir) << endl;
+
+    string path = string(curr_dir) + "/client/users/" + username + "/" + filename;
+    cout << "path.c_str() " << path.c_str() << endl;
+
     char* canon_file = realpath(path.c_str(), NULL);
     if(!canon_file){
         cerr << "Error during canonicalization" << endl;
         return -1;
     }
 
-    string ok_dir = "./users/" + username;
+    string ok_dir = string(curr_dir) + "/client/users/" + username;
 
     if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
         cerr << "Invalid path" << endl;

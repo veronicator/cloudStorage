@@ -880,7 +880,7 @@ int Server::sendFileList(int sockd) {
     
     
     int num_chunks = ceil(float(file_list.size())/FRAGM_SIZE);
-    cout << "NUM CHUNKS: " << num_chunks << endl;
+    cout << "NUM CHUNKS: " << float(file_list.size())/FRAGM_SIZE << endl;
     plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
     for(int i = 0; i < num_chunks; i++){
