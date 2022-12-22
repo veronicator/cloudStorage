@@ -910,12 +910,12 @@ void Client::sendErrorMsg(string errorMsg) {
 }
 
 uint32_t Client::sendMsgChunks(string filename){
-    string path = "./users/" + this->username + "/" + filename;                         //where to find the file
+    string path = "./client/users/" + this->username + "/" + filename;                         //where to find the file
     FILE* file = fopen(path.c_str(), "rb");                                             //opened file
     struct stat buf;
 
     if(!file){
-        cerr<<"Error during file opening";
+        cerr<<"Error during file opening. "<<endl;
         return -1;
     }
 
@@ -981,10 +981,10 @@ uint32_t Client::sendMsgChunks(string filename){
 int Client::uploadFile(){
     long file_dim;  //TODO: long is better than uint (return values of searchFile can be negative) ?                                                          //dimension (in byte) of the file to upload
     uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
-    uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
+    uint32_t file_dim_l_n, file_dim_h_n, filename_size_n;                                    //low and high part of the file_dim variable in network form
     string filename;                                                        //name of the file to upload
     vector<unsigned char> aad(AAD_LEN);                                     //aad of the msg
-    vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD + NUMERIC_FIELD_SIZE);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
 
     cout<<"****************************************"<<endl;
@@ -992,7 +992,7 @@ int Client::uploadFile(){
     cout<<"****************************************"<<endl<<endl;
 
     readFilenameInput(filename, "Insert filename: ");
-    file_dim = searchFile(filename, this->username);
+    file_dim = searchFile(filename, this->username, false);
 
     if(file_dim < 0 && file_dim != -1 && file_dim != -3){
         cerr << "File is too big! Upload terminated" << endl;
@@ -1007,12 +1007,17 @@ int Client::uploadFile(){
         return -1;
     }                   
 
+    cout << "file_dim: " << to_string(file_dim) << endl;
+    cout << "filename: " << filename.data()<< endl;
+    cout << "filename_dim: " << filename.size() << endl;
     //insert in the plaintext filedimension and filename
     file_dim_h_n = htonl((uint32_t) (file_dim >> 32));
     file_dim_l_n = htonl((uint32_t) (file_dim));
+    filename_size_n = htonl((uint32_t)filename.size());
     memcpy(plaintext.data(), &file_dim_l_n, NUMERIC_FIELD_SIZE);
     memcpy(plaintext.data() + NUMERIC_FIELD_SIZE, &file_dim_h_n, NUMERIC_FIELD_SIZE);
-    plaintext.insert(plaintext.begin() + FILE_SIZE_FIELD, filename.begin(), filename.end());  
+    memcpy(plaintext.data() + FILE_SIZE_FIELD, &filename_size_n, NUMERIC_FIELD_SIZE);
+    plaintext.insert(plaintext.begin() + FILE_SIZE_FIELD + NUMERIC_FIELD_SIZE, filename.begin(), filename.end());  
 
     this->active_session->createAAD(aad.data(), UPLOAD_REQ);                
 

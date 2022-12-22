@@ -53,37 +53,40 @@ void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len)
     memset(arr, '0', sizeof(char)*arr_len);
 }
 
-long searchFile(string filename, string username){
+long searchFile(string filename, string username, bool server_side){
     char curr_dir[1024];
     getcwd(curr_dir, sizeof(curr_dir));
-    cout << "Curr dir: " << string(curr_dir) << endl;
+    string path;
+    if(server_side)
+        path = string(curr_dir) + "/server/users/" + username + "/" + filename;
+    else
+        path = string(curr_dir) + "/client/users/" + username + "/" + filename;
 
-    string path = string(curr_dir) + "/client/users/" + username + "/" + filename;
-    cout << "path.c_str() " << path.c_str() << endl;
-
+    cout << "path: " << path << endl;
     char* canon_file = realpath(path.c_str(), NULL);
-    if(!canon_file){
+    if(!canon_file && !server_side){
         cerr << "Error during canonicalization" << endl;
         return -1;
     }
 
     string ok_dir = string(curr_dir) + "/client/users/" + username;
 
-    if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
+    if(!server_side && strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
         cerr << "Invalid path" << endl;
         return -3;
     }
     
     struct stat buffer;
     if(stat(path.c_str(), &buffer) != 0){
-        cerr << "File not present" << endl;
+        cout << "File not present" << endl;
         return -1;
     }
     if(buffer.st_size >= MAX_FILE_DIMENSION){
         cerr << "File too big" << endl;
         return -2;
     }
-    return buffer.st_size;
+
+    return buffer.st_size; 
 }
 
 void readFilenameInput(string& input, string msg) {
@@ -503,9 +506,9 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     int len = 0;
     int ct_len = 0;
 
-    //cout<<"ENC_PLAIN"<<endl;                
-    //BIO_dump_fp(stdout, plaintext, pt_len); 
-    //cout << "ENC_PT_LEN: " << pt_len << endl;
+    cout<<"ENC_PLAIN"<<endl;                
+    BIO_dump_fp(stdout, plaintext, pt_len); 
+    cout << "ENC_PT_LEN: " << pt_len << endl;
 
     unsigned char *ciphertext = (unsigned char*)malloc(pt_len + BLOCK_SIZE);
     if(!ciphertext) {
@@ -609,8 +612,8 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     // cout << "session->encryptMsg5" << endl;
     memcpy(output + written_bytes, tag, TAG_SIZE);
     written_bytes += TAG_SIZE;
-    //cout<<"ENC_CT"<<endl;
-    //BIO_dump_fp(stdout, ciphertext, ct_len); 
+    cout<<"ENC_CT"<<endl;
+    BIO_dump_fp(stdout, ciphertext, ct_len); 
 
     free(iv);
     free(ciphertext);
@@ -681,8 +684,8 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     mempcpy(ciphertext, input_buffer + read_bytes, ct_len);
     read_bytes += ct_len;
 
-    //cout<<"DEC_CT"<<endl;
-    //BIO_dump_fp(stdout, ciphertext, ct_len);
+    cout<<"DEC_CT"<<endl;
+    BIO_dump_fp(stdout, ciphertext, ct_len);
 
     mempcpy(tag, input_buffer + read_bytes, TAG_SIZE);
     read_bytes += TAG_SIZE;
@@ -754,8 +757,8 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     free(tag);
     free(ciphertext);
 
-    //cout<<"DEC_PLAIN"<<endl;
-    //BIO_dump_fp(stdout, plaintext, pt_len);
+    cout<<"DEC_PLAIN"<<endl;
+    BIO_dump_fp(stdout, plaintext, pt_len);
 
     //cout << "RET: " << ret << endl;
 

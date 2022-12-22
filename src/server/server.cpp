@@ -238,6 +238,7 @@ void Server::run_thread(int sockd) {
     while(!end_thread){
         clear_arr(aad.data(), aad.size());
         clear_two_vec(ui->recv_buffer, plaintext);
+        plaintext.resize(FILE_SIZE_FIELD + 20);
 
         received_len = receiveMsg(sockd, ui->recv_buffer);
         if(received_len < MIN_LEN){
@@ -259,6 +260,7 @@ void Server::run_thread(int sockd) {
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         switch(opcode){
             case UPLOAD_REQ:
+                cout << to_string(pt_len) + " pt_len -> " << string(plaintext.begin(), plaintext.end()) << endl;
                 uploadFile(sockd, plaintext);
                 break;
 
@@ -1148,7 +1150,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
 // TODO: check code
 int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     uint64_t filedimension;
-    uint32_t r_dim_l, r_dim_h;
+    uint32_t r_dim_l, r_dim_h, filename_dim;
     string filename;
     string ack_msg;
     uint32_t payload_size, payload_size_n;
@@ -1172,9 +1174,11 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
 
     //the plaintext has format: filedimension | filename
     memcpy(&r_dim_l, plaintext.data(), NUMERIC_FIELD_SIZE);
-    memcpy(&r_dim_h, plaintext.data() + 4, NUMERIC_FIELD_SIZE);
+    memcpy(&r_dim_h, plaintext.data() + NUMERIC_FIELD_SIZE, NUMERIC_FIELD_SIZE);
     filedimension = ((uint64_t)ntohl(r_dim_h) << 32) + ntohl(r_dim_l);
-    filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
+    memcpy(&filename_dim, plaintext.data() + FILE_SIZE_FIELD, NUMERIC_FIELD_SIZE);
+    filename_dim = ntohl(filename_dim);
+    filename = string(plaintext.begin() + FILE_SIZE_FIELD + NUMERIC_FIELD_SIZE, plaintext.begin() + FILE_SIZE_FIELD + NUMERIC_FIELD_SIZE + filename_dim);
 
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"}; //TODO: check if (^\w[\w\\\/\.\-\+_!@#$%^&()~]{0,19}$) (contains also \/ chars)
     file_ok = regex_match(filename, re);
@@ -1182,7 +1186,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     if(!file_ok){
         cerr<<"file not correct! Reception of the file terminated"<<endl;
         ack_msg = "Filename not correct";
-    } else if(searchFile(filename, ui->username) >= 0) {
+    } else if(searchFile(filename, ui->username, true) >= 0) {
         cerr<<"File already present"<<endl;
         ack_msg = "File already present";
         file_ok = false;
@@ -1191,6 +1195,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     if(file_ok)
         ack_msg = MESSAGE_OK;
     
+    clear_two_vec(plaintext, aad);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
@@ -1210,6 +1215,10 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok){
         cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
         cout<<"****************************************"<<endl;
+        if(!file_ok)
+            cout << "??????" << endl;
+        else
+            cout << "Bhoooooo" << endl;
         return -1;
     }
  
@@ -1450,13 +1459,13 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
         cerr<<"Filename not correct! Rename terminated"<<endl;
         ack_msg = "Filename not correct";
     } else { //TODO: handle -2 and -3 cases
-        if(searchFile(old_filename, ui->username) == -1) {
+        if(searchFile(old_filename, ui->username, true) == -1) {
             cerr << "Filename to change doesn't correspond to any file"<<endl;
             ack_msg = "Filename to change doesn't correspond to any file\n";
             file_ok = false;
         }
 
-        if(searchFile(new_filename, ui->username) >= 0){
+        if(searchFile(new_filename, ui->username, true) >= 0){
             cerr << "The new filename is already used by another file" << endl;
             ack_msg += "The new filename is already used by another file\n";
             file_ok = false;
