@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
 #include <string>
 #include <string.h>
@@ -16,24 +17,30 @@
 #include <arpa/inet.h>  // htonl/ntohl
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <regex.h>
+#include <regex>
+#include <cmath>
+#include <filesystem>
+#include <experimental/filesystem>
+#include <cerrno>
+#include <cstring>
+#include <signal.h> //for signal handler
 #include "symbols.h"
 
 using namespace std;
+namespace fs = std::experimental::filesystem;
 
 void handleErrors();
 
 void handleErrors(const char *error);
 
 void handleErrors(const char *error, int sockd);
-
-void terminate();   // dealloca tutto e termina in caso di errore
-
-void incrementCounter(uint32_t& counter);
 
 /*
 void generateRandomValue(unsigned char* new_value, int value_size) {
@@ -44,62 +51,68 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 //void readUsername(string& usr);
 
 void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
+void readFilenameInput(string& input, string msg);
 
-int buffer_copy(unsigned char*& dest, unsigned char* src, int len);
-/*
-struct UserInfo {
-    string username;    // client username
-    string chat_user;   // client username chatting with
-    bool available = false; // true: when online and there is no active chat, false otherwise
-    int clt_sockd;     // client socket descriptor
-    Session* client_session;
-};*/
+//bool searchUserExist(string usr_name);
+long searchFile(string filename, string username, bool server_side);
+int32_t checkFileExist(string filename, string username, string path_side);
+int removeFile(string filename, string username, string path_side);
+
+
+void print_progress_bar(int total, unsigned int fragment);
+
+int  catch_the_signal(); // Register signal and signal handler
+void custom_act(int signum); //the function to be called when signal is sent to process (handler)
+
+void clear_vec(vector<unsigned char>& v);
+void clear_arr(unsigned char* arr, int arr_len);
+void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3);
+void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len);
+void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2);
+
+
 
 class Session {
-    unsigned char* session_key;
-    uint32_t send_counter = 1;
+    unsigned char* session_key = nullptr;
+    uint32_t send_counter = 0;
     uint32_t rcv_counter = 0;
 
     void incrementCounter(uint32_t& counter);
-    void computeSessionKey(unsigned char* secret, int slen);  //shared secret -> session key
+    int computeSessionKey(unsigned char* secret, int slen);  //shared secret -> session key
 
+    int generateRandomValue(unsigned char* new_value, int value_size);
+    
     public:
-        EVP_PKEY* ECDH_myKey = NULL;    // ephimeral 
-        EVP_PKEY* ECDH_peerKey = NULL;  // ephimeral
-        //unsigned char* ECDH_myPubKey;  // serialized ecdh public key, to send
-        array<unsigned char, NONCE_SIZE> nonce;
-        //unsigned char* iv;
+        EVP_PKEY* ECDH_myKey = nullptr;    // ephimeral 
+        EVP_PKEY* ECDH_peerKey = nullptr;  // ephimeral
 
         Session() {};
         ~Session(); //deallocare tutti i vari buffer utilizzati: session_key ecc
 
         // Session utils
-        uint createAAD(unsigned char* aad, uint16_t opcode); // return aad_len
-        void generateRandomValue(unsigned char* new_value, int value_size);
-        // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input ancd put in "input" string
+        uint32_t createAAD(unsigned char* aad, uint16_t opcode); // return aad_len
+        // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input and put in "input" string
 
-        void retrievePrivKey(string path, EVP_PKEY*& key);  // retrieve its own private key from pem file
-        void computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);
-        unsigned int signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char*& dig_sign);   // return dig sign length
+
+        EVP_PKEY* retrievePrivKey(string path);  // retrieve its own private key from pem file and return it
+        int computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);
+        long signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign);   // return dig sign length
         bool verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, EVP_PKEY* pub_key, unsigned char* msg_buf, unsigned int msg_len);
 
-        void generateNonce();
-        bool checkNonce(unsigned char *received_nonce);
-        void generateECDHKey();    //generate ECDH key pair and return the public key
-        void deriveSecret();
+        int generateNonce(unsigned char *nonce);
+        bool checkNonce(unsigned char *received_nonce, unsigned char *sent_nonce);
 
-        unsigned int serializePubKey(EVP_PKEY* key, unsigned char*& buf_key);
-        void deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key); 
+        bool generateECDHKey();    //generate ECDH key pair
+        int deriveSecret();
+
+        long serializePubKey(EVP_PKEY* key, unsigned char*& buf_key);
+        int deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key); 
    
         bool checkCounter(uint32_t counter);
-        //void sendMsg(const unsigned char* buffer, uint32_t msg_dim);
-        //int receiveMsg(unsigned char *&rcv_buffer);
 
-        unsigned int encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, int aad_len, unsigned char *output);  // encrypt message to send and return message length
-        //unsigned int decryptMsg(unsigned char *ciphertext, int ct_len, int aad_len, unsigned char *plaintext, unsigned char *rcv_iv, unsigned char *tag);  // dencrypt received message and return message (pt) length
-        unsigned int decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *&aad, int &aad_len, unsigned char *&plaintext);  // dencrypt received message and return message (pt) length
-        
-        int fileList(unsigned char *plaintext, int pt_len, unsigned char*& output_buf);    // return payload size
+        uint32_t encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output);  // encrypt message to send and return message length
+        uint32_t decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
+
         //encrypt/decrypt()
         /* 
          * deriva shared secret

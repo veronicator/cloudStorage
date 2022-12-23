@@ -1,26 +1,122 @@
 #include "security_utils.h"
 
+/*
 void handleErrors() {   
     perror("An error occurred\n"); 
     exit(1);
 }
+*/
 
 void handleErrors(const char *error) {
     string msg_err = "An error occurred: ";
     msg_err.append(error);
     msg_err.append("\n");
     perror(msg_err.c_str());
-    exit(1);
+    exit(EXIT_FAILURE);
 }
 
+/*
+// manage the error and close the socket used with the client that has the error //
 void handleErrors(const char *error, int sockd) {
     perror(error);
     close(sockd);
     pthread_exit(NULL);
 }
+*/
 
 
 /********************************************************************/
+
+void clear_vec(vector<unsigned char> &v) {
+    v.assign(v.size(), '0');
+    v.clear();
+}
+
+void clear_arr(unsigned char* arr, int arr_len) {
+    memset(arr, '0', sizeof(char)*arr_len);
+}
+
+
+void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3){
+    clear_vec(v1);
+    clear_vec(v2);
+    clear_vec(v3);
+}
+
+void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2){
+    clear_vec(v1);
+    clear_vec(v2); 
+}
+
+void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len){
+    clear_vec(v1);
+    memset(arr, '0', sizeof(char)*arr_len);
+}
+
+long searchFile(string filename, string username, bool server_side){
+    char curr_dir[1024];
+    getcwd(curr_dir, sizeof(curr_dir));
+    string path, ok_dir;
+    if(server_side){
+        path = string(curr_dir) + "/server/userStorage/" + username + "/" + filename;
+        ok_dir = string(curr_dir) + "/server/userStorage/" + username;
+    }
+    else{
+        path = string(curr_dir) + "/client/users/" + username + "/" + filename;
+        ok_dir = string(curr_dir) + "/client/users/" + username;
+    }
+
+    cout << "path: " << path << endl;
+    char* canon_file = realpath(path.c_str(), NULL);
+    
+    if(!canon_file){
+        //file not present
+        cout << "file not present" << endl;
+        return -1;
+    }
+    else{
+        //file present
+        cout << "file present" << endl;
+        if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
+            cerr << "Invalid path" << endl;
+            return -3;
+        }
+
+        struct stat buffer;
+        if(stat(path.c_str(), &buffer) != 0){
+            cout << "File not present! Do not enter" << endl;
+            return -1;
+        }
+        if(buffer.st_size >= MAX_FILE_DIMENSION){
+            cerr << "File too big" << endl;
+            return -2;
+        }
+        return buffer.st_size; 
+    }
+}
+
+void readFilenameInput(string& input, string msg) {
+
+    bool string_ok = false;
+
+    do
+    {
+        cout << msg << endl;
+        getline(cin, input);
+
+        if(!cin)
+        { cerr << "\n === Error during input ===\n"; exit(EXIT_FAILURE); }
+
+        if(input.empty()) continue;
+
+        const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+        string_ok = regex_match(input, re);
+
+        if(!string_ok)
+        { cout<<"! FILE NAME HAS A WRONG FORMAT !"<<endl; }
+    
+    } while(!string_ok);
+}
 
 
 void readInput(string& input, const int MAX_SIZE, string msg = "") {
@@ -32,11 +128,11 @@ void readInput(string& input, const int MAX_SIZE, string msg = "") {
         getline(cin, input);
         if (!cin) {
             cerr << "Error during input\n";
-            exit(1);
+            exit(EXIT_FAILURE);
         }
         if(input.length() == 0 || input.length() > MAX_SIZE || input.find_first_not_of(ok_chars) != string::npos) {
             cout << "Error: insert number of characters between 1 and " << MAX_SIZE << " without spaces\n";
-            cout <<"Allowev characters: " << ok_chars << endl;
+            cout <<"Allowed characters: " << ok_chars << endl;
             ok = false; 
         }
         else
@@ -45,13 +141,6 @@ void readInput(string& input, const int MAX_SIZE, string msg = "") {
     } while (!ok);  // (input.length() == 0 || input.length() > MAX_SIZE || input.find_first_not_of(ok_chars) != string::npos);
 }
 
-int buffer_copy(unsigned char*& dest, unsigned char* src, int len) {
-    dest = (unsigned char*)malloc(len);
-    if(!dest)
-        handleErrors("Malloc error");
-    memcpy(dest, src, len);
-    return len;
-}
 
 /********************************************************************/
 
@@ -60,126 +149,178 @@ void Session::incrementCounter(uint32_t& counter) {
 }
 
 unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
-    cout << "session->createAAD" << endl;
+    //cout << "session->createAAD" << endl;
     int aad_len = 0;
-    cout << sizeof(uint16_t) << " sizeof " << endl;
-    memcpy(aad, (unsigned char*)&send_counter, NUMERIC_FIELD_SIZE);
+    //cout << sizeof(uint16_t) << " sizeof " << endl;
+    uint32_t send_counter_n = htonl(send_counter);
+    //cout << "send counter: " << send_counter << "\tcounter_n: " << send_counter_n << endl; 
+    memcpy(aad, &send_counter_n, NUMERIC_FIELD_SIZE);
     aad_len += NUMERIC_FIELD_SIZE;
     incrementCounter(send_counter);
-    // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
+    // //BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     // cout << "session->createAAD2 " << sizeof(*aad) << endl;
     
-    memcpy(aad + aad_len, (unsigned char*)&opcode, OPCODE_SIZE);
+    uint16_t opcode_n = htons(opcode);
+    memcpy(aad + aad_len, &opcode_n, OPCODE_SIZE);
     aad_len += OPCODE_SIZE;
-    // cout << "session->createAAD3" << endl;
-    // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
+    //cout << "session->createAAD3" << endl;
+    ////BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     return aad_len;
 }
 
-void Session::computeSessionKey(unsigned char* secret, int slen) {
+int Session::computeSessionKey(unsigned char* secret, int slen) {
     cout << "Session->computeSessionKey" << endl;
     // session key obtained from hashing shared secret
-    computeHash(secret, slen, session_key);
+    return computeHash(secret, slen, session_key);
 }
 
 /********************************************************************/
 
-void Session::generateRandomValue(unsigned char* new_value, int value_size) {
-    cout << "Session->generateRandomValue" << endl;
-    if(new_value == NULL)
-        handleErrors("generate random null pointer error ");
-    cout << "random" << endl;
+/**
+ * @return: 1 on success, -1 on failure
+*/
+int Session::generateRandomValue(unsigned char* new_value, int value_size) {
+    //cout << "Session->generateRandomValue" << endl;
+    if(new_value == NULL) {
+        perror("generate random null pointer error ");
+        return -1;
+    }
+    //cout << "random" << endl;
     if(RAND_poll() != 1) {
         cerr << "Error in RAND_poll\n";
-        exit(1);
+        return -1;
     }
     if(RAND_bytes((unsigned char*)&new_value[0], value_size) != 1) {
         cerr << "Error in RAND_bytes\n";
-        exit(1);
+        return -1;
     }
+    //cout << "Session->generateRandomValue end" << endl;
+    return 1;
 }
 
-void Session::retrievePrivKey(string path, EVP_PKEY*& key) {
+EVP_PKEY* Session::retrievePrivKey(string path) {
+
     FILE *fileKey = fopen(path.c_str(), "r");
     if(!fileKey) {
         cerr << "Error: the file doesn't exist.\n";
-        exit(1);
+        return nullptr;
     }
-    key = PEM_read_PrivateKey(fileKey, NULL, NULL, NULL);
+    EVP_PKEY* key = PEM_read_PrivateKey(fileKey, NULL, NULL, NULL);
     fclose(fileKey);
     if(!key) {
         cerr << "Error: PEM_read_PrivateKey returned NULL.\n";
-        exit(1);
+        return nullptr;
     }
+    return key;
 }
 
-void Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msgDigest) {
+/**
+ * compute the hash of a message
+ * @msg: message to hash
+ * @msg_len: length in byte of the message to hash
+ * @msg_digest: result of the hashing
+ * @return: 1 on success, -1 on error
+*/
+int Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msg_digest) {
+    cout << "computeHash" << endl;
     unsigned int dig_len;    // digest length
 
     // create & init context
     EVP_MD_CTX* hCtx;
     hCtx = EVP_MD_CTX_new();
-    if(!hCtx)
-        handleErrors("EVP_MD_CTX_new returned NULL");
+    if(!hCtx){
+        perror("EVP_MD_CTX_new returned NULL");
+        return -1;
+    }
     // allocate mem for digest
-    msgDigest = (unsigned char*)malloc(DIGEST_SIZE);
-    if(!msgDigest)
-        handleErrors("Malloc error");
+    msg_digest = (unsigned char*)malloc(DIGEST_SIZE);
+    if(!msg_digest){
+        perror("Malloc error msg_digest");
+        return -1;
+    }
     //hashing: init, update, finalize digest
-    if(EVP_DigestInit(hCtx, HASH_FUN) != 1)
-        handleErrors("DigestInit error");
-    if(EVP_DigestUpdate(hCtx, msg, msg_len) != 1)
-        handleErrors("DigestUpdate error");
-    if(EVP_DigestFinal(hCtx, msgDigest, &dig_len) != 1)
-        handleErrors("DigestFinal error");
+    if(EVP_DigestInit(hCtx, HASH_FUN) != 1){
+        free(msg_digest);
+        perror("DigestInit error");
+        return -1;
+    }
+    if(EVP_DigestUpdate(hCtx, msg, msg_len) != 1){
+        free(msg_digest);
+        perror("DigestUpdate error");
+        return -1;
+    }
+    if(EVP_DigestFinal(hCtx, msg_digest, &dig_len) != 1) {
+        free(msg_digest);
+        perror("DigestFinal error");
+        return -1;
+    }
+    //TODO: check for clean up
     
     // context deallocation
     EVP_MD_CTX_free(hCtx);
+    return 1;
 }
 
-unsigned int Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char*& dig_sign) {
+long Session::signMsg(unsigned char* msg_to_sign, unsigned int msg_to_sign_len, EVP_PKEY* privK, unsigned char* dig_sign) {
     cout << "session->signMsg" << endl;
     // create the signature context
     EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
-    if(!md_ctx) { cerr << "Error: EVP_MD_CTX_new returned NULL\n"; exit(1); }
-
-    // allocate buffer for signature
-    dig_sign = (unsigned char*)malloc(EVP_PKEY_size(privK));
-    if(!dig_sign) { cerr << "Error: malloc returned NULL (signature too big?)\n"; exit(1); }
+    if(!md_ctx) { 
+        cerr << "Error: EVP_MD_CTX_new returned NULL\n"; 
+        return -1;
+    }
 
     // sign the pt
     // perform a single update on the whole pt, assuming that the pt is not huge
-    if(EVP_SignInit(md_ctx, HASH_FUN) != 1)
-        handleErrors("SignInit error");
-    if(EVP_SignUpdate(md_ctx, msg_to_sign, msg_to_sign_len) != 1)
-        handleErrors("SignUpdate error");
+    if(EVP_SignInit(md_ctx, HASH_FUN) != 1) {
+        perror("SignInit error");
+        return -1;
+    }
+
+    if(EVP_SignUpdate(md_ctx, msg_to_sign, msg_to_sign_len) != 1) {
+        perror("SignUpdate error");
+        return -1;
+    }
+
     unsigned int sgnt_size;
-    if(EVP_SignFinal(md_ctx, dig_sign, &sgnt_size, privK) != 1)
-        handleErrors("SignFinal error");
+    if(EVP_SignFinal(md_ctx, dig_sign, &sgnt_size, privK) != 1) {
+        perror("SignFinal error");
+        return -1;
+    }
     
     // delete the digest from memory
     EVP_MD_CTX_free(md_ctx);
-
+    //cout << "signMsg done" << endl;
     return sgnt_size;
 }
 
 bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, EVP_PKEY* pub_key, unsigned char* msg_buf, unsigned int msg_len) {
     EVP_MD_CTX* md_ctx = EVP_MD_CTX_new();
-    if(!md_ctx)
-        handleErrors("EVP_MD_CTX_new returned NULL");
-
+    if(!md_ctx) {
+        perror("EVP_MD_CTX_new returned NULL");
+        return false;
+    }
     int ret;
 
     // verify the pt
     // performe a single update on the whole pt, assuming that the pt is not huge
-    if(EVP_VerifyInit(md_ctx, HASH_FUN) != 1)
-        handleErrors("VerifyInit error");
-    if(EVP_VerifyUpdate(md_ctx, msg_buf, msg_len) != 1)
-        handleErrors("VerifyUpdate error");
+    if(EVP_VerifyInit(md_ctx, HASH_FUN) != 1) {
+        cerr << "EVP_VerifyInit error" << endl;
+        EVP_MD_CTX_free(md_ctx);
+        return false;
+    }
+    if(EVP_VerifyUpdate(md_ctx, msg_buf, msg_len) != 1){
+        cerr << "EVP_VerifyUpdate error" << endl;
+        EVP_MD_CTX_free(md_ctx);
+        return false;    
+    }
     ret = EVP_VerifyFinal(md_ctx, dig_sign, dig_sign_len, pub_key);
 
-    if(ret == -1) 
-        handleErrors("VerifyFinal error");
+    if(ret == -1) {
+        cerr << "EVP_VerifyFinal error" << endl;
+        EVP_MD_CTX_free(md_ctx);
+        return false;
+    }
 
     EVP_MD_CTX_free(md_ctx);    // deallocate data
     cout << "verifydigsign ret " << ret << endl;
@@ -188,78 +329,109 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
 
 /********************************************************************/
 
-void Session::generateNonce() {
-    /*nonce = (unsigned char*)malloc(NONCE_SIZE);
-    if(!nonce)
-        handleErrors("Malloc error");*/
-    generateRandomValue(nonce.data(), NONCE_SIZE);    
+int Session::generateNonce(unsigned char *nonce) {
+    return generateRandomValue(nonce, NONCE_SIZE);    
 }
 
-bool Session::checkNonce(unsigned char* received_nonce) {
-    return memcmp(received_nonce, nonce.data(), NONCE_SIZE) == 0;
+bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonce) {
+    cout << "checkNonce -> received" << endl;
+    ////BIO_dump_fp(stdout, (const char*)received_nonce, NONCE_SIZE);
+    cout << "checkNonce -> sent" << endl;
+    ////BIO_dump_fp(stdout, (const char*)sent_nonce, NONCE_SIZE);
+    return memcmp(received_nonce, sent_nonce, NONCE_SIZE) == 0;
 }
 
-void Session::generateECDHKey() {
+bool Session::generateECDHKey() {
     cout << "session->generateECDHkey" << endl;
     // create context for ECDH parameters
     EVP_PKEY* DH_params = NULL;
     EVP_PKEY_CTX* param_ctx;
     
-    if(!(param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL)))    // puts the parametesa for EC in the context
-        handleErrors();
-    if(EVP_PKEY_paramgen_init(param_ctx) != 1)
-        handleErrors();
-    if(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_X9_62_prime256v1) != 1)
-        handleErrors();
-    if(EVP_PKEY_paramgen(param_ctx, &DH_params) != 1)
-        handleErrors();
+    if(!(param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL))) {   // puts the parameters for EC in the context
+        cerr << "EVP_PKEY_CTX_new_id failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
+    if(EVP_PKEY_paramgen_init(param_ctx) != 1) {
+        cerr << "EVP_PKEY_paramgen_init failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
+    if(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_X9_62_prime256v1) != 1) {
+        cerr << "EVP_PKEY_CTX_set_ec_paramgen_curve_nid failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
+    if(EVP_PKEY_paramgen(param_ctx, &DH_params) != 1) {
+        cerr << "EVP_PKEY_paramgen failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
     EVP_PKEY_CTX_free(param_ctx);
 
     // create context for key generation and generate a new ephimeral key
     EVP_PKEY_CTX* DH_ctx;
     
-    if(!(DH_ctx = EVP_PKEY_CTX_new(DH_params, NULL)))   // key generation
-        handleErrors();
+    if(!(DH_ctx = EVP_PKEY_CTX_new(DH_params, NULL))) {  // key generation
+        cerr << "EVP_PKEY_CTX_new failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
 
     //EVP_PKEY* my_ECDHkey = NULL;
-    if(EVP_PKEY_keygen_init(DH_ctx) != 1)
-        handleErrors();
-    if(EVP_PKEY_keygen(DH_ctx, &ECDH_myKey) != 1)
-        handleErrors();
+    if(EVP_PKEY_keygen_init(DH_ctx) != 1) {
+        cerr << "ECP_PKEY_keygen_init failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
+    if(EVP_PKEY_keygen(DH_ctx, &ECDH_myKey) != 1) {
+        cerr << "EVP_PKEY_keygen failed" << endl;
+        // TODO: liberare risorse
+        return false;
+    }
     EVP_PKEY_CTX_free(DH_ctx);    
+    cout << "session->generateECDHKey done" << endl;
+    return true;
 }
 
-void Session::deriveSecret() {
+int Session::deriveSecret() {
     cout << "session->deriveSecret" << endl;
     // shared secret derivation: create context and buffer 
     EVP_PKEY_CTX* derive_ctx;
-    unsigned char* shared_secret;
+    unsigned char* shared_secret = nullptr;
     size_t secret_len;
 
-    if(!(derive_ctx = EVP_PKEY_CTX_new(ECDH_myKey, NULL)))  // secret derivation
-        handleErrors("EVP_PKEY_CTX_new error");
-    cout << "1\n";
-    if(EVP_PKEY_derive_init(derive_ctx) <= 0)
-        handleErrors("EVP_PKEY_derive_init err");
-    cout << "2\n";
-    if(EVP_PKEY_derive_set_peer(derive_ctx, ECDH_peerKey) <= 0)
-        handleErrors("EVP_PKEY_derive_set_peer err");
-    cout << "3\n";
+    if(!(derive_ctx = EVP_PKEY_CTX_new(ECDH_myKey, NULL))) {  // secret derivation
+        perror("EVP_PKEY_CTX_new error");
+        return -1;
+    }
+
+    if(EVP_PKEY_derive_init(derive_ctx) <= 0){
+        perror("EVP_PKEY_derive_init err");
+        return -1;
+    }
+    if(EVP_PKEY_derive_set_peer(derive_ctx, ECDH_peerKey) <= 0) {
+        perror("EVP_PKEY_derive_set_peer err");
+        return -1;
+    }
 
     // determine buffer length
-    if(EVP_PKEY_derive(derive_ctx, NULL, &secret_len) <= 0)
-        handleErrors("EVP_PKEY_derive err");
-    cout <<"4\n";
+    if(EVP_PKEY_derive(derive_ctx, NULL, &secret_len) <= 0){
+        perror("EVP_PKEY_derive err");
+        return -1;
+    }
 
     // derive shared secret
     shared_secret = (unsigned char*)malloc(secret_len);
-    if(!shared_secret) 
-        handleErrors("Malloc error");
-    cout << "5\n";
-    if(EVP_PKEY_derive(derive_ctx, shared_secret, &secret_len) <= 0)
-        handleErrors("EVP_PKEY_derive error");
+    if(!shared_secret) {
+        perror("Malloc error shared_secret");
+        return -1;
+    }
+    if(EVP_PKEY_derive(derive_ctx, shared_secret, &secret_len) <= 0) {
+        perror("EVP_PKEY_derive error");
+        return -1;
+    }
     /* shared secret is secret_len bytes written to buffer shared_secret */
-    cout <<"6\n";
 
     EVP_PKEY_CTX_free(derive_ctx);
     EVP_PKEY_free(ECDH_peerKey);
@@ -270,288 +442,314 @@ void Session::deriveSecret() {
 
     free(shared_secret);
     // free(nonce);
-    nonce.fill('0');
+    //nonce.fill('0');
+    return 1;
 }
 
 /********************************************************************/
 
-unsigned int Session::serializePubKey(EVP_PKEY* key, unsigned char*& buf_key) {
+long Session::serializePubKey(EVP_PKEY* key, unsigned char*& buf_key) {
     cout << "session->serializePubKey" << endl;
-    unsigned char* buf;
+    unsigned char* buf = nullptr;
     BIO* mBio = BIO_new(BIO_s_mem());
     if(!mBio) {
         cerr << "Error: BIO_new returned null\n";
-        exit(1);
+        return -1;
     }
     if(PEM_write_bio_PUBKEY(mBio, key) != 1) {
         cerr << "Error: PEM_write_bio_PUBKEY failed\n";
-        exit(1);
+        return -1;
     }
-    unsigned int key_size = BIO_get_mem_data(mBio, &buf);
+    uint32_t key_size = BIO_get_mem_data(mBio, &buf);
     buf_key = (unsigned char*)malloc(key_size);
-    if(!buf_key)
-        handleErrors("Malloc error");
+    if(!buf_key) {
+        perror("Malloc error buf_key");
+        return -1;
+    }
     memcpy(buf_key, buf, key_size);
 
     BIO_free(mBio);
 
     if(key_size < 0) {
         cerr << "Error: BIO_get_mem_data failed\n"; 
-        exit(1);
+        return -1;
     }
     cout << "session->serializePubKey end" << endl;
     return key_size;
 }
 
-void Session::deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key) {
+int Session::deserializePubKey(unsigned char* buf_key, unsigned int key_size, EVP_PKEY*& key) {
     BIO* mBio = BIO_new(BIO_s_mem());
     if(!mBio) {
         cerr << "Error: BIO_new returned null\n";
-        exit(1);
+        return -1;
     }
     if(BIO_write(mBio, buf_key, key_size) <= 0) {
         cerr << "Error: BIO_write failed\n";
-        exit(1);
+        return -1;
     }
     key = PEM_read_bio_PUBKEY(mBio, NULL, NULL, NULL);
     BIO_free(mBio);
     
     if(!key) {
         cerr << "Error: PEM_read_bio_PUBKEY returned NULL\n";
-        exit(1);
+        return -1;
     }
+    return 1;
 }
 
 bool Session::checkCounter(uint32_t counter) {
+    //cout << "counter: " << rcv_counter << endl
+    //    << "recv_counter: " << counter << endl;
     return counter == rcv_counter;
 }
-/*
-void Session::sendMsg(const unsigned char* buffer, uint32_t msg_dim) {
-    //incrementa contatore invio
-    cout << "session->sendMsg" << endl;
-    return;
-}
 
-int Session::receiveMsg(unsigned char *&buffer) {
-    // controllare lunghezza messaggio, se <= msg_size + numeric_field_size => errore
-    // verifica contatore ricezione
-    // incrementa contatore ricezione
-    //return received message length
-    return 0;
-}
-*/
 /********************************************************************/
 
-unsigned int Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, int aad_len, unsigned char *output) {
-    cout << "session->encryptMsg pt_len " << pt_len << endl;
+uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output) {
+    //cout << "session->encryptMsg pt_len " << pt_len << endl;
     EVP_CIPHER_CTX *ctx;
     int len = 0;
     int ct_len = 0;
 
+    cout<<"ENC_PLAIN"<<endl;                
+    //BIO_dump_fp(stdout, plaintext, pt_len); 
+    cout << "ENC_PT_LEN: " << pt_len << endl;
+
     unsigned char *ciphertext = (unsigned char*)malloc(pt_len + BLOCK_SIZE);
-    if(!ciphertext)
-        handleErrors("Malloc error");
+    if(!ciphertext) {
+        perror("Malloc error CT");
+        return 0;
+    }
     unsigned char *tag = (unsigned char*)malloc(TAG_SIZE);
-    if(!tag)
-        handleErrors("Malloc error");
+    if(!tag) {
+        perror("Malloc error TAG");
+        return 0;
+    }
 
     //generate IV
     unsigned char* iv = (unsigned char*)malloc(IV_LEN);
-    if(!iv)
-        handleErrors("Malloc error");
+    if(!iv) {
+        perror("Malloc error IV");
+        return 0;
+    }
     memset(iv, 0, IV_LEN);
     generateRandomValue(iv, IV_LEN); 
     // cout << "session->encryptMsg2" << endl;
 
     // create and initialise the context
-    if(!(ctx = EVP_CIPHER_CTX_new()))
-        handleErrors("create context enc");
+    if(!(ctx = EVP_CIPHER_CTX_new())) {
+        free(iv);
+        free(ciphertext);
+        free(tag);
+        perror("EVP_CIPHER_CTX_new failed");
+        return 0;
+    }
     // initialise the encryption operation
     if(EVP_EncryptInit(ctx, CIPHER_AE, session_key, iv) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("initialise ctx enc op");
+        free(iv);
+        free(ciphertext);
+        free(tag);
+        perror("EVP_EncryptInit failed");
+        return 0;
     }
     
     // provide any AAD data. this can be called zero or more time as required
-    // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
-    if(EVP_EncryptUpdate(ctx, NULL, &len, aad, aad_len) != 1) {
+    // //BIO_dump_fp(stdout, (const char*)aad, aad_len); 
+    if(EVP_EncryptUpdate(ctx, NULL, &len, aad, AAD_LEN) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("enc update aad");
+        free(iv);
+        free(ciphertext);
+        free(tag);
+        perror("EVP_EncryptUpdate AAD failed");
+        return 0;
     }
     
     if(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, pt_len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("enc update ct");
+        free(iv);
+        free(ciphertext);
+        free(tag);
+        perror("EVP_EncryptUpdate CT failed");
+        return 0;
     }
     ct_len = len;
     // finalise encryption
     if(EVP_EncryptFinal(ctx, ciphertext + ct_len, &len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("enc final ct");
+        free(iv);
+        free(ciphertext);
+        free(tag);
+        perror("EVP_EncryptFinal failed");
+        return 0;
     }
     ct_len += len;
     // get the tag
     if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, TAG_SIZE, tag) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("ctrl get tag");
+        free(iv);
+        free(ciphertext);
+        free(tag);
+        perror("EVP_CIPHER_CTX_ctrl failed");
+        return 0;
     }
     // clean up
     EVP_CIPHER_CTX_free(ctx);
 
     // cout << "session->encryptMsg3" << endl;
 
-    unsigned int written_bytes = 0;
+    if (MAX_BUF_SIZE - IV_LEN - AAD_LEN - ct_len - TAG_SIZE < NUMERIC_FIELD_SIZE) {
+        cerr << "Error: msg too long" << endl;
+        free(iv);
+        free(ciphertext);
+        free(tag);
+        return 0;
+    }
+
+    uint32_t written_bytes = 0;
     memcpy(output, iv, IV_LEN);
     written_bytes += IV_LEN;
-    memcpy(output + written_bytes, (unsigned char*)&aad_len, NUMERIC_FIELD_SIZE);
-    written_bytes += NUMERIC_FIELD_SIZE;
-    memcpy(output + written_bytes, aad, aad_len);
-    written_bytes += aad_len;
+    memcpy(output + written_bytes, aad, AAD_LEN);
+    written_bytes += AAD_LEN;
     // cout << "session->encryptMsg4" << endl;
     memcpy(output + written_bytes, ciphertext, ct_len);
     written_bytes += ct_len;
     // cout << "session->encryptMsg5" << endl;
     memcpy(output + written_bytes, tag, TAG_SIZE);
     written_bytes += TAG_SIZE;
+    cout<<"ENC_CT"<<endl;
+    //BIO_dump_fp(stdout, ciphertext, ct_len); 
 
-    cout << "free iv" << endl;
     free(iv);
     free(ciphertext);
     free(tag);
-
+    //cout << "session-> encryptMsg end" << endl;
     return written_bytes;
 }
-/*
-unsigned int Session::decryptMsg(unsigned char *ciphertext, int ct_len, int aad_len, unsigned char *plaintext, unsigned char *rcv_iv, unsigned char *tag) {
-    cout << "session->decryptMsg" << endl;
-    EVP_CIPHER_CTX *ctx;
-    int len = 0;
-    int pt_len = 0;
-    int ret;
-    unsigned char *aad = (unsigned char*)malloc(aad_len);
-    if(!aad)
-        handleErrors("Malloc error");
-    // create and initialise the context
-    if(!(ctx = EVP_CIPHER_CTX_new()))
-        handleErrors("create ctx dec");
-    if(EVP_DecryptInit(ctx, CIPHER_AE, session_key, rcv_iv) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
-        handleErrors("initialise ctx dec op");
-    }
-    
-    // provide any AAD data
-    if(EVP_DecryptUpdate(ctx, NULL, &len, aad, aad_len) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
-        handleErrors("dec update aad");
-    }
-    // provide the msg to be decrypted and obtain the pt output
-    if(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ct_len) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
-        handleErrors("dec update pt");
-    }
-    pt_len += len;
-    
-    // set expected tag value
-    if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, TAG_SIZE, tag) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
-        handleErrors("ctrl set tag");
-    }
-    
-    // finalise the decryption: a positive return value indicates success 
-    // anything else is a failure -> the pt is not trustworthy 
-   ret = EVP_DecryptFinal(ctx, plaintext + pt_len, &len);
 
-   // clean up
-   EVP_CIPHER_CTX_free(ctx);
-   //EVP_CIPHER_CTX_cleanup(ctx);
 
-   if(ret > 0) {
-       // success
-       pt_len += len;
-       return pt_len;
-   } else {
-       // verify failed
-       return -1;
-   }
-}
-*/
-unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *&aad, int &aad_len, unsigned char *&plaintext) {
-    cout << "session->decryptMsg" << endl;
+uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsigned char *aad, unsigned char *plaintext) {
+    //cout << "session->decryptMsg" << endl;
     EVP_CIPHER_CTX *ctx;
-    int ct_len; // va calcolata dopo aver letto aad_len -> ct_len = msg_size - IV_LEN - aad_len - TAG_SIZE
+    int ct_len;
     int len = 0;    // numero di byte decifrati ad ogni giro
-    int pt_len = 0;
+    uint32_t pt_len = 0;
     int ret;
 
-    unsigned char *ciphertext;   
+    unsigned char *ciphertext = nullptr;   
     unsigned char *rcv_iv = (unsigned char*)malloc(IV_LEN);
-    if(!rcv_iv)
-        handleErrors("Malloc error");
+    if(!rcv_iv) {
+        perror("Malloc error rcv_iv");
+        return 0;
+    }
     unsigned char *tag = (unsigned char*)malloc(TAG_SIZE);
-    if(!tag)
-        handleErrors("Malloc error");
+    if(!tag) {
+        perror("Malloc error tag");
+        return 0;
+    }
 
-
+ 
     // read fields in buffer
-    int read_bytes = 0;
-    memcpy(rcv_iv, input_buffer, IV_LEN);
+    uint32_t read_bytes = NUMERIC_FIELD_SIZE;
+    memcpy(rcv_iv, input_buffer + read_bytes, IV_LEN);
     read_bytes += IV_LEN;
-    aad_len = *(unsigned int*)(input_buffer + read_bytes);
-    read_bytes += NUMERIC_FIELD_SIZE;
-    aad = (unsigned char*)malloc(aad_len);
-    if(!aad)
-        handleErrors("Malloc error");
-    uint32_t counter = *(unsigned int*)(input_buffer + read_bytes);
-    if(!checkCounter(counter))
-        handleErrors("received counter not valid");
-    incrementCounter(rcv_counter);
-   
-    mempcpy(aad, input_buffer + read_bytes, aad_len);
-    read_bytes += aad_len;
+
+    mempcpy(aad, input_buffer + read_bytes, AAD_LEN);
+    read_bytes += AAD_LEN;
     
-    ct_len = msg_size - aad_len - IV_LEN - TAG_SIZE;
-    if(ct_len <= 0)
-        handleErrors("field length not valid");
+    //cout << "session->decrypt" << endl;
+    ////BIO_dump_fp(stdout, (const char*)aad, AAD_LEN); 
+
+    uint32_t counter = *(uint32_t*)(aad);
+    //cout << "recev counter_n decry: " << counter << endl;
+    counter = ntohl(counter);
+    //cout << "recv counter h: " << counter << endl;
+    if(!checkCounter(counter)) {
+        free(rcv_iv);
+        free(tag);
+        perror("received counter not valid");
+        return 0;
+    }
+    incrementCounter(rcv_counter);   
+
+    ct_len = payload_size - AAD_LEN - IV_LEN - TAG_SIZE;
+    if(ct_len <= 0) {
+        free(rcv_iv);
+        free(tag);
+        cerr << "negative ct length not valid" << endl;
+        return 0;
+    }
     ciphertext = (unsigned char*)malloc(ct_len);
-    if(!ciphertext)
-        handleErrors("Malloc error");
+    if(!ciphertext) {
+        free(rcv_iv);
+        free(tag);
+        perror("Malloc error ct");
+        return 0;
+    }
     mempcpy(ciphertext, input_buffer + read_bytes, ct_len);
     read_bytes += ct_len;
+
+    cout<<"DEC_CT"<<endl;
+    //BIO_dump_fp(stdout, ciphertext, ct_len);
 
     mempcpy(tag, input_buffer + read_bytes, TAG_SIZE);
     read_bytes += TAG_SIZE;
 
-    if(read_bytes != msg_size)
-        handleErrors("read_bytes error");
-
-    plaintext = (unsigned char*)malloc(ct_len);     // pt_len <= ct_len
-    if(!plaintext)
-        handleErrors("Malloc error");
+    if(read_bytes - NUMERIC_FIELD_SIZE != payload_size) {
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
+        cerr << "read_bytes error" << endl;
+        return 0;
+    }
 
     // create and initialise the context
-    if(!(ctx = EVP_CIPHER_CTX_new()))
-        handleErrors("create ctx dec");
+    if(!(ctx = EVP_CIPHER_CTX_new())) {
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
+        perror("EVP_CIPHER_CTX_new failed");
+        return 0;
+    }
+
     if(EVP_DecryptInit(ctx, CIPHER_AE, session_key, rcv_iv) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("initialise ctx dec op");
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
+        perror("EVP_DecryptInit failed");
+        return 0;
     }
     
     // provide any AAD data
-    if(EVP_DecryptUpdate(ctx, NULL, &len, aad, aad_len) != 1) {
+    if(EVP_DecryptUpdate(ctx, NULL, &len, aad, AAD_LEN) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("dec update aad");
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
+        perror("EVP_DecryptUpdate failed");
+        return 0;
     }
     // provide the msg to be decrypted and obtain the pt output
     if(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ct_len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("dec update pt");
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
+        perror("EVP_DecryptUpdate failed");
+        return 0;
     }
     pt_len += len;
     
     // set expected tag value
     if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, TAG_SIZE, tag) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handleErrors("ctrl set tag");
+        free(rcv_iv);
+        free(tag);
+        free(ciphertext);
+        perror("EVP_CIPHER_CTX_ctrl failed");
+        return 0;
     }
     
     /* finalise the decryption: a positive return value indicates success 
@@ -561,54 +759,222 @@ unsigned int Session::decryptMsg(unsigned char *input_buffer, int msg_size, unsi
    // clean up
    EVP_CIPHER_CTX_free(ctx);
    //EVP_CIPHER_CTX_cleanup(ctx);
+    free(rcv_iv);
+    free(tag);
+    free(ciphertext);
 
-   if(ret > 0) {
+    cout<<"DEC_PLAIN"<<endl;
+    //BIO_dump_fp(stdout, plaintext, pt_len);
+
+    //cout << "RET: " << ret << endl;
+
+   if(ret >= 0) {
        // success
        pt_len += len;
+       //cout << "PT_LEN: " << pt_len << endl;
        return pt_len;
    } else {
        // verify failed
-       return -1;
+       return 0;
    }
+}
+
+int32_t checkFileExist(string filename, string username, string path_side)
+{
+    string path = path_side + username + "/" + filename;
+    struct stat buffer;
+
+    if (stat(path.c_str(),&buffer)!=0)  //stat failed
+    { 
+        return 0;   //File dosen't exist
+	}
+	
+	return -1;  //File exist
+}
+
+int removeFile(string filename, string username, string path_side)
+{
+    string path = path_side + username + "/" + filename;
+
+    //If the file is successfully deleted return 0. On failure a nonzero value (!=0) is returned.
+    if (remove(path.c_str()) != 0)
+    {   
+        perror ("\n\t * * * ERROR: ");
+        return -1;
+    }
+    else
+    {
+        return 1;
+    }
+
+    /* --- EXEC_version ---
+    void
+    deleteFileExeclEasy(string filename)
+    {  
+        if(filename.length() > 20)
+        {   cout << "\n\t -- Error: Filename too long --\n" << endl; return;    }
+
+        string pathFile = FILE_PATH_CL + filename;
+
+        execl("/bin/rm", "rm", pathFile.c_str(), (char*)0);
+
+        return;   
+    }
+    */
+}
+
+void print_progress_bar(int total, unsigned int fragment)
+{
+    cout << "\r" << "[Fragment " << fragment + 1 << " of " << total << "]";
+	cout.flush();
+    
+    /*
+        - Possibile alternativa -
+        void
+        progress_bar(int fragment)
+        {        
+            //while (fragment < 1)
+            //{
+                int barWidth = 70;
+
+                cout << "[";
+        
+                int pos = barWidth * fragment;
+                for (size_t i = 0; i < barWidth; ++i)
+                {
+                    if (i < pos)
+                        cout << "=";
+                    else if (i == pos)
+                        cout << ">";
+                    else
+                        cout << " ";
+                }
+        
+            cout << "] " << int(fragment+1) << " %\r";
+            cout.flush();
+
+            fragment += 0.16; // for demonstration only
+        //}
+        }
+    */
+}
+
+/** Register signal and signal handler */
+int catch_the_signal()
+{
+    int interrupt_signal, stop_signal;
+    struct sigaction sig_int_handler;
+
+    sig_int_handler.sa_handler = custom_act; //What to do
+
+    sigemptyset(&sig_int_handler.sa_mask);  //initiailization of the signal set
+                                            //pointed to by sigset_t var.
+                                            //mask of signals which should be blocked
+    sig_int_handler.sa_flags = 0;
+
+    interrupt_signal = sigaction(SIGINT, &sig_int_handler, NULL);   //CTRL+C
+    stop_signal =  sigaction(SIGTSTP, &sig_int_handler, NULL);      //CTRL+Z
+
+    if(interrupt_signal == -1 || stop_signal == -1)
+    {
+        return -1;   } //sigaction() fails
+    else
+    {
+        return 1;   }
+
+
+    /*_Note:
+
+        sigaction() returns 0 on success; on error, -1 is returned,
+        and errno is set to indicate the error.
+
+        - sigaction() insted of signal() system call because the latter is
+        less portable when establishing a signal handler.
+        In fact signal() behavior varies across UNIX versions, and has also varied
+        historically across different versions of Linux -
+
+        - prototype: int sigaction(int signum, const struct sigaction *restrict act,
+                     struct sigaction *restrict oldact);
+
+        - What to do once the signal is captured:
+        1) default behavior (SIG_DFL, SIG_IGN)
+        2) specific behaviors defined in a particular handler function
+            based on our needs (my_handler function: custom_act in this case)
+
+
+        - [ When we will use it ]
+
+            if(catch_the_signal() == 0)
+            {
+                cout<< "ERROR in signal handler phase: "<< strerror(errno) <<endl; return 0;  }
+    */
+}
+
+/** the function to be called when signal is sent to process */
+void custom_act(int signum)
+{
+    string choice;
+
+    cout<< "\n\t=== Caught signal with code: "<< signum <<" ==="<<endl;
+
+    //ToDo in a better suitable way
+    //do_stuff: terminate program (e.g.)
+
+    cout<< "\n\t(The operation on cloud terminated) "<<endl;
+
+    cout<< "\nThe File was not successfully Uploaded/Downloaded. \n"<<endl;
+
+    cout << "Do you want to go back to the Main Menu??: [y/n]\n"<<endl;
+    cout << "(y)-> Main Menu\n(n)-> Exit from Application"<<endl;
+    cout<<"\n_Ans: ";
+    getline(cin, choice);
+
+    if(!cin)
+    { cerr << "\n === Error during input ===\n"<<endl; return; }
+
+    while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
+    {
+        cout<<"\nError: The parameter of cohice is wrong!"<<endl;
+        cout <<"(y)-> Main Menu\n(n)-> Exit from Application"<<endl;
+        cout<<"\n-- Try again: [y/n]: ";
+        getline(cin, choice);
+
+        if(!cin)
+        { cerr << "\n === Error during input ===\n"<<endl; return; }
+    }
+
+    if(choice == "N" || choice == "n")
+    {
+        cout<<"\n\t=== Exit from the Application ===\n"<<endl;
+        exit(EXIT_FAILURE);
+    }
+
+    cout<<"\n\t=== Welcome back in the main Menu ===\n"<<endl;
+    return;
 }
 
 /********************************************************************/
 
-int Session::fileList(unsigned char *plaintext, int pt_len, unsigned char*& output_buf) {
-    unsigned char *aad = (unsigned char*)malloc(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
-    if(!aad)
-        handleErrors("Malloc error");
-    cout << sizeof(*aad) << " aad size " << NUMERIC_FIELD_SIZE + OPCODE_SIZE << endl;
-    // BIO_dump_fp(stdout, (const char*)aad, (NUMERIC_FIELD_SIZE + OPCODE_SIZE)); 
-    unsigned int aad_len = createAAD(aad, FILE_LIST);
-    // BIO_dump_fp(stdout, (const char*)aad, (NUMERIC_FIELD_SIZE + OPCODE_SIZE)); 
-
-    cout << "session->userList" << endl;
-    size_t buffer_size = IV_LEN + NUMERIC_FIELD_SIZE + aad_len + pt_len + BLOCK_SIZE + TAG_SIZE;
-    if(buffer_size > MAX_BUF_SIZE)
-        handleErrors("Message size too big");
-    if(!output_buf) {
-        output_buf = (unsigned char*)malloc(NUMERIC_FIELD_SIZE + buffer_size);
-        if(!output_buf)
-            handleErrors("Malloc error");
-    }
-    int payload_size = encryptMsg(plaintext, pt_len, aad, aad_len, output_buf + NUMERIC_FIELD_SIZE);
-    // cout << "session->userList2" << endl;
-    memcpy(output_buf, (unsigned char*)&payload_size, NUMERIC_FIELD_SIZE);
-    // cout << "session->userList3" << endl;
-    free(aad);
-
-#pragma optimize("", off)
-    memset(plaintext, 0,pt_len);
-#pragma optimize("", on)
-    free(plaintext);
-
-    return payload_size;
-}
 
 Session::~Session(){
-    free(session_key);
-    nonce.fill('0');
+    cout << "~Session" << endl;
+    //TODO: check if everything is deallocated
+
+    if(session_key != nullptr)
+        free(session_key);
+    /*
+    cout << "session_key free" << endl;
+    
+    if(ECDH_myKey != nullptr)
+        EVP_PKEY_free(ECDH_myKey);
+    cout << "ecdh_mykey free " << endl;
+    if(ECDH_peerKey != nullptr)
+        EVP_PKEY_free(ECDH_peerKey);
+    cout << "ecdh_peerk free" << endl;
+    */
+        
+    //nonce.fill('0');
     //free(nonce);
     //free(iv);
+    cout << "~Session end" << endl;
 }
