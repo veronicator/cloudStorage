@@ -53,6 +53,7 @@ bool Client::createSocket(string srv_ip) {
  */
 int Client::sendMsg(uint32_t payload_size) {
     //cout << "sendMsg new" << endl;
+    uint32_t payload_size_n;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
         send_buffer.assign(send_buffer.size(), '0');
@@ -60,6 +61,18 @@ int Client::sendMsg(uint32_t payload_size) {
         return -1;
     }
     payload_size += NUMERIC_FIELD_SIZE;
+    payload_size_n = htonl(payload_size);
+    array<unsigned char, NUMERIC_FIELD_SIZE> arr;
+    memcpy(arr.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+
+    if(send(sd, arr.data(), NUMERIC_FIELD_SIZE, 0) < NUMERIC_FIELD_SIZE){
+        perror("Errore invio dimensione messaggio");
+        send_buffer.assign(send_buffer.size(), '0');
+        send_buffer.clear();
+        return -1;
+    }
+    clear_arr(arr.data(), arr.size());
+
     //cout << "sentMsg->payload size: " << payload_size << endl;
     if(send(sd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
@@ -87,7 +100,18 @@ int Client::sendMsg(uint32_t payload_size) {
     recv_buffer.assign(recv_buffer.size(), '0');
     recv_buffer.clear();
 
-    msg_size = recv(sd, receiver.data(), MAX_BUF_SIZE-1, 0);
+    msg_size = recv(sd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
+    cout << "Msg dimension size: " << msg_size << endl;
+
+    payload_size = *(uint32_t*)(receiver.data());
+    payload_size = ntohl(payload_size);
+    cout << "Msg dimension data: " << payload_size << endl;
+    if((long)payload_size > (long)(MAX_BUF_SIZE - 1)){
+        cerr << "Dimension overflow" << endl;
+        return -1;
+    }
+
+    msg_size = recv(sd, receiver.data(), payload_size, 0);
     //cout << "received msg size: " << msg_size << endl;
 
     if (msg_size == 0) {
@@ -209,7 +233,7 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     start_index += username.size();
 
     //cout << "sendUsername buffer msg: " << endl;
-    //BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size());
+    //////BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size());
 
     //sendMsg
     cout << "authentication->sendMsg M1: nonce, username " << endl;
@@ -247,7 +271,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     }
     
     //cout << "receiveCertSign buffer msg: " << endl;
-    //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
+    //////BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
 
     start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
 
@@ -434,7 +458,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     }
     cout << " Digital Signature Verified!" << endl;
     //free(signed_msg);
-    //BIO_dump_fp(stdout, (const char*) ECDH_server_key.data(), ECDH_key_size);
+    ////BIO_dump_fp(stdout, (const char*) ECDH_server_key.data(), ECDH_key_size);
     active_session->deserializePubKey(ECDH_server_key.data(), ECDH_key_size, active_session->ECDH_peerKey);
     return true;
 }
@@ -762,7 +786,7 @@ int Client::requestFileList() {
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
     //cout << "client->requestfilelist" << endl;
-    //BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size()); 
+    ////BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size()); 
 
     output.fill('0');
 
@@ -801,7 +825,7 @@ int Client::receiveFileList() {
             return -1;
         }
 
-        //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
+        ////BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
 
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
         if (pt_len == 0) {
@@ -814,7 +838,7 @@ int Client::receiveFileList() {
 
         //TODO if the list of file exceed the space available in a single message
         
-        //BIO_dump_fp(stdout, (const char*)plaintext.data(), pt_len);      
+        ////BIO_dump_fp(stdout, (const char*)plaintext.data(), pt_len);      
 
         if(opcode == FILE_LIST)
             cout<<string(plaintext.begin(), plaintext.end());
@@ -935,6 +959,7 @@ uint32_t Client::sendMsgChunks(string filename){
     clear_vec_array(send_buffer, frag_buffer.data(), frag_buffer.size());
 
     for(int i = 0; i < tot_chunks; i++){
+        cout << "Chunk n: " << i << " of " << tot_chunks << endl;
         if(i == tot_chunks - 1){
             to_send = buf.st_size - i * FRAGM_SIZE;
             this->active_session->createAAD(aad.data(), END_OP);                        //last chunk -> END_OP opcode sent to server

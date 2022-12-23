@@ -120,6 +120,7 @@ bool Server::searchUserExist(string usr_name){
  * @return: 1 on success, 0 or -1 on error
  */
 int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer) {
+    uint32_t payload_size_n;
     cout << payload_size << " sendMsg: payload size" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
@@ -129,6 +130,18 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
     }
 
     payload_size += NUMERIC_FIELD_SIZE;
+
+    payload_size_n = htonl(payload_size);
+    array<unsigned char, NUMERIC_FIELD_SIZE> arr;
+    memcpy(arr.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+
+    if(send(sockd, arr.data(), NUMERIC_FIELD_SIZE, 0) < NUMERIC_FIELD_SIZE){
+        perror("Errore invio dimensione messaggio");
+        send_buffer.assign(send_buffer.size(), '0');
+        send_buffer.clear();
+        return -1;
+    }
+
     if(send(sockd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
         clear_vec(send_buffer);
@@ -147,11 +160,22 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
 */
 long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
-    int msg_size = 0;
+    ssize_t msg_size = 0;
     uint32_t payload_size;
     array<unsigned char, MAX_BUF_SIZE> receiver;
     
-    msg_size = recv(sockd, receiver.data(), MAX_BUF_SIZE-1, 0);
+    msg_size = recv(sockd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
+    cout << "Msg dimension size: " << msg_size << endl;
+
+    payload_size = *(uint32_t*)(receiver.data());
+    payload_size = ntohl(payload_size);
+    cout << "Msg dimension data: " << payload_size << endl;
+    if((long)payload_size > (long)(MAX_BUF_SIZE - 1)){
+        cerr << "Dimension overflow" << endl;
+        return -1;
+    }
+
+    msg_size = recv(sockd, receiver.data(), payload_size, 0);
     cout << "msg size: " << msg_size << endl;
     
     if (msg_size == 0) {
@@ -167,11 +191,12 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    //cout << "payload size received " << payload_size << endl;
-    //cout << "receiveMsg->msg_size received: " << msg_size << endl;
+    cout << "payload size received " << payload_size << endl;
+    cout << "receiveMsg->msg_size received: " << msg_size << endl;
+    cout << "---------" + to_string(msg_size - (ssize_t)NUMERIC_FIELD_SIZE) << endl;
 
     //check if received all data
-    if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
+    if ((ssize_t)payload_size != msg_size - (ssize_t)NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         return -1;
@@ -913,7 +938,7 @@ int Server::sendFileList(int sockd) {
 
         output.fill('0');
 
-        BIO_dump_fp(stdout, (const char*)ui->send_buffer.data(), ui->send_buffer.size());      
+        //BIO_dump_fp(stdout, (const char*)ui->send_buffer.data(), ui->send_buffer.size());      
 
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1){
             cerr<<"Error during send phase (S->C) | File List Phase"<<endl;
@@ -1013,6 +1038,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 
     for(int i = 0; i < tot_chunks; i++){
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
+        cout << "Chunk n: " << i << " of " << tot_chunks << endl;
         cout << "Received len : " << received_len << endl;
         cout << "MIN LEN : " << MIN_LEN << endl;
         if(received_len < (long)MIN_LEN){
