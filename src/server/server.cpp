@@ -1042,7 +1042,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 
     for(int i = 0; i < tot_chunks; i++){
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
-        cout << "Chunk n: " << i << " of " << tot_chunks << endl;
+        cout << "Chunk n: " << i + 1 << " of " << tot_chunks << endl;
         cout << "Received len : " << received_len << endl;
         cout << "MIN LEN : " << MIN_LEN << endl;
         if((long)received_len < (long)MIN_LEN){

@@ -964,7 +964,7 @@ uint32_t Client::sendMsgChunks(string filename){
     clear_vec_array(send_buffer, frag_buffer.data(), frag_buffer.size());
 
     for(int i = 0; i < tot_chunks; i++){
-        cout << "Chunk n: " << i << " of " << tot_chunks << endl;
+        cout << "Chunk n: " << i + 1 << " of " << tot_chunks << endl;
         if(i == tot_chunks - 1){
             to_send = buf.st_size - i * FRAGM_SIZE;
             this->active_session->createAAD(aad.data(), END_OP);                        //last chunk -> END_OP opcode sent to server
