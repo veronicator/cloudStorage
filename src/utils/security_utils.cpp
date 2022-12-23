@@ -56,37 +56,43 @@ void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len)
 long searchFile(string filename, string username, bool server_side){
     char curr_dir[1024];
     getcwd(curr_dir, sizeof(curr_dir));
-    string path;
-    if(server_side)
-        path = string(curr_dir) + "/server/users/" + username + "/" + filename;
-    else
+    string path, ok_dir;
+    if(server_side){
+        path = string(curr_dir) + "/server/userStorage/" + username + "/" + filename;
+        ok_dir = string(curr_dir) + "/server/userStorage/" + username;
+    }
+    else{
         path = string(curr_dir) + "/client/users/" + username + "/" + filename;
+        ok_dir = string(curr_dir) + "/client/users/" + username;
+    }
 
     cout << "path: " << path << endl;
     char* canon_file = realpath(path.c_str(), NULL);
-    if(!canon_file && !server_side){
-        cerr << "Error during canonicalization" << endl;
-        return -1;
-    }
-
-    string ok_dir = string(curr_dir) + "/client/users/" + username;
-
-    if(!server_side && strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
-        cerr << "Invalid path" << endl;
-        return -3;
-    }
     
-    struct stat buffer;
-    if(stat(path.c_str(), &buffer) != 0){
-        cout << "File not present" << endl;
+    if(!canon_file){
+        //file not present
+        cout << "file not present" << endl;
         return -1;
     }
-    if(buffer.st_size >= MAX_FILE_DIMENSION){
-        cerr << "File too big" << endl;
-        return -2;
-    }
+    else{
+        //file present
+        cout << "file present" << endl;
+        if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
+            cerr << "Invalid path" << endl;
+            return -3;
+        }
 
-    return buffer.st_size; 
+        struct stat buffer;
+        if(stat(path.c_str(), &buffer) != 0){
+            cout << "File not present! Do not enter" << endl;
+            return -1;
+        }
+        if(buffer.st_size >= MAX_FILE_DIMENSION){
+            cerr << "File too big" << endl;
+            return -2;
+        }
+        return buffer.st_size; 
+    }
 }
 
 void readFilenameInput(string& input, string msg) {
