@@ -22,6 +22,8 @@
 //responses
 #define MESSAGE_OK "ack_operation_req"
 #define OP_TERMINATED "ack_operation_terminated"
+#define MALFORMED_FILENAME "Filename not correct"
+#define FILE_PRESENT "File already present. Delete or rename the file on the cloud before upload"
 
 // whitelist
 #define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"

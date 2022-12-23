@@ -120,6 +120,7 @@ bool Server::searchUserExist(string usr_name){
  * @return: 1 on success, 0 or -1 on error
  */
 int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer) {
+    uint32_t payload_size_n;
     cout << payload_size << " sendMsg: payload size" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
@@ -129,6 +130,18 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
     }
 
     payload_size += NUMERIC_FIELD_SIZE;
+
+    payload_size_n = htonl(payload_size);
+    array<unsigned char, NUMERIC_FIELD_SIZE> arr;
+    memcpy(arr.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+
+    if(send(sockd, arr.data(), NUMERIC_FIELD_SIZE, 0) < NUMERIC_FIELD_SIZE){
+        perror("Errore invio dimensione messaggio");
+        send_buffer.assign(send_buffer.size(), '0');
+        send_buffer.clear();
+        return -1;
+    }
+
     if(send(sockd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
         clear_vec(send_buffer);
@@ -147,11 +160,22 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
 */
 long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
-    int msg_size = 0;
+    ssize_t msg_size = 0;
     uint32_t payload_size;
     array<unsigned char, MAX_BUF_SIZE> receiver;
     
-    msg_size = recv(sockd, receiver.data(), MAX_BUF_SIZE-1, 0);
+    msg_size = recv(sockd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
+    cout << "Msg dimension size: " << msg_size << endl;
+
+    payload_size = *(uint32_t*)(receiver.data());
+    payload_size = ntohl(payload_size);
+    cout << "Msg dimension data: " << payload_size << endl;
+    if((long)payload_size > (long)(MAX_BUF_SIZE - 1)){
+        cerr << "Dimension overflow" << endl;
+        return -1;
+    }
+
+    msg_size = recv(sockd, receiver.data(), payload_size, 0);
     cout << "msg size: " << msg_size << endl;
     
     if (msg_size == 0) {
@@ -167,11 +191,12 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    //cout << "payload size received " << payload_size << endl;
-    //cout << "receiveMsg->msg_size received: " << msg_size << endl;
+    cout << "payload size received " << payload_size << endl;
+    cout << "receiveMsg->msg_size received: " << msg_size << endl;
+    cout << "---------" + to_string(msg_size - (ssize_t)NUMERIC_FIELD_SIZE) << endl;
 
     //check if received all data
-    if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
+    if ((ssize_t)payload_size != msg_size - (ssize_t)NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         return -1;
@@ -238,6 +263,7 @@ void Server::run_thread(int sockd) {
     while(!end_thread){
         clear_arr(aad.data(), aad.size());
         clear_two_vec(ui->recv_buffer, plaintext);
+        plaintext.resize(FILE_SIZE_FIELD + 20);
 
         received_len = receiveMsg(sockd, ui->recv_buffer);
         if(received_len < MIN_LEN){
@@ -259,7 +285,8 @@ void Server::run_thread(int sockd) {
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         switch(opcode){
             case UPLOAD_REQ:
-                uploadFile(sockd, plaintext);
+                cout << to_string(pt_len) + " pt_len -> " << string(plaintext.begin(), plaintext.end()) << endl;
+                uploadFile(sockd, plaintext, pt_len);
                 break;
 
             case DOWNLOAD_REQ:
@@ -267,7 +294,7 @@ void Server::run_thread(int sockd) {
                 break;
 
             case RENAME_REQ:
-                renameFile(sockd, plaintext);
+                renameFile(sockd, plaintext, pt_len);
                 break;
 
             case DELETE_REQ:
@@ -880,7 +907,7 @@ int Server::sendFileList(int sockd) {
     
     
     int num_chunks = ceil(float(file_list.size())/FRAGM_SIZE);
-    cout << "NUM CHUNKS: " << num_chunks << endl;
+    cout << "NUM CHUNKS: " << float(file_list.size())/FRAGM_SIZE << endl;
     plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
     for(int i = 0; i < num_chunks; i++){
@@ -913,7 +940,7 @@ int Server::sendFileList(int sockd) {
 
         output.fill('0');
 
-        BIO_dump_fp(stdout, (const char*)ui->send_buffer.data(), ui->send_buffer.size());      
+        //BIO_dump_fp(stdout, (const char*)ui->send_buffer.data(), ui->send_buffer.size());      
 
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1){
             cerr<<"Error during send phase (S->C) | File List Phase"<<endl;
@@ -1005,7 +1032,8 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
     }
 
     size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
-    int received_len, pt_len;
+    long received_len;
+    int pt_len;
     uint16_t opcode;
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> frag_buffer;
@@ -1014,7 +1042,11 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 
     for(int i = 0; i < tot_chunks; i++){
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
-        if(received_len < MIN_LEN){
+        cout << "Chunk n: " << i << " of " << tot_chunks << endl;
+        cout << "Received len : " << received_len << endl;
+        cout << "MIN LEN : " << MIN_LEN << endl;
+        if(received_len < (long)MIN_LEN){
+            cout << "---------------------------------" << endl;
             cerr<<"Error! Exiting receive phase"<<endl;
             return -1;
         }
@@ -1038,7 +1070,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
             return -1;
         }
 
-        outfile << frag_buffer.data();
+        outfile << string(frag_buffer.begin(), frag_buffer.begin() + pt_len);
         clear_arr(frag_buffer.data(), frag_buffer.size());
         clear_arr(aad.data(), aad.size());
         outfile.flush();
@@ -1148,9 +1180,9 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
 }
 
 // TODO: check code
-int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
+int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len) {
     uint64_t filedimension;
-    uint32_t r_dim_l, r_dim_h;
+    uint32_t r_dim_l, r_dim_h, filename_dim;
     string filename;
     string ack_msg;
     uint32_t payload_size, payload_size_n;
@@ -1174,25 +1206,27 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
 
     //the plaintext has format: filedimension | filename
     memcpy(&r_dim_l, plaintext.data(), NUMERIC_FIELD_SIZE);
-    memcpy(&r_dim_h, plaintext.data() + 4, NUMERIC_FIELD_SIZE);
+    memcpy(&r_dim_h, plaintext.data() + NUMERIC_FIELD_SIZE, NUMERIC_FIELD_SIZE);
     filedimension = ((uint64_t)ntohl(r_dim_h) << 32) + ntohl(r_dim_l);
-    filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
+    filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.begin() + pt_len);
+    cout << "filename: " << filename << endl;
 
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"}; //TODO: check if (^\w[\w\\\/\.\-\+_!@#$%^&()~]{0,19}$) (contains also \/ chars)
     file_ok = regex_match(filename, re);
 
     if(!file_ok){
         cerr<<"file not correct! Reception of the file terminated"<<endl;
-        ack_msg = "Filename not correct";
-    } else if(searchFile(filename, ui->username) >= 0) {
-        cerr<<"File already present"<<endl;
-        ack_msg = "File already present";
+        ack_msg = MALFORMED_FILENAME;
+    } else if(searchFile(filename, ui->username, true) >= 0) {
+        cout<<"File already present"<<endl;
+        ack_msg = FILE_PRESENT;
         file_ok = false;
     }
 
     if(file_ok)
         ack_msg = MESSAGE_OK;
     
+    clear_two_vec(plaintext, aad);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
@@ -1211,23 +1245,33 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok){
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0){
         cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
         cout<<"****************************************"<<endl;
         return -1;
     }
+
+    if(strcmp(ack_msg.c_str(), FILE_PRESENT) == 0){
+        cout << "File was already present. Upload rejected" << endl;
+        return 1;       
+    }
  
     clear_vec_array(ui->send_buffer, output.data(), output.size());
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     cout << "       -------- RECEIVING FILE --------"<<endl;
 
     int ret = receiveMsgChunks(ui, filedimension, filename);
+    
     if(ret == -1){
         cerr<<"Error! Something went wrong while receiving the file"<<endl;
         ack_msg = "File not received correctly\n";
     }
+    else{
+        ack_msg = OP_TERMINATED;
+        cout << ack_msg << endl;
+    }
 
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     ui->client_session->createAAD(aad.data(), END_OP);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
@@ -1240,12 +1284,14 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext) {
     payload_size_n = htonl(payload_size);
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+
     clear_vec_array(plaintext, aad.data(), aad.size());
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1){
+    
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1){
         cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
         return -1;
     }
-    cout<<"       -------- RECEPTION ENDED --------";
+    cout<<"       -------- RECEPTION ENDED --------" << endl;
     cout<<"****************************************"<<endl;
     return 1;
 }
@@ -1312,7 +1358,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
                             cyphertext.begin(), cyphertext.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok)
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || !file_ok)
     {
         cerr<<"Error during sending DOWNLOAD_REQUEST_RESPONSE phase (S->C)"<<endl;
 
@@ -1415,7 +1461,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     return 1;
 }
 
-int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
+int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     string old_filename, new_filename;
     uint32_t old_name_len;
     string ack_msg = "";
@@ -1447,13 +1493,13 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
         cerr<<"Filename not correct! Rename terminated"<<endl;
         ack_msg = "Filename not correct";
     } else { //TODO: handle -2 and -3 cases
-        if(searchFile(old_filename, ui->username) == -1) {
+        if(searchFile(old_filename, ui->username, true) == -1) {
             cerr << "Filename to change doesn't correspond to any file"<<endl;
             ack_msg = "Filename to change doesn't correspond to any file\n";
             file_ok = false;
         }
 
-        if(searchFile(new_filename, ui->username) >= 0){
+        if(searchFile(new_filename, ui->username, true) >= 0){
             cerr << "The new filename is already used by another file" << endl;
             ack_msg += "The new filename is already used by another file\n";
             file_ok = false;
@@ -1484,7 +1530,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext) {
     clear_vec_array(ui->send_buffer, output.data(), output.size());
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1){
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1){
         cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
         cout<<"****************************************"<<endl;
         return -1;
@@ -1557,7 +1603,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, cyphertext.begin(), cyphertext.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1 || !file_ok)
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || !file_ok)
     {
         cerr<<"Error during sending DELETE_REQUEST_RESPONSE phase (S->C)"<<endl;
 

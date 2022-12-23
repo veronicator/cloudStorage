@@ -53,32 +53,46 @@ void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len)
     memset(arr, '0', sizeof(char)*arr_len);
 }
 
-long searchFile(string filename, string username){
-    string path = "./users/" + username + "/" + filename;
-    
+long searchFile(string filename, string username, bool server_side){
+    char curr_dir[1024];
+    getcwd(curr_dir, sizeof(curr_dir));
+    string path, ok_dir;
+    if(server_side){
+        path = string(curr_dir) + "/server/userStorage/" + username + "/" + filename;
+        ok_dir = string(curr_dir) + "/server/userStorage/" + username;
+    }
+    else{
+        path = string(curr_dir) + "/client/users/" + username + "/" + filename;
+        ok_dir = string(curr_dir) + "/client/users/" + username;
+    }
+
+    cout << "path: " << path << endl;
     char* canon_file = realpath(path.c_str(), NULL);
-    if(!canon_file){
-        cerr << "Error during canonicalization" << endl;
-        return -1;
-    }
-
-    string ok_dir = "./users/" + username;
-
-    if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
-        cerr << "Invalid path" << endl;
-        return -3;
-    }
     
-    struct stat buffer;
-    if(stat(path.c_str(), &buffer) != 0){
-        cerr << "File not present" << endl;
+    if(!canon_file){
+        //file not present
+        cout << "file not present" << endl;
         return -1;
     }
-    if(buffer.st_size >= MAX_FILE_DIMENSION){
-        cerr << "File too big" << endl;
-        return -2;
+    else{
+        //file present
+        cout << "file present" << endl;
+        if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
+            cerr << "Invalid path" << endl;
+            return -3;
+        }
+
+        struct stat buffer;
+        if(stat(path.c_str(), &buffer) != 0){
+            cout << "File not present! Do not enter" << endl;
+            return -1;
+        }
+        if(buffer.st_size >= MAX_FILE_DIMENSION){
+            cerr << "File too big" << endl;
+            return -2;
+        }
+        return buffer.st_size; 
     }
-    return buffer.st_size;
 }
 
 void readFilenameInput(string& input, string msg) {
@@ -143,14 +157,14 @@ unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
     memcpy(aad, &send_counter_n, NUMERIC_FIELD_SIZE);
     aad_len += NUMERIC_FIELD_SIZE;
     incrementCounter(send_counter);
-    // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
+    // //BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     // cout << "session->createAAD2 " << sizeof(*aad) << endl;
     
     uint16_t opcode_n = htons(opcode);
     memcpy(aad + aad_len, &opcode_n, OPCODE_SIZE);
     aad_len += OPCODE_SIZE;
     //cout << "session->createAAD3" << endl;
-    //BIO_dump_fp(stdout, (const char*)aad, aad_len); 
+    ////BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     return aad_len;
 }
 
@@ -321,9 +335,9 @@ int Session::generateNonce(unsigned char *nonce) {
 
 bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonce) {
     cout << "checkNonce -> received" << endl;
-    //BIO_dump_fp(stdout, (const char*)received_nonce, NONCE_SIZE);
+    ////BIO_dump_fp(stdout, (const char*)received_nonce, NONCE_SIZE);
     cout << "checkNonce -> sent" << endl;
-    //BIO_dump_fp(stdout, (const char*)sent_nonce, NONCE_SIZE);
+    ////BIO_dump_fp(stdout, (const char*)sent_nonce, NONCE_SIZE);
     return memcmp(received_nonce, sent_nonce, NONCE_SIZE) == 0;
 }
 
@@ -498,9 +512,9 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     int len = 0;
     int ct_len = 0;
 
-    //cout<<"ENC_PLAIN"<<endl;                
+    cout<<"ENC_PLAIN"<<endl;                
     //BIO_dump_fp(stdout, plaintext, pt_len); 
-    //cout << "ENC_PT_LEN: " << pt_len << endl;
+    cout << "ENC_PT_LEN: " << pt_len << endl;
 
     unsigned char *ciphertext = (unsigned char*)malloc(pt_len + BLOCK_SIZE);
     if(!ciphertext) {
@@ -542,7 +556,7 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     }
     
     // provide any AAD data. this can be called zero or more time as required
-    // BIO_dump_fp(stdout, (const char*)aad, aad_len); 
+    // //BIO_dump_fp(stdout, (const char*)aad, aad_len); 
     if(EVP_EncryptUpdate(ctx, NULL, &len, aad, AAD_LEN) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         free(iv);
@@ -604,7 +618,7 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     // cout << "session->encryptMsg5" << endl;
     memcpy(output + written_bytes, tag, TAG_SIZE);
     written_bytes += TAG_SIZE;
-    //cout<<"ENC_CT"<<endl;
+    cout<<"ENC_CT"<<endl;
     //BIO_dump_fp(stdout, ciphertext, ct_len); 
 
     free(iv);
@@ -645,7 +659,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     read_bytes += AAD_LEN;
     
     //cout << "session->decrypt" << endl;
-    //BIO_dump_fp(stdout, (const char*)aad, AAD_LEN); 
+    ////BIO_dump_fp(stdout, (const char*)aad, AAD_LEN); 
 
     uint32_t counter = *(uint32_t*)(aad);
     //cout << "recev counter_n decry: " << counter << endl;
@@ -676,7 +690,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     mempcpy(ciphertext, input_buffer + read_bytes, ct_len);
     read_bytes += ct_len;
 
-    //cout<<"DEC_CT"<<endl;
+    cout<<"DEC_CT"<<endl;
     //BIO_dump_fp(stdout, ciphertext, ct_len);
 
     mempcpy(tag, input_buffer + read_bytes, TAG_SIZE);
@@ -749,7 +763,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     free(tag);
     free(ciphertext);
 
-    //cout<<"DEC_PLAIN"<<endl;
+    cout<<"DEC_PLAIN"<<endl;
     //BIO_dump_fp(stdout, plaintext, pt_len);
 
     //cout << "RET: " << ret << endl;
