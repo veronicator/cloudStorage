@@ -1077,8 +1077,12 @@ int Client::uploadFile(){
     }
     
     server_response = ((char*)plaintext.data());
-    if(server_response != MESSAGE_OK){       
-        cerr<<"File not accepted. "<<server_response<<endl;
+    if(server_response == FILE_PRESENT){      
+        cout << "File not accepted. " << server_response << endl;
+        return 1;
+    }
+    if(server_response == MALFORMED_FILENAME){
+        cerr << "File not accepted. " << server_response << endl;
         return -1;
     }
    

@@ -1003,7 +1003,8 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
     }
 
     size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
-    int received_len, pt_len;
+    long received_len;
+    int pt_len;
     uint16_t opcode;
     vector<unsigned char> aad(AAD_LEN);
     array<unsigned char, MAX_BUF_SIZE> frag_buffer;
@@ -1012,7 +1013,10 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 
     for(int i = 0; i < tot_chunks; i++){
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
-        if(received_len < MIN_LEN){
+        cout << "Received len : " << received_len << endl;
+        cout << "MIN LEN : " << MIN_LEN << endl;
+        if(received_len < (long)MIN_LEN){
+            cout << "---------------------------------" << endl;
             cerr<<"Error! Exiting receive phase"<<endl;
             return -1;
         }
@@ -1184,10 +1188,10 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
     if(!file_ok){
         cerr<<"file not correct! Reception of the file terminated"<<endl;
-        ack_msg = "Filename not correct";
+        ack_msg = MALFORMED_FILENAME;
     } else if(searchFile(filename, ui->username, true) >= 0) {
-        cerr<<"File already present"<<endl;
-        ack_msg = "File already present";
+        cout<<"File already present"<<endl;
+        ack_msg = FILE_PRESENT;
         file_ok = false;
     }
 
@@ -1211,10 +1215,15 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || !file_ok){
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0){
         cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
         cout<<"****************************************"<<endl;
         return -1;
+    }
+
+    if(strcmp(ack_msg.c_str(), FILE_PRESENT) == 0){
+        cout << "File was already present. Upload rejected" << endl;
+        return 1;       
     }
  
     clear_vec_array(ui->send_buffer, output.data(), output.size());
