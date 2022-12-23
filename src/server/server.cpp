@@ -196,7 +196,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     cout << "---------" + to_string(msg_size - (ssize_t)NUMERIC_FIELD_SIZE) << endl;
 
     //check if received all data
-    if ((ssize_t)payload_size != msg_size - (ssize_t)NUMERIC_FIELD_SIZE) {
+    if ((long)payload_size != (long)msg_size - (long)NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         return -1;
@@ -1045,7 +1045,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
         cout << "Chunk n: " << i << " of " << tot_chunks << endl;
         cout << "Received len : " << received_len << endl;
         cout << "MIN LEN : " << MIN_LEN << endl;
-        if(received_len < (long)MIN_LEN){
+        if((long)received_len < (long)MIN_LEN){
             cout << "---------------------------------" << endl;
             cerr<<"Error! Exiting receive phase"<<endl;
             return -1;
@@ -1226,7 +1226,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     if(file_ok)
         ack_msg = MESSAGE_OK;
     
-    clear_two_vec(plaintext, aad);
+    clear_vec_array(plaintext, aad.data(), aad.size());
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());

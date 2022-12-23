@@ -897,9 +897,9 @@ void Client::logout() {
     if(received_len >= MIN_LEN){
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
         if(pt_len != 0){
-            opcode = ntohs(*(uint16_t*)aad.data() + NUMERIC_FIELD_SIZE);
+            opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
             if(opcode == END_OP){
-                cout << ((char*)plaintext.data());
+                cout << string(plaintext.begin(), plaintext.begin() + pt_len) << endl;
             }
             else{
                 cerr <<"Error! Unexpected message" << endl;
