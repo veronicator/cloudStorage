@@ -1535,7 +1535,10 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     
     if(file_ok){
         ack_msg = MESSAGE_OK;
-        changeName(old_filename, new_filename, ui->username);
+        if(changeName(old_filename, new_filename, ui->username) == -1){
+            cout << "Error during rename" << endl;
+            return -1;
+        }
     }
     
     clear_three_vec(aad, plaintext, ui->send_buffer);
