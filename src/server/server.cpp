@@ -125,7 +125,6 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
         clear_vec(send_buffer);
-        //close(sockd);
         return -1;
     }
 
@@ -145,7 +144,6 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
     if(send(sockd, send_buffer.data(), payload_size, 0) < payload_size) {
         perror("Socker error: send message failed");
         clear_vec(send_buffer);
-        //close(sockd);
         return -1;
     }
 

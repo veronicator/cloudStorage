@@ -28,8 +28,10 @@ void handleErrors(const char *error, int sockd) {
 /********************************************************************/
 
 void clear_vec(vector<unsigned char> &v) {
-    v.assign(v.size(), '0');
-    v.clear();
+    if(!v.empty()) {
+        v.assign(v.size(), '0');
+        v.clear();
+    }
 }
 
 void clear_arr(unsigned char* arr, int arr_len) {
@@ -58,12 +60,12 @@ long searchFile(string filename, string username, bool server_side){
     getcwd(curr_dir, sizeof(curr_dir));
     string path, ok_dir;
     if(server_side){
-        path = string(curr_dir) + "/server/userStorage/" + username + "/" + filename;
         ok_dir = string(curr_dir) + "/server/userStorage/" + username;
+        path = ok_dir + "/" + filename;
     }
     else{
-        path = string(curr_dir) + "/client/users/" + username + "/" + filename;
         ok_dir = string(curr_dir) + "/client/users/" + username;
+        path = ok_dir + "/" + filename;
     }
 
     cout << "path: " << path << endl;
