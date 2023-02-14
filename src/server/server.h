@@ -2,8 +2,6 @@
 
 #define path_file "./server/userStorage/"
 
-// TODO
-
 struct UserInfo {
     string username;    // client username
     int sockd;
@@ -19,20 +17,11 @@ struct UserInfo {
     
 
 class Server {
-    //static Server* server;
 
-    // vector<Session> activeSessions;
-    //todo: fare un unica mappa <int sockID, UserInfo> ?
     unordered_map<int, UserInfo*> connectedClient;    // client sockd, session
     //unordered_map<string, int> socketClient;      // client username, socket descriptor -> to find if a client is already connected and what is his sockd
-    //map<int, UserInfo> connectedClient;     // client_socket descriptor, userInfo struct
-    //unordered_map<string, UserInfo> activeChats;  // client username, data about chat
-    // vector/list/map di int socket e username ?
+
     EVP_PKEY *priv_key;
-    
-    /***********************/
-    // singlenton
-    //Server();
 
     /***********************/
     // socket 
@@ -57,7 +46,7 @@ class Server {
     
     /****************************************************/
 
-    int sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer);       //dopo invio: deallocare buffer
+    int sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer);
     long receiveMsg(int sockd, vector<unsigned char> &recv_buffer);    // restituisce lunghezza totale messaggio ricevuto, msg_size
 
     EVP_PKEY* getPeerKey(string username);
@@ -78,9 +67,8 @@ class Server {
     int sendFileList(int sockd);
     void logoutClient(int sockd); 
 
-    void sendErrorMsg(int sockd, string errorMsg);
+    //void sendErrorMsg(int sockd, string errorMsg);
 
-    
     /****************************************************/
 
     public:
@@ -89,12 +77,10 @@ class Server {
         // socket
         int acceptConnection();
         int getListener();
-        //void* client_thread_code(void *arg);  // friend?
         void run_thread(int sd);
 
         //void joinThread();
 
-    //test
 };
 
 struct ThreadArgs {

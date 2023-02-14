@@ -998,7 +998,7 @@ void Server::logoutClient(int sockd) {
     //ui = nullptr;
 }
     
-
+/*
 void Server::sendErrorMsg(int sockd, string errorMsg) {
         //cerr << errorMsg << endl;
 
@@ -1013,6 +1013,7 @@ void Server::sendErrorMsg(int sockd, string errorMsg) {
         sendMsg(payload_size, sockd, send_buf);
 
 }
+*/
 /*
 void Server::joinThread() {
     while(!threads.empty()) {

@@ -918,7 +918,7 @@ void Client::logout() {
     cout << "end logout" << endl;
 }
     
-
+/*
 void Client::sendErrorMsg(string errorMsg) {
         //cerr << errorMsg << endl;
 
@@ -937,6 +937,7 @@ void Client::sendErrorMsg(string errorMsg) {
         sendMsg(payload_size);
 
 }
+*/
 
 uint32_t Client::sendMsgChunks(string filename){
     string path = "./client/users/" + this->username + "/" + filename;                         //where to find the file
