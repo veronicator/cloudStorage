@@ -73,7 +73,7 @@ class Server {
     int uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len);
     int downloadFile(int sockd, vector<unsigned char> plaintext);
     int renameFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len);
-    int deleteFile(int sockd, vector<unsigned char> plaintext);
+    int deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len);
 
     int sendFileList(int sockd);
     void logoutClient(int sockd); 

@@ -38,7 +38,6 @@
 #define SRV_PORT 4242
 
 // Variables size
-// TODO
 #define MAX_COMMAND_SIZE 10
 #define MAX_NAME_SIZE 20
 #define MAX_CLIENTS 50

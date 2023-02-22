@@ -298,7 +298,7 @@ void Server::run_thread(int sockd) {
                 break;
 
             case DELETE_REQ:
-                deleteFile(sockd, plaintext);       //TODO: change to correct name
+                deleteFile(sockd, plaintext, pt_len);       //TODO: change to correct name
                 break;
 
             case FILE_LIST:
@@ -907,7 +907,7 @@ int Server::sendFileList(int sockd) {
     
     
     int num_chunks = ceil(float(file_list.size())/FRAGM_SIZE);
-    cout << "NUM CHUNKS: " << float(file_list.size())/FRAGM_SIZE << endl;
+    cout << "NUM CHUNKS: " << num_chunks << endl;
     plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
     for(int i = 0; i < num_chunks; i++){
@@ -1104,7 +1104,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
     uint32_t payload_size, payload_size_n;                                              
     array<unsigned char, AAD_LEN> aad;                                                          
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       
-    array<unsigned char, MAX_BUF_SIZE> cyphertext;                                     
+    array<unsigned char, MAX_BUF_SIZE> ciphertext;                                     
     
     //=== Managemetn Buffer ===
     frag_buffer.fill('0');
@@ -1138,7 +1138,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
         }
 
         payload_size = ui->client_session->encryptMsg(frag_buffer.data(),
-                    frag_buffer.size(), aad.data(), cyphertext.data());
+                    frag_buffer.size(), aad.data(), ciphertext.data());
 
         payload_size_n = htonl(payload_size);
 
@@ -1148,10 +1148,10 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
 
         memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
         ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
-                                cyphertext.begin(), cyphertext.begin() + payload_size);
+                                ciphertext.begin(), ciphertext.begin() + payload_size);
 
         //=== Managemetn Buffer ===   
-        cyphertext.fill('0');
+        ciphertext.fill('0');
         ui->send_buffer.assign(ui->send_buffer.size(), '0');
         ui->send_buffer.clear();
         ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
@@ -1163,7 +1163,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
             //=== Cleaining ===
             clear_arr(aad.data(), aad.size());
             frag_buffer.fill('0');
-            cyphertext.fill('0');
+            ciphertext.fill('0');
 
             return -1;
         }
@@ -1174,7 +1174,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
     //=== Cleaining ===
     clear_arr(aad.data(), aad.size());
     frag_buffer.fill('0');
-    cyphertext.fill('0');
+    ciphertext.fill('0');
     
     return 1;
 }
@@ -1230,20 +1230,19 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    
+    clear_two_vec(plaintext, ui->send_buffer);
+    clear_arr(aad.data(), aad.size());
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
-        clear_two_vec(plaintext, ui->send_buffer);
-        clear_arr(aad.data(), aad.size());
         return -1;
     }
     payload_size_n = htonl(payload_size);
     
-    clear_two_vec(plaintext, ui->send_buffer);
-    clear_arr(aad.data(), aad.size());
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
-    
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, 
+                            output.begin(), output.begin() + payload_size);
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0){
         cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
@@ -1303,7 +1302,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     uint32_t payload_size, payload_size_n;
     string ack_msg;
     array<unsigned char, AAD_LEN> aad;
-    array<unsigned char, MAX_BUF_SIZE> cyphertext;
+    array<unsigned char, MAX_BUF_SIZE> ciphertext;
     bool file_ok = true;
 
     UserInfo *ui;
@@ -1331,7 +1330,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
         ack_msg = "Filename not allowed";
     }
 
-    if(checkFileExist(filename, ui->username, FILE_PATH_SVR) != 0)
+    if(checkFileExist(filename, ui->username, FILE_PATH_SVR) != 1)
     {
         cerr<<"Error: this file is not present in the folder"<<endl;
         ack_msg = "File not present in the Cloud Storage";
@@ -1347,7 +1346,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
 
     ui->client_session->createAAD(aad.data(), DOWNLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(),
-                                            aad.data(), cyphertext.data());
+                                            aad.data(), ciphertext.data());
     payload_size_n = htonl(payload_size);
     
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
@@ -1356,7 +1355,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
-                            cyphertext.begin(), cyphertext.begin() + payload_size);
+                            ciphertext.begin(), ciphertext.begin() + payload_size);
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || !file_ok)
     {
@@ -1365,7 +1364,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
         // === Cleaning ===
         clear_vec(plaintext);
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1456,7 +1455,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     clear_arr(aad.data(), aad.size());
     plaintext.assign(plaintext.size(), '0');
     plaintext.clear();
-    cyphertext.fill('0');
+    ciphertext.fill('0');
 
     return 1;
 }
@@ -1544,13 +1543,13 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
 }
 
 
-int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
+int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len)
 {
     string filename;
     uint32_t payload_size, payload_size_n;
     string ack_msg;
     array<unsigned char, AAD_LEN> aad;
-    array<unsigned char, MAX_BUF_SIZE> cyphertext;
+    array<unsigned char, MAX_BUF_SIZE> ciphertext;
     bool file_ok = true;
 
     UserInfo *ui;
@@ -1567,7 +1566,8 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
 
 // _BEGIN_(1)-------------- [ M1: SEND_CONFIRMATION_DELETE_REQUEST_TO_CLIENT ] --------------
 
-    filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
+    filename = string(plaintext.begin(), plaintext.begin() + pt_len);
+    //BIO_dump_fp(stdout, (const char*)plaintext.data(), pt_len);
 
     const auto allowed = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
     file_ok = regex_match(filename, allowed);
@@ -1576,24 +1576,27 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     {
         cerr<<"File not correct! Termination of the Delete_Operation in progress"<<endl;
         ack_msg = "Filename not allowed";
-    }
-
-    if(checkFileExist(filename, ui->username, FILE_PATH_SVR) != 0)
+    } else if(checkFileExist(filename, ui->username, FILE_PATH_SVR) != 1)
     {
-        cerr<<"Error: this file is not present in the folder"<<endl;
+        cerr << "Error: file not present in the user storage" << endl;
         ack_msg = "File not present in the Cloud Storage";
 
         file_ok = false;
     }
 
     if(file_ok)
-    {   ack_msg = MESSAGE_OK; }
+    {   
+        ack_msg = MESSAGE_OK;
+    }
 
     //=== Preparing Data Sending and Encryption ===
+    clear_vec(plaintext);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
 
+    clear_arr(aad.data(), aad.size());
     ui->client_session->createAAD(aad.data(), DELETE_REQ);
-    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), cyphertext.data());
+
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ciphertext.data());
     payload_size_n = htonl(payload_size);
     
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
@@ -1601,8 +1604,8 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, cyphertext.begin(), cyphertext.begin() + payload_size);
-
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, ciphertext.begin(), ciphertext.begin() + payload_size);
+    
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || !file_ok)
     {
         cerr<<"Error during sending DELETE_REQUEST_RESPONSE phase (S->C)"<<endl;
@@ -1610,7 +1613,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
         // === Cleaning ===
         clear_vec(plaintext);
         aad.fill('0');
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1626,18 +1629,18 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     string user_choice, final_msg;  //final_msg: message of successful cancellation
 
     // === Reuse of vectors declared at the beginning ===
+    clear_vec(plaintext);
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg(sockd, ui->recv_buffer);
-    if(received_len == 0 || received_len == -1)
+    if(received_len <= 0)
     {
         cout<<"Error during receive phase (C->S)"<<endl;
 
         // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
+        clear_vec(plaintext);
         aad.fill('0');
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1674,9 +1677,13 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     {
         cout<<"\n\t~ The file *( "<< filename << " )* is going to be deleted. ~\n\n"<<endl;
 
-        if(removeFile(filename, ui->username, FILE_PATH_SVR) == -1)
+        if(removeFile(filename, ui->username, FILE_PATH_SVR) != 1)
         {
             cout << "\n\t --- Error during Deleting file ---\n" << endl; 
+            clear_vec(plaintext);
+            clear_arr(aad.data(), aad.size());
+            clear_arr(ciphertext.data(), ciphertext.size());
+            return -1;
         }
 
         final_msg = "File Deleted Successfully";
@@ -1686,16 +1693,16 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     plaintext.assign(plaintext.size(), '0');
     plaintext.clear();
     aad.fill('0');
-    cyphertext.fill('0');
+    ciphertext.fill('0');
 
     // === Reuse of vectors declared at the beginning ===
-    plaintext.resize(MAX_BUF_SIZE);
+    //plaintext.resize(MAX_BUF_SIZE);
 
     // === Preparing Data Sending and Encryption ===    
     plaintext.insert(plaintext.begin(), final_msg.begin(), final_msg.end());
 
     ui->client_session->createAAD(aad.data(), END_OP);
-    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), cyphertext.data());
+    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ciphertext.data());
     payload_size_n = htonl(payload_size);
     
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
@@ -1703,7 +1710,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, cyphertext.begin(), cyphertext.begin() + payload_size);                             
+    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, ciphertext.begin(), ciphertext.begin() + payload_size);                             
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != -1)
     {
@@ -1713,7 +1720,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         aad.fill('0');
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }                                                
@@ -1724,7 +1731,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext)
     plaintext.assign(plaintext.size(), '0');
     plaintext.clear();
     aad.fill('0');
-    cyphertext.fill('0');
+    ciphertext.fill('0');
 
     return 1; //Successful_State
 }

@@ -1,4 +1,5 @@
-CFLAGS = -Wall -lpthread -lcrypto -lstdc++fs
+CFLAGS = -lpthread -lcrypto -lstdc++fs
+WFLAGS = -Wall
 
 all: server.exe client.exe
 
@@ -24,4 +25,4 @@ client_main.o: client/client.h utils/security_utils.h  utils/symbols.h
 	g++ -c client/client_main.cpp ${CFLAGS}
 
 clean:
-	rm -rf *.o
+	rm -rf *.o *.exe

@@ -513,7 +513,7 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     int ct_len = 0;
 
     cout<<"ENC_PLAIN"<<endl;                
-    //BIO_dump_fp(stdout, plaintext, pt_len); 
+    //BIO_dump_fp(stdout, (const char*)plaintext, pt_len); 
     cout << "ENC_PT_LEN: " << pt_len << endl;
 
     unsigned char *ciphertext = (unsigned char*)malloc(pt_len + BLOCK_SIZE);
@@ -618,8 +618,9 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     // cout << "session->encryptMsg5" << endl;
     memcpy(output + written_bytes, tag, TAG_SIZE);
     written_bytes += TAG_SIZE;
+    
     cout<<"ENC_CT"<<endl;
-    //BIO_dump_fp(stdout, ciphertext, ct_len); 
+    //BIO_dump_fp(stdout, (const char*)ciphertext, ct_len); 
 
     free(iv);
     free(ciphertext);
@@ -691,7 +692,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     read_bytes += ct_len;
 
     cout<<"DEC_CT"<<endl;
-    //BIO_dump_fp(stdout, ciphertext, ct_len);
+    //BIO_dump_fp(stdout, (const char*)ciphertext, ct_len);
 
     mempcpy(tag, input_buffer + read_bytes, TAG_SIZE);
     read_bytes += TAG_SIZE;
@@ -764,7 +765,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     free(ciphertext);
 
     cout<<"DEC_PLAIN"<<endl;
-    //BIO_dump_fp(stdout, plaintext, pt_len);
+    //BIO_dump_fp(stdout, (const char*)plaintext, pt_len);
 
     //cout << "RET: " << ret << endl;
 
@@ -786,7 +787,7 @@ int32_t checkFileExist(string filename, string username, string path_side)
 
     if (stat(path.c_str(),&buffer)!=0)  //stat failed
     { 
-        return 0;   //File dosen't exist
+        return 1;   //File doesn't exist
 	}
 	
 	return -1;  //File exist
@@ -802,10 +803,8 @@ int removeFile(string filename, string username, string path_side)
         perror ("\n\t * * * ERROR: ");
         return -1;
     }
-    else
-    {
-        return 1;
-    }
+    return 1;
+    
 
     /* --- EXEC_version ---
     void
