@@ -1351,16 +1351,17 @@ int Client::downloadFile()
     uint32_t file_size, payload_size, payload_size_n, filedimension;   
     array<unsigned char, AAD_LEN> aad;
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);
-    array<unsigned char, MAX_BUF_SIZE> cyphertext;
+    array<unsigned char, MAX_BUF_SIZE> ciphertext;
 
     readFilenameInput(filename, "Insert the name of the file you want to Download: ");
 
     // === Checking and managing the existence of the file within the Download folder ===
-    if (checkFileExist(filename, this->username, FILE_PATH_CLT)!=0)
+    if (checkFileExist(filename, this->username, FILE_PATH_CLT) != 1)
     {
         string choice;
 
-        cout << "The requested file already exists in the Download folder, do you want to overwrite it?: [y/n]\n\n "<<endl;
+        cout << "The requested file already exists in the Download folder, "
+        << "do you want to overwrite it?: [y/n]\n\n "<<endl;
         cout<<"_Ans: ";
         getline(cin, choice);
 
@@ -1369,7 +1370,7 @@ int Client::downloadFile()
 
         while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
         {
-            cout<<"\nError: The parameter of cohice is wrong!"<<endl;
+            cout<<"\nError: The parameter of choice is wrong!"<<endl;
             cout<<"-- Try again: [y/n]: ";
             getline(cin, choice);
 
@@ -1384,9 +1385,10 @@ int Client::downloadFile()
             return -1;
         }
         
-        if(removeFile(filename, this->username, FILE_PATH_CLT) == -1)
+        if(removeFile(filename, this->username, FILE_PATH_CLT) != 1)
         {
-            cout << "\n\t --- Error during Deleting file ---\n" << endl; }
+            cout << "\n\t --- Error during Deleting file ---\n" << endl; 
+        }
     }
     
     // === Preparing Data Sending and Encryption ===
@@ -1395,7 +1397,7 @@ int Client::downloadFile()
     this->active_session->createAAD(aad.data(), DOWNLOAD_REQ);
     
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
-                                                    aad.data(), cyphertext.data());
+                                                    aad.data(), ciphertext.data());
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
         clear_two_vec(plaintext, send_buffer);
@@ -1410,9 +1412,9 @@ int Client::downloadFile()
 
     send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
-                        cyphertext.begin() + payload_size);
-    cyphertext.fill('0');
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, ciphertext.begin(),
+                        ciphertext.begin() + payload_size);
+    ciphertext.fill('0');
 
 
 // _BEGIN_(1)-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------
@@ -1425,7 +1427,7 @@ int Client::downloadFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1450,7 +1452,7 @@ int Client::downloadFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         aad.fill('0');
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1460,7 +1462,7 @@ int Client::downloadFile()
                                                 aad.data(), plaintext.data());
     if (plaintext_len == 0) {
         cerr << " Error during decryption" << endl;
-        clear_arr(cyphertext.data(), cyphertext.size());
+        clear_arr(ciphertext.data(), ciphertext.size());
         clear_two_vec(plaintext, recv_buffer);
         clear_arr(aad.data(), aad.size());
         return -1;
@@ -1491,7 +1493,7 @@ int Client::downloadFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1518,7 +1520,7 @@ int Client::downloadFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1543,7 +1545,7 @@ int Client::downloadFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1563,7 +1565,7 @@ int Client::downloadFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        ciphertext.fill('0');
         
         return -1;
     }
@@ -1588,7 +1590,7 @@ int Client::downloadFile()
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
-                                                    aad.data(), cyphertext.data());
+                                                    aad.data(), ciphertext.data());
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
         clear_two_vec(plaintext, send_buffer);
@@ -1602,8 +1604,8 @@ int Client::downloadFile()
 
     send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
-                        cyphertext.begin() + payload_size);
+    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, ciphertext.begin(),
+                        ciphertext.begin() + payload_size);
 
 // _BEGIN_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
 
@@ -1615,7 +1617,7 @@ int Client::downloadFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1626,7 +1628,7 @@ int Client::downloadFile()
     plaintext.assign(plaintext.size(), '0');
     plaintext.clear();
     clear_arr(aad.data(), aad.size());
-    cyphertext.fill('0');
+    ciphertext.fill('0');
     
     return 1;
 }
@@ -1636,46 +1638,40 @@ int Client::deleteFile()
     string filename;
     uint32_t file_size, payload_size, payload_size_n, filedimension;   
     array<unsigned char, AAD_LEN> aad;
-    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
-    array<unsigned char, MAX_BUF_SIZE> cyphertext;
-
+    vector<unsigned char> plaintext;
+    array<unsigned char, MAX_BUF_SIZE> ciphertext;
 
 // _BEGIN_(1)-------------- [ M1: SEND_DELETE_REQUEST_TO_SERVER ] --------------
 
-    readFilenameInput(filename, "Insert the name of the file you want to Delete: ");
+    readFilenameInput(filename, "Insert the name of the file you want to delete: ");
 
     // === Preparing Data Sending and Encryption  ===
     plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
-
     this->active_session->createAAD(aad.data(), DELETE_REQ);
     
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
-                                                    aad.data(), cyphertext.data());
-    
+                                                    aad.data(), ciphertext.data());
     // === Cleaning ===
     clear_two_vec(plaintext, send_buffer);
     clear_arr(aad.data(), aad.size());
+
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
+        clear_arr(ciphertext.data(), ciphertext.size());
         return -1;
     }
     payload_size_n = htonl(payload_size);
 
     send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
-                        cyphertext.begin() + payload_size);
-    cyphertext.fill('0');
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, 
+                        ciphertext.begin(), ciphertext.begin() + payload_size);
+    ciphertext.fill('0');
 
     if(sendMsg(payload_size) != 1)
     {
         cout<<"Error during send phase (C->S)"<<endl;
-        
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        clear_vec(send_buffer);
 
         return -1;
     }
@@ -1686,7 +1682,7 @@ int Client::deleteFile()
 // _BEGIN_(2)------ [M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] ------
 
     uint16_t opcode;
-    uint64_t received_len;  
+    long received_len;  
     uint32_t plaintext_len;
     string server_response, choice; 
 
@@ -1694,15 +1690,10 @@ int Client::deleteFile()
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len == 0 || received_len == -1)
+    if(received_len <= 0)
     {
         cout<<"Error during receive phase (S->C)"<<endl;
-
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        clear_vec(plaintext);
 
         return -1;
     }
@@ -1719,58 +1710,46 @@ int Client::deleteFile()
 
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    clear_arr(aad.data(), aad.size());
     if(opcode != DELETE_REQ)
     {
         cout<<"Error! Exiting DELETE request phase"<<endl;
-
-         // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        // === Cleaning ===
+        clear_vec(plaintext);
 
         return -1;
     }
     
     /*--- Check Response existence of file in the Cloud Storage by the Server ---*/
     server_response = ((char*)plaintext.data());
+
     if(server_response != MESSAGE_OK)
     {       
-        cout<<"The file dosen't exist in the cloud: "<< server_response <<endl;
-
+        cout << "The delete request was refused: " << server_response << endl;
         // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
-
+        clear_vec(plaintext);
         return -1;
     }
     
 // _END_(2)-------- [ M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] --------
-        
     
-    cout << "Are you sure you want to delete the file??: [y/n]\n\n "<<endl;
-    cout<<"_Ans: ";
+    cout << "Are you sure to delete the file " << filename << "?: [y/n]\n" <<endl;
+ 
     getline(cin, choice);
 
     if(!cin)
     {
         cerr << "\n === Error during input ===\n" << endl;
-
         // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        clear_vec(plaintext);
 
         return -1;
     }
 
     while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
     {
-        cout<<"\nError: The parameter of cohice is wrong!"<<endl;
-        cout<<"-- Try again: [y/n]: ";
+        cout << "\nError: The parameter of choice is wrong!" << endl
+            <<"Try again: [y/n] ";
         getline(cin, choice);
 
         if(!cin)
@@ -1778,11 +1757,7 @@ int Client::deleteFile()
             cerr << "\n === Error during input ===\n" << endl;
 
             // === Cleaning ===
-            plaintext.assign(plaintext.size(), '0');
-            plaintext.clear();
-            clear_arr(aad.data(), aad.size());
-            cyphertext.fill('0');
-
+            clear_vec(plaintext);
             return -1;
         }
     }
@@ -1792,27 +1767,24 @@ int Client::deleteFile()
         //--termination Delete_Operation
         //terminate();
 
-        cout<<"\n\t~ The file *( "<< filename << " )* will not be deleted. ~\n\n"<<endl;
+        cout << "\n\t The file '" << filename << "' will not be deleted. \n"<<endl;
 
          // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        //clear_vec(plaintext);
+        //ciphertext.fill('0');
         
-        return -1;
+        //return -1;
     }
         
     
 // _BEGIN_(3)-------------- [ M3: SEND_USER-CHOICE_TO_SERVER ] --------------
     
     // === Cleaning ===
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
+    clear_vec(plaintext);
     clear_arr(aad.data(), aad.size());
 
     // === Reuse of vectors declared at the beginning ===
-    plaintext.resize(MAX_BUF_SIZE);
+    //plaintext.resize(MAX_BUF_SIZE);
 
     // === Preparing Data Sending and Encryption ===    
     this->active_session->createAAD(aad.data(), DELETE_CONFIRM);
@@ -1820,7 +1792,7 @@ int Client::deleteFile()
     plaintext.insert(plaintext.begin(), choice.begin(), choice.end());
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
-                                                    aad.data(), cyphertext.data());
+                                                    aad.data(), ciphertext.data());
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
         clear_two_vec(plaintext, send_buffer);
@@ -1831,9 +1803,9 @@ int Client::deleteFile()
 
     send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, cyphertext.begin(),
-                        cyphertext.begin() + payload_size);
-    cyphertext.fill('0');
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE,
+                        ciphertext.begin(), ciphertext.begin() + payload_size);
+    ciphertext.fill('0');
 
 
     if(sendMsg(payload_size) != 1)
@@ -1844,7 +1816,7 @@ int Client::deleteFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        ciphertext.fill('0');
 
         return -1;
     }
@@ -1866,7 +1838,7 @@ int Client::deleteFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');   
+        ciphertext.fill('0');   
             
         return -1;
     }
@@ -1891,7 +1863,7 @@ int Client::deleteFile()
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         clear_arr(aad.data(), aad.size());
-        cyphertext.fill('0');
+        ciphertext.fill('0');
         
         return -1;
     }
@@ -1906,7 +1878,7 @@ int Client::deleteFile()
     plaintext.assign(plaintext.size(), '0');
     plaintext.clear();
     clear_arr(aad.data(), aad.size());
-    cyphertext.fill('0');
+    ciphertext.fill('0');
     
     return 1;
 }
