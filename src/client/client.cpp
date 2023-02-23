@@ -1277,7 +1277,7 @@ int Client::renameFile(){
 }
 
 
-//---------------------------------------------\\
+//---------------------------------------------//
 
 int Client::receiveMsgChunks( uint32_t filedimension, string filename)
 {

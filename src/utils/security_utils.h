@@ -50,7 +50,7 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 */
 //void readUsername(string& usr);
 
-void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
+void readInput(string& input, const size_t MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 void readFilenameInput(string& input, string msg);
 
 //bool searchUserExist(string usr_name);
@@ -110,8 +110,8 @@ class Session {
    
         bool checkCounter(uint32_t counter);
 
-        uint32_t encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output);  // encrypt message to send and return message length
-        uint32_t decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
+        uint32_t encryptMsg(unsigned char *plaintext, size_t pt_len, unsigned char *aad, unsigned char *output);  // encrypt message to send and return message length
+        uint32_t decryptMsg(unsigned char *input_buffer, uint64_t payload_size, unsigned char *aad, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
 
         //encrypt/decrypt()
         /* 

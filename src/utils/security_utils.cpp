@@ -121,7 +121,7 @@ void readFilenameInput(string& input, string msg) {
 }
 
 
-void readInput(string& input, const int MAX_SIZE, string msg = "") {
+void readInput(string& input, const size_t MAX_SIZE, string msg = "") {
     string ok_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!";
     bool ok = false;
     do {
@@ -147,7 +147,7 @@ void readInput(string& input, const int MAX_SIZE, string msg = "") {
 /********************************************************************/
 
 void Session::incrementCounter(uint32_t& counter) {
-    counter = ++counter % UINT32_MAX;
+    counter = (counter + 1) % UINT32_MAX;
 }
 
 unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
@@ -508,7 +508,7 @@ bool Session::checkCounter(uint32_t counter) {
 
 /********************************************************************/
 
-uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output) {
+uint32_t Session::encryptMsg(unsigned char *plaintext, size_t pt_len, unsigned char *aad, unsigned char *output) {
     //cout << "session->encryptMsg pt_len " << pt_len << endl;
     EVP_CIPHER_CTX *ctx;
     int len = 0;
@@ -632,7 +632,7 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
 }
 
 
-uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsigned char *aad, unsigned char *plaintext) {
+uint32_t Session::decryptMsg(unsigned char *input_buffer, uint64_t payload_size, unsigned char *aad, unsigned char *plaintext) {
     //cout << "session->decryptMsg" << endl;
     EVP_CIPHER_CTX *ctx;
     int ct_len;
