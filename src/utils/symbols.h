@@ -14,15 +14,20 @@
 #define HELP 11
 #define ERROR 12
 
+//others
+#define SERVER_SIDE bool(true)
+#define CLIENT_SIDE bool(false)
+
 //Dir Path
 #define SRV_DIR "./server/"
-#define FILE_PATH_CLT "/users/"
-#define FILE_PATH_SVR "/userStorage/"
+#define FILE_PATH_CLT "./client/users/"
+#define FILE_PATH_SRV "./server/userStorage/"
 
 //responses
 #define MESSAGE_OK "ack_operation_req"
 #define OP_TERMINATED "ack_operation_terminated"
 #define MALFORMED_FILENAME "Filename not correct"
+#define FILE_NOT_PRESENT "File not present in the Cloud Storage"
 #define FILE_PRESENT "File already present. Delete or rename the file on the cloud before upload"
 
 // whitelist

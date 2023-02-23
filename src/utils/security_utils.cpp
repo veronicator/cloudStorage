@@ -82,6 +82,11 @@ long searchFile(string filename, string username, bool server_side){
         }
 
         struct stat buffer;
+        if(stat(path.c_str(), &buffer) != 0){
+            cout << "File not present! Do not enter" << endl;
+            return -1;
+        }
+        
         if(buffer.st_size >= MAX_FILE_DIMENSION){
             cerr << "File too big" << endl;
             return -2;
@@ -775,24 +780,15 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
    }
 }
 
-int32_t checkFileExist(string filename, string username, string path_side)
-{
-    string path = path_side + username + "/" + filename;
-    struct stat buffer;
-
-    if (stat(path.c_str(),&buffer)!=0)  //stat failed
-    { 
-        return 1;   //File doesn't exist
-	}
-	
-	return -1;  //File exist
-}
-
-int removeFile(string filename, string username, string path_side)
+int removeFile(string filename, string username, bool server_side)
 {
     char curr_dir[1024];
-    string path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + filename;
-    cout << path << endl;
+    string path;
+    if(server_side)
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + filename;
+    else
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/client/users/" + username + "/" + filename;
+
     if(remove(path.c_str()) != 0){   
         perror ("\n * * * ERROR");
         return -1;
