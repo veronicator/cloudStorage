@@ -1724,8 +1724,7 @@ int Client::deleteFile()
 
     while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
     {
-        cout << "\nError: The parameter of choice is wrong!" << endl
-            <<"Try again: [y/n] ";
+        cout << "\nError: Type Y/y or N/n!" << endl <<"Try again: [y/n] ";
         getline(cin, choice);
 
         if(!cin)
@@ -1739,18 +1738,7 @@ int Client::deleteFile()
     }
 
     if(choice == "N" || choice == "n")
-    {
-        //--termination Delete_Operation
-        //terminate();
-
         cout << "\n\t The file '" << filename << "' will not be deleted. \n"<<endl;
-
-         // === Cleaning ===
-        //clear_vec(plaintext);
-        //ciphertext.fill('0');
-        
-        //return -1;
-    }
         
     
 // _BEGIN_(3)-------------- [ M3: SEND_USER-CHOICE_TO_SERVER ] --------------
@@ -1758,9 +1746,6 @@ int Client::deleteFile()
     // === Cleaning ===
     clear_vec(plaintext);
     clear_arr(aad.data(), aad.size());
-
-    // === Reuse of vectors declared at the beginning ===
-    //plaintext.resize(MAX_BUF_SIZE);
 
     // === Preparing Data Sending and Encryption ===    
     this->active_session->createAAD(aad.data(), DELETE_CONFIRM);

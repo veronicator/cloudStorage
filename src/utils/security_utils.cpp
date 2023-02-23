@@ -76,17 +76,12 @@ long searchFile(string filename, string username, bool server_side){
     }
     else{
         //file present
-        cout << "file present" << endl;
         if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
             cerr << "Invalid path" << endl;
             return -3;
         }
 
         struct stat buffer;
-        if(stat(path.c_str(), &buffer) != 0){
-            cout << "File not present! Do not enter" << endl;
-            return -1;
-        }
         if(buffer.st_size >= MAX_FILE_DIMENSION){
             cerr << "File too big" << endl;
             return -2;
@@ -795,31 +790,14 @@ int32_t checkFileExist(string filename, string username, string path_side)
 
 int removeFile(string filename, string username, string path_side)
 {
-    string path = path_side + username + "/" + filename;
-
-    //If the file is successfully deleted return 0. On failure a nonzero value (!=0) is returned.
-    if (remove(path.c_str()) != 0)
-    {   
-        perror ("\n\t * * * ERROR: ");
+    char curr_dir[1024];
+    string path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + filename;
+    cout << path << endl;
+    if(remove(path.c_str()) != 0){   
+        perror ("\n * * * ERROR");
         return -1;
     }
     return 1;
-    
-
-    /* --- EXEC_version ---
-    void
-    deleteFileExeclEasy(string filename)
-    {  
-        if(filename.length() > 20)
-        {   cout << "\n\t -- Error: Filename too long --\n" << endl; return;    }
-
-        string pathFile = FILE_PATH_CL + filename;
-
-        execl("/bin/rm", "rm", pathFile.c_str(), (char*)0);
-
-        return;   
-    }
-    */
 }
 
 void print_progress_bar(int total, unsigned int fragment)

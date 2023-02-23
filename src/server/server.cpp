@@ -1576,7 +1576,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     {
         cerr<<"File not correct! Termination of the Delete_Operation in progress"<<endl;
         ack_msg = "Filename not allowed";
-    } else if(checkFileExist(filename, ui->username, FILE_PATH_SVR) != 1)
+    } else if(searchFile(filename, ui->username, true) < 0)
     {
         cerr << "Error: file not present in the user storage" << endl;
         ack_msg = "File not present in the Cloud Storage";
@@ -1624,7 +1624,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 // _BEGIN_(2)-------------- [ M2: RECEIVE_CHOICE_OPERATION_FROM_CLIENT ] --------------
 
     uint16_t opcode;
-    uint64_t received_len;  //legnht of the message received from the client
+    uint64_t received_len;  //length of the message received from the client
     uint32_t plaintext_len;
     string user_choice, final_msg;  //final_msg: message of successful cancellation
 
@@ -1679,14 +1679,14 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
         if(removeFile(filename, ui->username, FILE_PATH_SVR) != 1)
         {
-            cout << "\n\t --- Error during Deleting file ---\n" << endl; 
+            cout << "\n\t --- Error during Delete ---\n" << endl; 
             clear_vec(plaintext);
             clear_arr(aad.data(), aad.size());
             clear_arr(ciphertext.data(), ciphertext.size());
             return -1;
         }
-
-        final_msg = "File Deleted Successfully";
+        else
+            final_msg = "File Deleted Successfully";
     }
 
     // === Cleaning ===

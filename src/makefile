@@ -1,4 +1,4 @@
-CFLAGS = -lpthread -lcrypto -lstdc++fs
+CFLAGS = -lpthread -lcrypto -lstdc++fs 
 WFLAGS = -Wall
 
 all: server.exe client.exe
