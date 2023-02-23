@@ -1301,7 +1301,8 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
 {
     string filename;
-    uint32_t payload_size, payload_size_n, name_len, file_dim;
+    ssize_t file_dim;
+    uint32_t payload_size, payload_size_n, name_len, file_dimension;
     string ack_msg;
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
@@ -1344,13 +1345,14 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     }
 
     if(file_ok)
-    {   ack_msg = MESSAGE_OK; }                    
+    {   
+        ack_msg = MESSAGE_OK; 
+    }  
 
-    //=== Preparing Data Sending and Encryption ===
-    //inserisci dimensione file
+    file_dimension = htonl((uint32_t)(file_dim));
     plaintext.resize(NUMERIC_FIELD_SIZE);
-    file_dim = htonl(file_dim);
-    memcpy(plaintext.data(), &file_dim, NUMERIC_FIELD_SIZE);
+    
+    memcpy(plaintext.data(), &file_dimension, NUMERIC_FIELD_SIZE);
     plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, ack_msg.begin(), ack_msg.end());
 
     ui->client_session->createAAD(aad.data(), DOWNLOAD_REQ);
@@ -1434,6 +1436,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
             return -1;
         }
         
+        client_feedback = ((char*)plaintext.data());
         if(client_feedback != DOWNLOAD_TERMINATED)
         {
             cerr<<"DOWNLOAD_OPERATION interrupted. ERROR: "<<client_feedback<<endl;
@@ -1464,7 +1467,10 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     plaintext.clear();
     ciphertext.fill('0');
 
+    cout << "----------- DOWNLOAD TERMINATED --------------" << endl;
     return 1;
+
+    
 }
 
 int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
