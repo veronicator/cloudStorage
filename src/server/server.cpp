@@ -1460,9 +1460,25 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     return 1;
 }
 
+int Server::changeName(string old_filename, string new_filename, string username){
+    char curr_dir[1024];
+    string old_path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + old_filename;
+    string new_path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + new_filename;
+
+    int result = rename(old_path.c_str(), new_path.c_str());
+    if(result == 0){
+        cout << "File renamed" << endl;
+        return 0;
+    }
+    else{
+        cout << "File NOT renamed" << endl;
+        return -1;
+    }
+}
+
 int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     string old_filename, new_filename;
-    uint32_t old_name_len;
+    uint32_t old_name_len, new_name_len;
     string ack_msg = "";
     uint32_t payload_size, payload_size_n;
     array<unsigned char, AAD_LEN> aad;
@@ -1481,10 +1497,26 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
         return -1;
     }
 
+    memcpy(&old_name_len, plaintext.data(), NUMERIC_FIELD_SIZE);
+    memcpy(&new_name_len, plaintext.data() + NUMERIC_FIELD_SIZE, NUMERIC_FIELD_SIZE);
+    old_name_len = ntohl(old_name_len);
+    new_name_len = ntohl(new_name_len);
+    cout << "OLD_NAME_LEN: " << old_name_len << endl;
+    cout << "NEW_NAME_LEN: " << new_name_len << endl;
+    old_filename.insert(old_filename.begin(), plaintext.begin() + 2*NUMERIC_FIELD_SIZE, plaintext.begin() + 2*NUMERIC_FIELD_SIZE + old_name_len);
+    new_filename.insert(new_filename.begin(), plaintext.begin() + 2*NUMERIC_FIELD_SIZE + old_name_len, plaintext.begin() + 2*NUMERIC_FIELD_SIZE + old_name_len + new_name_len);
+
+    /* old code -> check new version before delete
     old_name_len = ntohl(*(uint32_t*)plaintext.data());
     old_filename.insert(old_filename.begin(), plaintext.begin() + FILE_SIZE_FIELD, plaintext.begin() + FILE_SIZE_FIELD + old_name_len);
     new_filename.insert(new_filename.begin(), plaintext.begin() + FILE_SIZE_FIELD + old_name_len, plaintext.end());
-
+    */
+    /* ema code
+    cout << "OLD: "<<endl;
+    BIO_dump_fp(stdout, old_filename.data(), old_filename.size());
+    cout << "NEW: " << endl;
+    BIO_dump_fp(stdout, new_filename.data(), new_filename.size());
+    */
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
     file_ok = (regex_match(old_filename, re) && regex_match(new_filename, re));
 
@@ -1505,10 +1537,16 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
         }
     }
     
-    if(file_ok)
+    if(file_ok){
         ack_msg = MESSAGE_OK;
-    
+        if(changeName(old_filename, new_filename, ui->username) == -1){
+            cout << "Error during rename" << endl;
+            return -1;
+        }
+    }
     ui->client_session->createAAD(aad.data(), END_OP);
+
+    clear_vec(plaintext);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     if (payload_size == 0) {
@@ -1521,19 +1559,22 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
 
     clear_two_vec(plaintext, ui->send_buffer);
     clear_arr(aad.data(), aad.size());
+    /*  cout << "plaintext: "<<endl;
+    BIO_dump_fp(stdout, plaintext.data(), plaintext.size());
+    cout << "enc_text: "<<endl;
+    BIO_dump_fp(stdout, output.data(), output.size());*/  
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
-
-    clear_vec_array(ui->send_buffer, output.data(), output.size());
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1){
         cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
         cout<<"****************************************"<<endl;
         return -1;
     }
+    
+    clear_vec_array(ui->send_buffer, output.data(), output.size());
 
     cout<<"****************************************"<<endl;
     cout<<"******     Rename Terminated      ******"<<endl;

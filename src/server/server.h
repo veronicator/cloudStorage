@@ -59,6 +59,7 @@ class Server {
     int receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename);
     int sendMsgChunks(UserInfo* ui, string filename);
     
+    int changeName(string old_filename, string new_filename, string username);
     int uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len);
     int downloadFile(int sockd, vector<unsigned char> plaintext);
     int renameFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len);

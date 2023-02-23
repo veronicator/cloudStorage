@@ -125,6 +125,10 @@ int Client::sendMsg(uint32_t payload_size) {
         return -1;
     }
 
+    /*    
+    cout << "enc_text: " << endl;
+    BIO_dump_fp(stdout, recv_buffer.data(), recv_buffer.size());
+    */
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
     //cout << payload_size << " received payload length" << endl;
@@ -1170,9 +1174,10 @@ int Client::renameFile(){
 
     string old_filename, new_filename;
     array<unsigned char, AAD_LEN> aad;                                              //aad of the msg
-    vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);                       //plaintext to be encrypted
+    vector<unsigned char> plaintext(2 * NUMERIC_FIELD_SIZE);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;
-    uint32_t old_filename_lenght, old_filename_lenght_n;   
+    uint32_t old_filename_lenght, old_filename_lenght_n;
+    uint32_t new_filename_lenght, new_filename_lenght_n;   
     uint32_t payload_size, payload_size_n;
 
     cout<<"****************************************"<<endl;
@@ -1182,11 +1187,28 @@ int Client::renameFile(){
     readFilenameInput(old_filename, "Insert the name of the file to be changed: ");
     readFilenameInput(new_filename, "Insert the new name of the file: ");
 
-    old_filename_lenght = old_filename.length();
+    //old_filename_lenght = old_filename.length();
+    cout << "OLD: "<<endl;
+    BIO_dump_fp(stdout, old_filename.data(), old_filename.size());
+    cout << "NEW: " << endl;
+    BIO_dump_fp(stdout, new_filename.data(), new_filename.size());
+    old_filename_lenght = old_filename.size();
+    new_filename_lenght = new_filename.size();
+    cout << "old_filename_len: " << old_filename_lenght << endl;
+    cout << "new_filename_len: " << new_filename_lenght << endl;
+
     old_filename_lenght_n = htonl(old_filename_lenght);
+
+    new_filename_lenght_n = htonl(new_filename_lenght);
+
     memcpy(plaintext.data(), &old_filename_lenght_n, NUMERIC_FIELD_SIZE);
-    plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, old_filename.begin(), old_filename.end());
-    plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE + old_filename_lenght, new_filename.begin(), new_filename.end());
+    //plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, old_filename.begin(), old_filename.end());
+    //plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE + old_filename_lenght, new_filename.begin(), new_filename.end());
+    memcpy(plaintext.data() + NUMERIC_FIELD_SIZE, &new_filename_lenght_n, NUMERIC_FIELD_SIZE);
+    plaintext.insert(plaintext.begin() + 2 * NUMERIC_FIELD_SIZE, old_filename.begin(), old_filename.end());
+    plaintext.insert(plaintext.begin() + 2 * NUMERIC_FIELD_SIZE + old_filename_lenght, new_filename.begin(), new_filename.end());
+
+    BIO_dump_fp(stdout, (const char*)plaintext.data(), plaintext.size());
 
     this->active_session->createAAD(aad.data(), RENAME_REQ);
 
@@ -1234,14 +1256,15 @@ int Client::renameFile(){
         clear_arr(aad.data(), aad.size());
         return -1;
     }
-    opcode = ntohs(*(uint16_t*)aad.data() + NUMERIC_FIELD_SIZE);
+
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
     if(opcode != END_OP){
         cerr << "Error! Exiting rename request phase"<<endl;
         return -1;
     }
 
     server_response = ((char*)plaintext.data());
-    if(server_response != OP_TERMINATED){
+    if(server_response != MESSAGE_OK){
         cerr << "Rename not accepted. "<< server_response <<endl;
         return -1;
     }
