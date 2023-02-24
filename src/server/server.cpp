@@ -122,6 +122,8 @@ bool Server::searchUserExist(string usr_name){
 int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer) {
     uint32_t payload_size_n;
     ssize_t ret;
+    array<unsigned char, NUMERIC_FIELD_SIZE> arr;
+
     cout << payload_size << " sendMsg: payload size" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
@@ -132,17 +134,18 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
     payload_size += NUMERIC_FIELD_SIZE;
 
     payload_size_n = htonl(payload_size);
-    array<unsigned char, NUMERIC_FIELD_SIZE> arr;
     memcpy(arr.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
 
-    if(send(sockd, arr.data(), NUMERIC_FIELD_SIZE, 0) < NUMERIC_FIELD_SIZE){
+    ret = send(sockd, arr.data(), NUMERIC_FIELD_SIZE, 0);
+    if( ret < 0 || (ret >= 0 && (size_t)ret < NUMERIC_FIELD_SIZE)) {
         perror("Errore invio dimensione messaggio");
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
         return -1;
     }
 
-    if(send(sockd, send_buffer.data(), payload_size, 0) < payload_size) {
+    ret = send(sockd, send_buffer.data(), payload_size, 0);
+    if(ret < 0 || (ret >= 0 && (size_t)ret < payload_size)) {
         perror("Socker error: send message failed");
         clear_vec(send_buffer);
         return -1;
@@ -169,7 +172,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
     cout << "Msg dimension data: " << payload_size << endl;
-    if((long)payload_size > (long)(MAX_BUF_SIZE - 1)){
+    if(payload_size > size_t(MAX_BUF_SIZE - 1)) {
         cerr << "Dimension overflow" << endl;
         return -1;
     }
@@ -182,7 +185,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
         return 0;
     }
 
-    if (msg_size < 0 || msg_size < (unsigned int)NUMERIC_FIELD_SIZE + OPCODE_SIZE) {
+    if (msg_size < 0 || (msg_size >= 0 && size_t(msg_size) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
         return -1;
@@ -195,14 +198,13 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     cout << "---------" + to_string(msg_size - (ssize_t)NUMERIC_FIELD_SIZE) << endl;
 
     //check if received all data
-    if ((long)payload_size != (long)msg_size - (long)NUMERIC_FIELD_SIZE) {
+    if (payload_size != size_t(msg_size) - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         return -1;
     }
 
-    if(!recv_buffer.empty())
-        clear_vec(recv_buffer);
+    clear_vec(recv_buffer);
 
     recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
     receiver.fill('0');
@@ -216,6 +218,8 @@ void Server::run_thread(int sockd) {
     cout << "run_thread (inside the server) -> run()\n"
         << "thread socket " << sockd << endl;
 
+    UserInfo *usr = nullptr;
+
     //long ret;
     bool retb;
 
@@ -227,45 +231,42 @@ void Server::run_thread(int sockd) {
             << "Closing socket: " << sockd << endl;
         
         // TODO: erase the client from the map
-        UserInfo *usr = nullptr;
         try {
             usr = connectedClient.at(sockd);
             
             connectedClient.erase(sockd);
         } catch(const out_of_range& ex) {
-            cerr<<"usr not found"<<endl;
-            //close(sockd);
+            cerr<<"user not found"<<endl;
             return;
         }
         
-        //close(sockd);
-        //pthread_exit(NULL); 
         return;
     }
     cout << "Client logged successfully!" << endl;
-    
-    int received_len, pt_len;
-    uint16_t opcode;
-    bool end_thread = false;
-    UserInfo* ui = nullptr;
-    array<unsigned char, AAD_LEN> aad;
-    vector<unsigned char> plaintext(MAX_BUF_SIZE);
 
     try {
-        ui = connectedClient.at(sockd);
+        usr = connectedClient.at(sockd);
     }
     catch(const out_of_range& ex){
         cerr<<"Impossible to find the user"<<endl;
         return;
-    }
+    }    
 
-    while(!end_thread){
+    long received_len;
+    uint32_t pt_len;
+    uint16_t opcode;
+    bool end_thread = false;
+    array<unsigned char, AAD_LEN> aad;
+    vector<unsigned char> plaintext(MAX_BUF_SIZE);
+
+
+    while(!end_thread) {
         clear_arr(aad.data(), aad.size());
-        clear_two_vec(ui->recv_buffer, plaintext);
+        clear_two_vec(usr->recv_buffer, plaintext);
         plaintext.resize(FILE_SIZE_FIELD + 20);
 
-        received_len = receiveMsg(sockd, ui->recv_buffer);
-        if(received_len < MIN_LEN){
+        received_len = receiveMsg(sockd, usr->recv_buffer);
+        if(received_len < 0 || (received_len >= 0 && size_t(received_len) < MIN_LEN)) {
             cerr<<"Error during receiving request msg"<<endl;
             break;
         }
@@ -273,16 +274,16 @@ void Server::run_thread(int sockd) {
         //cout << "server->runthread" << endl;
         //BIO_dump_fp(stdout, (const char*)ui->recv_buffer.data(), ui->recv_buffer.size()); 
 
-        pt_len = ui->client_session->decryptMsg(ui->recv_buffer.data(), received_len, aad.data(), plaintext.data());
-        if(pt_len <= 0){
+        pt_len = usr->client_session->decryptMsg(usr->recv_buffer.data(), received_len, aad.data(), plaintext.data());
+        if(pt_len <= 0) {
             cerr << "run_thread->Error during decryption" << endl;
             clear_arr(aad.data(), aad.size());
-            clear_vec(ui->recv_buffer);
+            clear_vec(usr->recv_buffer);
             clear_vec(plaintext);
             break;
         }
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
-        switch(opcode){
+        switch(opcode) {
             case UPLOAD_REQ:
                 cout << to_string(pt_len) + " pt_len -> " << string(plaintext.begin(), plaintext.end()) << endl;
                 uploadFile(sockd, plaintext, pt_len);
@@ -311,7 +312,7 @@ void Server::run_thread(int sockd) {
                 break;
    
             default:
-                cerr << "Error! Unexpected message" << endl;
+                cerr << "Error! Unexpected message: OPCODE not valid!" << endl;
                 end_thread = true;
                 break;
         }
@@ -319,7 +320,6 @@ void Server::run_thread(int sockd) {
 
     pthread_mutex_lock(&mutex_client_list);
     connectedClient.erase(sockd);
-    //todo: add also the erase on che socket_list map
     pthread_mutex_unlock(&mutex_client_list);
     
 }
@@ -359,8 +359,6 @@ EVP_PKEY* Server::getPeerKey(string username) {
 
 bool Server::authenticationClient(int sockd) {
     cout << "authenticationClient" << endl;
-    bool retb;
-    long ret;
 
     UserInfo *usr = nullptr;
     
@@ -372,7 +370,10 @@ bool Server::authenticationClient(int sockd) {
         return false;
     }
 
-    sendCertSign(sockd, client_nonce, server_nonce);
+    if(!sendCertSign(sockd, client_nonce, server_nonce)) {
+        cerr << "Auth->sending Certificate and Signature failed" << endl;
+        return false;
+    }
 
         
     // retrieve user structure
@@ -398,11 +399,11 @@ bool Server::authenticationClient(int sockd) {
         cerr << "deriveSecret failed " << endl;
         return false;
     }
-        /* 
-    invia lista utenti online
-    -> end authentication */
-    //cout << "authentication send filelist" << endl;
-    sendFileList(sockd);
+
+    if(sendFileList(sockd) != 1) {
+        cerr << "Error: sendFileList failed!" << endl;
+        return false;
+    }
 
     return true;
 }  // call session.generatenonce & sendMsg
@@ -418,7 +419,6 @@ bool Server::authenticationClient(int sockd) {
 bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     // M1 (Authentication)
     vector<unsigned char> recv_buffer;
-    // Authentication M1
     long payload_size;
     uint32_t start_index = 0;
     uint16_t opcode;
@@ -430,7 +430,6 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     if(payload_size <= 0) {
         clear_vec(recv_buffer);
         cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
-        //close(sockd);
         return false;
     }
         
@@ -438,7 +437,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
     
     start_index = NUMERIC_FIELD_SIZE;   // payload field
-    if(payload_size < recv_buffer.size() - start_index) {   // - (uint)OPCODE_SIZE
+    if(payload_size > 0 && size_t(payload_size) < (recv_buffer.size() - start_index)) { 
         cerr << "receiveUsrname1: Received msg size error on socket: " << sockd << endl;
         clear_vec(recv_buffer);
         return false;
@@ -453,7 +452,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         return false;
     }
     
-    if(start_index >= recv_buffer.size() - (uint)NONCE_SIZE) {
+    if(start_index >= recv_buffer.size() - size_t(NONCE_SIZE)) {
             // if it is equal => there is no username in the message -> error
         cerr << "ReceiveUsrname3: Received msg size error on socket: " << sockd << endl;
         clear_vec(recv_buffer);
@@ -478,7 +477,6 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         return false;
     }
     new_usr = new UserInfo(sockd, username);
-    //connectedClient.insert(pair<int, UserInfo>(new_sd, new_usr));
     auto ret = connectedClient.insert({sockd, new_usr});
     cout << "connected size " << connectedClient.size() << endl;
 
@@ -489,7 +487,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
 
 /********************************************************************/
 
-/** method to sent the server certificate and its digital signature 
+/** method to send the server certificate and its digital signature 
  * to the client requesting the connection to the cloud
  * @clt_nonce: nonce received in the firt message from the client, 
  *             to re-send signed, to the same client
@@ -513,7 +511,7 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     unsigned char* cert_buf = nullptr;
     EVP_PKEY* srv_priv_k = nullptr;
     unsigned char* ECDH_srv_pub_key = nullptr;
-    uint32_t ECDH_srv_key_size ;
+    uint32_t ECDH_srv_key_size;
     uint32_t ECDH_srv_key_size_n;
     vector<unsigned char> msg_to_sign;
     uint32_t signed_msg_len;
@@ -569,10 +567,12 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     ret = usr->client_session->serializePubKey (
                                     usr->client_session->ECDH_myKey, ECDH_srv_pub_key);
     //BIO_dump_fp(stdout, (const char*)ECDH_srv_pub_key, ECDH_srv_key_size);
-    // cout << "after serialize pub" << endl;
 
     if (ret < 0) {
         cerr << "serializePubKey failed " << endl;
+        EVP_PKEY_free(srv_priv_k);
+        OPENSSL_free(cert_buf);
+        free(ECDH_srv_pub_key);
         return false;
     }
     ECDH_srv_key_size = ret;
@@ -581,11 +581,10 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     msg_to_sign.reserve(NONCE_SIZE + ECDH_srv_key_size);
     msg_to_sign.resize(ECDH_srv_key_size);
 
-    // fields to sign: client nonce + ECDH server key
+    // message to sign: | client nonce | ECDH server key | 
     // -> insert client nonce
     msg_to_sign.insert(msg_to_sign.begin(), clt_nonce.begin(), clt_nonce.end());
-    //cout << "server: received_nonce: " << endl;
-    //BIO_dump_fp(stdout, (const char*)clt_nonce.data(), NONCE_SIZE);
+
     // -> insert ECDH server key 
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_srv_pub_key, ECDH_srv_key_size);
 
@@ -603,13 +602,12 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     if(usr->send_buffer.size() < temp_size) {
         cerr << "vector.resize error " << endl;
-        //TODO: clear all buffer -> cercare come deallocare tutto correttamente
 
         signed_msg.fill('0');
-        msg_to_sign.assign(msg_to_sign.size(), '0');
+        clear_vec(msg_to_sign);
         EVP_PKEY_free(srv_priv_k);
         OPENSSL_free(cert_buf);
-        free(ECDH_srv_pub_key); // TODO: check if it is correct
+        free(ECDH_srv_pub_key);
 
         return false;
     }
@@ -662,12 +660,11 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     if(sendMsg(payload_size, sockd, usr->send_buffer) != 1) {
         cerr << "sendCertSize failed " << endl;
-        //delete usr;
+
         return false;
     }
     cout << "msg sent" << endl;
     
-    //delete usr;
     return true;
 
 }   // send (nonce, ecdh_key, cert, dig_sign)
@@ -719,7 +716,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     }
         
     start_index = NUMERIC_FIELD_SIZE;
-    if(payload_size > usr->recv_buffer.size() - start_index) {  // - (uint)OPCODE_SIZE
+    if(payload_size > 0 && size_t(payload_size) > (usr->recv_buffer.size() - start_index)) {
         cerr << "receiveSign1:Received msg size error on socket: " << sockd << endl;
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         //close(sockd);
@@ -739,7 +736,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     }
     //start_index >= recv_buffer.size() - (int)NONCE_SIZE
     //if(recv_buf.size() <= NONCE_SIZE) {
-    if(start_index >= usr->recv_buffer.size() - (uint)NONCE_SIZE) {
+    if(start_index >= usr->recv_buffer.size() - size_t(NONCE_SIZE)) {
         cerr << "ReceiveSign2: Received msg size error on socket: " << sockd << endl;
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         usr->recv_buffer.clear();
@@ -760,7 +757,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     cout << "Received nonce verified" << endl;
     /* | ecdh_size | ecdh_Pubk | digital signature |
     */
-    if(start_index >= usr->recv_buffer.size() - (uint)NUMERIC_FIELD_SIZE) {
+    if(start_index >= usr->recv_buffer.size() - NUMERIC_FIELD_SIZE) {
         cerr << "receiveSign3: Received msg size error on socket: " << sockd << endl;
         usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
         usr->recv_buffer.clear();
@@ -790,10 +787,8 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     dig_sign_len = usr->recv_buffer.size() - start_index;
     if(dig_sign_len <= 0) {
         cerr << "Dig_sign length error " << endl;
-        ECDH_client_key.assign(ECDH_client_key.size(), '0');
-        usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
-        ECDH_client_key.clear();
-        usr->recv_buffer.clear();
+        clear_vec(ECDH_client_key);
+        clear_vec(usr->recv_buffer);
         return false;
     }
 
@@ -812,16 +807,13 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     if(!client_pubK) {
         cerr << "get_peerKey failed " << endl;
         // clear buffers and return
-        ECDH_client_key.assign(ECDH_client_key.size(), '0');
-        usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
-        ECDH_client_key.clear();
-        usr->recv_buffer.clear();
+        clear_vec(ECDH_client_key);
+        clear_vec(usr->recv_buffer);
 
         return false;
     }
 
-    if(!temp_buf.empty())
-        temp_buf.clear();
+    temp_buf.clear();
     
     // nonce 
     temp_buf.insert(temp_buf.begin(), received_nonce.begin(), received_nonce.end());
@@ -835,11 +827,6 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
                                                         client_pubK, temp_buf.data(), signed_msg_len);
     
     // clear buffer
-    //memset(buffer.data(), '0', buffer.size());
-    //memset(server_dig_sign.data(), '0', server_dig_sign.size());
-    temp_buf.assign(temp_buf.size(), '0');
-    client_signature.assign(client_signature.size(), '0');
-
     temp_buf.clear();
     client_signature.clear();
 
@@ -847,18 +834,24 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         cerr << "Digital Signature not verified" << endl;
 
         // clear buffer key
-        ECDH_client_key.assign(ECDH_client_key.size(), '0');
-        //memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
-        ECDH_client_key.clear();
+        clear_vec(ECDH_client_key);
+        clear_vec(usr->recv_buffer);
 
         return false;
     }
     cout << " Digital Signature Verified!" << endl;
-    //free(signed_msg);
-    //cout << "ECDH_client_key" << endl;
-    //BIO_dump_fp(stdout, (const char*) ECDH_client_key.data(), ECDH_key_size);
-    usr->client_session->deserializePubKey(ECDH_client_key.data(), ECDH_key_size, 
-                                            usr->client_session->ECDH_peerKey);
+    
+    if(usr->client_session->deserializePubKey(
+                                ECDH_client_key.data(), ECDH_key_size, 
+                                usr->client_session->ECDH_peerKey) != 1) {
+
+        cerr << "Error: deserializePubKey failed!" << endl;
+        clear_vec(ECDH_client_key);
+        clear_vec(usr->recv_buffer);
+        return false;
+    }
+    clear_vec(ECDH_client_key);
+    clear_vec(usr->recv_buffer);
 
     return true;
 }
@@ -905,11 +898,12 @@ int Server::sendFileList(int sockd) {
         file_list += "\n(" + to_string(found_files) + " files found)\0";
     
     
-    int num_chunks = ceil(float(file_list.size())/FRAGM_SIZE);
+    uint32_t num_chunks = ceil(float(file_list.size())/FRAGM_SIZE);
+
     cout << "NUM CHUNKS: " << num_chunks << endl;
     plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
-    for(int i = 0; i < num_chunks; i++){
+    for(uint32_t i = 0; i < num_chunks; i++){
         if(i == num_chunks - 1){
             ui->client_session->createAAD(aad.data(), END_OP);
             send_frag.insert(send_frag.begin(), plaintext.begin() + FRAGM_SIZE * i, plaintext.end());
@@ -953,7 +947,7 @@ int Server::sendFileList(int sockd) {
 
 void Server::logoutClient(int sockd) {
     cout << "logoutClient" << endl;
-    UserInfo* ui;
+    UserInfo* ui = nullptr;
     // retrive UserInfo relative to the client
     try{
         ui = connectedClient.at(sockd);
@@ -993,8 +987,6 @@ void Server::logoutClient(int sockd) {
     clear_arr(aad.data(), aad.size());
     clear_arr(output.data(), output.size());
 
-    //ui->client_session->~Session();
-    //ui->~UserInfo();
     delete ui;
     //ui = nullptr;
 }
@@ -1031,7 +1023,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
         return -1;
     }
 
-    size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
+    uint32_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
     long received_len;
     int pt_len;
     uint16_t opcode;
@@ -1040,12 +1032,12 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 
     frag_buffer.fill('0');
 
-    for(int i = 0; i < tot_chunks; i++){
+    for(uint32_t i = 0; i < tot_chunks; i++) {
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
         cout << "Chunk n: " << i + 1 << " of " << tot_chunks << endl;
         cout << "Received len : " << received_len << endl;
         cout << "MIN LEN : " << MIN_LEN << endl;
-        if((long)received_len < (long)MIN_LEN){
+        if(received_len < 0 || (received_len >=0 && uint32_t(received_len) < MIN_LEN)) {
             cout << "---------------------------------" << endl;
             cerr<<"Error! Exiting receive phase"<<endl;
             return -1;
@@ -1061,10 +1053,10 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
         }
 
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
-        if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
+        if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)) {
             outfile.close();
             cerr << "Wrong message format. Exiting"<<endl;
-            if(remove(path.c_str()) != 0){
+            if(remove(path.c_str()) != 0) {
                 cerr << "File not correctly cancelled"<<endl;
             }
             return -1;
@@ -1099,9 +1091,8 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
         return -1;
     }
 
-    int ret;                                                                            
-    size_t tot_chunks = ceil((float)buffer.st_size / FRAGM_SIZE);                       
-    size_t to_send;                                                                     
+    size_t ret, to_send;                                                                            
+    uint32_t tot_chunks = ceil((float)buffer.st_size / FRAGM_SIZE);                                                        
     uint32_t payload_size, payload_size_n;                                              
     array<unsigned char, AAD_LEN> aad;                                                          
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       
@@ -1111,7 +1102,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
     clear_vec_array(ui->send_buffer, frag_buffer.data(), frag_buffer.size());
     cout << "TOT_CHUNKS: " << tot_chunks << endl;
 
-    for(int i = 0; i < tot_chunks; i++)
+    for(uint32_t i = 0; i < tot_chunks; i++)
     {
         cout << "Chunk n. " << i << " of " << tot_chunks << endl;
         if(i == tot_chunks - 1)
@@ -1171,9 +1162,9 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
             cerr<<"Error during send phase (S->C) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
 
             //=== Cleaining ===
-            clear_arr(aad.data(), aad.size());
-            clear_arr(frag_buffer.data(), frag_buffer.size());
-            clear_arr(ciphertext.data(), ciphertext.size());
+            aad.fill('0');
+            frag_buffer.fill('0');
+            ciphertext.fill('0');
 
             return -1;
         }
@@ -1183,7 +1174,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
     }
 
     //=== Cleaining ===
-    clear_arr(aad.data(), aad.size());
+    aad.fill('0');
     frag_buffer.fill('0');
     ciphertext.fill('0');
     
@@ -1193,7 +1184,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
 // TODO: check code
 int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len) {
     uint64_t filedimension;
-    uint32_t r_dim_l, r_dim_h, filename_dim;
+    uint32_t r_dim_l, r_dim_h;
     string filename;
     string ack_msg;
     uint32_t payload_size, payload_size_n;
@@ -1204,8 +1195,8 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     cout<<"***********   RECEIVING FILE   *********"<<endl;
     cout<<"****************************************"<<endl;
 
-    // retrive UserInfo relative to the client
-    UserInfo* ui;
+    // retrieve UserInfo relative to the client
+    UserInfo* ui = nullptr;
     try{
         ui = connectedClient.at(sockd);
     }
@@ -1229,7 +1220,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         cerr<<"file not correct! Reception of the file terminated"<<endl;
         ack_msg = MALFORMED_FILENAME;
     } else if(searchFile(filename, ui->username, SERVER_SIDE) >= 0) {
-        cout<<"File already present"<<endl;
+        cout<<"File already in the cloud storage"<<endl;
         ack_msg = FILE_PRESENT;
         file_ok = false;
     }
@@ -1262,7 +1253,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     }
 
     if(strcmp(ack_msg.c_str(), FILE_PRESENT) == 0){
-        cout << "File was already present. Upload rejected" << endl;
+        cout << "File is already in the cloud storage. Upload rejected" << endl;
         return -1;       
     }
  
@@ -1317,7 +1308,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
     bool file_ok = true;
 
-    UserInfo *ui;
+    UserInfo *ui = nullptr;
 
     try
     {
@@ -1347,7 +1338,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     file_dim = searchFile(filename, ui->username, SERVER_SIDE);
     if(file_dim < 0)
     {
-        cerr<<"Error: this file is not present in the folder"<<endl;
+        cerr << "Error: the file " << filename << " does not exist in the folder" << endl;
         ack_msg = FILE_NOT_PRESENT;
 
         file_ok = false;
@@ -1384,7 +1375,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     }
 
     if(strcmp(ack_msg.c_str(), FILE_NOT_PRESENT) == 0){
-        cout << "File was already present. Upload rejected" << endl;
+        cout << "File not found in the cloud storage. Download rejected" << endl;
         return -1;       
     }
 // _END_(1)------ [ M1: SEND_CONFIRMATION_DOWNLOAD_REQUEST_TO_CLIENT ] )------
@@ -1433,7 +1424,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
             clear_arr(aad.data(), aad.size());
             return -1;
         }
-        opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
+        opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if(opcode != END_OP)
         {
             cerr<<"Error! Exiting DOWNLOAD_OPERATION." << endl;
@@ -1506,7 +1497,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> output;
     bool file_ok = true;
-    UserInfo* ui;
+    UserInfo* ui = nullptr;
     cout<<"****************************************"<<endl;
     cout<<"***********   Rename Request   *********"<<endl;
     cout<<"****************************************"<<endl;
@@ -1615,7 +1606,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
     bool file_ok = true;
 
-    UserInfo *ui;
+    UserInfo *ui = nullptr;
 
     try
     {
@@ -1641,8 +1632,8 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         ack_msg = "Filename not allowed";
     } else if(searchFile(filename, ui->username, SERVER_SIDE) < 0)
     {
-        cerr << "Error: file not present in the user storage" << endl;
-        ack_msg = "File not present in the Cloud Storage";
+        cerr << "Error: file not found in the user storage" << endl;
+        ack_msg = "File not found in the Cloud Storage";
 
         file_ok = false;
     }
@@ -1687,7 +1678,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 // _BEGIN_(2)-------------- [ M2: RECEIVE_CHOICE_OPERATION_FROM_CLIENT ] --------------
 
     uint16_t opcode;
-    uint64_t received_len;  //length of the message received from the client
+    long received_len;  //length of the message received from the client
     uint32_t plaintext_len;
     string user_choice, final_msg;  //final_msg: message of successful cancellation
 
@@ -1747,9 +1738,11 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
             clear_arr(aad.data(), aad.size());
             clear_arr(ciphertext.data(), ciphertext.size());
             return -1;
-        }
-        else
+        } else {
             final_msg = "File Deleted Successfully";
+        }
+    } else {
+        final_msg = "File not deleted";
     }
 
     // === Cleaning ===
@@ -1775,7 +1768,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, ciphertext.begin(), ciphertext.begin() + payload_size);                             
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1)
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1)
     {
         cerr<<"Error during sending CONFIRM_OPERATION phase (S->C)"<<endl;
 

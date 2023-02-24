@@ -1,7 +1,7 @@
-CFLAGS = -lpthread -lcrypto -lstdc++fs 
+CFLAGS = -Wall -lpthread -lcrypto -lstdc++fs
 WFLAGS = -Wall
 
-all: server.exe client.exe
+all: clean server.exe client.exe
 
 server.exe: server.o server_main.o security_utils.o
 	g++ server.o server_main.o security_utils.o -o server.exe ${CFLAGS}

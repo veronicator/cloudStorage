@@ -27,6 +27,21 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
+/**
+ * @return true if overflow, false otherwise
+*/
+bool checkSumOverflow(long a, long b) {
+    return (b >= 0 && a > LONG_MAX - b) ||
+        (b < 0 && a < LONG_MIN - b);
+}
+
+bool checkSumOverflow(uint32_t a, uint32_t b) {
+    return a > UINT32_MAX - b;
+}
+
+
+/********************************************************************/
+
 void clear_vec(vector<unsigned char> &v) {
     if(!v.empty()) {
         v.assign(v.size(), '0');
@@ -55,27 +70,31 @@ long searchFile(string filename, string username, bool server_side){
     char* canon_file = realpath(path.c_str(), NULL);
     
     if(!canon_file){
-        //file not present
-        cout << "file not present" << endl;
+        // file not found
+        cout << "The file does not exist" << endl;
+        free(canon_file);
         return -1;
-    }
-    else{
-        //file present
+    } else {
+        //file found
         if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
             cerr << "Invalid path" << endl;
+            free(canon_file);
             return -3;
         }
 
         struct stat buffer;
         if(stat(path.c_str(), &buffer) != 0){
             cout << "File not present! Do not enter" << endl;
+            free(canon_file);
             return -1;
         }
         
         if(buffer.st_size >= MAX_FILE_DIMENSION){
             cerr << "File too big" << endl;
+            free(canon_file);
             return -2;
         }
+        free(canon_file);
         return buffer.st_size; 
     }
 }
@@ -104,7 +123,7 @@ void readFilenameInput(string& input, string msg) {
 }
 
 
-void readInput(string& input, const int MAX_SIZE, string msg = "") {
+void readInput(string& input, const size_t MAX_SIZE, string msg = "") {
     string ok_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!";
     bool ok = false;
     do {
@@ -130,7 +149,7 @@ void readInput(string& input, const int MAX_SIZE, string msg = "") {
 /********************************************************************/
 
 void Session::incrementCounter(uint32_t& counter) {
-    counter = ++counter % UINT32_MAX;
+    counter = (counter + 1) % UINT32_MAX;
 }
 
 unsigned int Session::createAAD(unsigned char* aad, uint16_t opcode) {
@@ -459,7 +478,6 @@ long Session::serializePubKey(EVP_PKEY* key, unsigned char*& buf_key) {
         cerr << "Error: BIO_get_mem_data failed\n"; 
         return -1;
     }
-    cout << "session->serializePubKey end" << endl;
     return key_size;
 }
 
@@ -491,7 +509,7 @@ bool Session::checkCounter(uint32_t counter) {
 
 /********************************************************************/
 
-uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output) {
+uint32_t Session::encryptMsg(unsigned char *plaintext, size_t pt_len, unsigned char *aad, unsigned char *output) {
     //cout << "session->encryptMsg pt_len " << pt_len << endl;
     EVP_CIPHER_CTX *ctx;
     int len = 0;
@@ -615,7 +633,7 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
 }
 
 
-uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsigned char *aad, unsigned char *plaintext) {
+uint32_t Session::decryptMsg(unsigned char *input_buffer, uint64_t payload_size, unsigned char *aad, unsigned char *plaintext) {
     //cout << "session->decryptMsg" << endl;
     EVP_CIPHER_CTX *ctx;
     int ct_len;
