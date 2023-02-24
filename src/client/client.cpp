@@ -1627,7 +1627,7 @@ int Client::downloadFile()
 int Client::deleteFile()
 {
     string filename;
-    uint32_t file_size, payload_size, payload_size_n, filedimension;   
+    uint32_t payload_size, payload_size_n;   
     array<unsigned char, AAD_LEN> aad;
     vector<unsigned char> plaintext;
     array<unsigned char, MAX_BUF_SIZE> ciphertext;

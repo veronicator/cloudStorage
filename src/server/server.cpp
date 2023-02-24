@@ -1032,12 +1032,12 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 
     frag_buffer.fill('0');
 
-    for(uint32_t i = 0; i < tot_chunks; i++){
+    for(uint32_t i = 0; i < tot_chunks; i++) {
         received_len = receiveMsg(ui->sockd, ui->recv_buffer);
         cout << "Chunk n: " << i + 1 << " of " << tot_chunks << endl;
         cout << "Received len : " << received_len << endl;
         cout << "MIN LEN : " << MIN_LEN << endl;
-        if(received_len < (long)(MIN_LEN)){
+        if(received_len < 0 || (received_len >=0 && uint32_t(received_len) < MIN_LEN)) {
             cout << "---------------------------------" << endl;
             cerr<<"Error! Exiting receive phase"<<endl;
             return -1;
@@ -1053,10 +1053,10 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
         }
 
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
-        if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
+        if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)) {
             outfile.close();
             cerr << "Wrong message format. Exiting"<<endl;
-            if(remove(path.c_str()) != 0){
+            if(remove(path.c_str()) != 0) {
                 cerr << "File not correctly cancelled"<<endl;
             }
             return -1;
