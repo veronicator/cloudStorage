@@ -20,8 +20,8 @@
 
 //Dir Path
 #define SRV_DIR "./server/"
-#define FILE_PATH_CLT "./client/users/"
-#define FILE_PATH_SRV "./server/userStorage/"
+#define FILE_PATH_CLIENT "./client/users/"
+#define FILE_PATH_SERVER "./server/userStorage/"
 
 //responses
 #define MESSAGE_OK "ack_operation_req"
@@ -29,6 +29,7 @@
 #define MALFORMED_FILENAME "Filename not correct"
 #define FILE_NOT_PRESENT "File not present in the Cloud Storage"
 #define FILE_PRESENT "File already present. Delete or rename the file on the cloud before upload"
+#define CLIENT_LOGOUT "Close this client session"
 
 // whitelist
 #define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"
