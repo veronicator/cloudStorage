@@ -1162,7 +1162,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
             cerr<<"Error during send phase (S->C) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
 
             //=== Cleaining ===
-            aad.fill('0')
+            aad.fill('0');
             frag_buffer.fill('0');
             ciphertext.fill('0');
 
@@ -1174,7 +1174,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
     }
 
     //=== Cleaining ===
-    aad.fill('0')
+    aad.fill('0');
     frag_buffer.fill('0');
     ciphertext.fill('0');
     
@@ -1220,7 +1220,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         cerr<<"file not correct! Reception of the file terminated"<<endl;
         ack_msg = MALFORMED_FILENAME;
     } else if(searchFile(filename, ui->username, SERVER_SIDE) >= 0) {
-        cout<<"File already present"<<endl;
+        cout<<"File already in the cloud storage"<<endl;
         ack_msg = FILE_PRESENT;
         file_ok = false;
     }
@@ -1253,7 +1253,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     }
 
     if(strcmp(ack_msg.c_str(), FILE_PRESENT) == 0){
-        cout << "File was already present. Upload rejected" << endl;
+        cout << "File is already in the cloud storage. Upload rejected" << endl;
         return -1;       
     }
  
@@ -1338,7 +1338,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     file_dim = searchFile(filename, ui->username, SERVER_SIDE);
     if(file_dim < 0)
     {
-        cerr<<"Error: this file is not present in the folder"<<endl;
+        cerr << "Error: the file " << filename << " does not exist in the folder" << endl;
         ack_msg = FILE_NOT_PRESENT;
 
         file_ok = false;
@@ -1375,7 +1375,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     }
 
     if(strcmp(ack_msg.c_str(), FILE_NOT_PRESENT) == 0){
-        cout << "File was already present. Upload rejected" << endl;
+        cout << "File not found in the cloud storage. Download rejected" << endl;
         return -1;       
     }
 // _END_(1)------ [ M1: SEND_CONFIRMATION_DOWNLOAD_REQUEST_TO_CLIENT ] )------
@@ -1632,8 +1632,8 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         ack_msg = "Filename not allowed";
     } else if(searchFile(filename, ui->username, SERVER_SIDE) < 0)
     {
-        cerr << "Error: file not present in the user storage" << endl;
-        ack_msg = "File not present in the Cloud Storage";
+        cerr << "Error: file not found in the user storage" << endl;
+        ack_msg = "File not found in the Cloud Storage";
 
         file_ok = false;
     }
@@ -1678,7 +1678,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 // _BEGIN_(2)-------------- [ M2: RECEIVE_CHOICE_OPERATION_FROM_CLIENT ] --------------
 
     uint16_t opcode;
-    uint64_t received_len;  //length of the message received from the client
+    long received_len;  //length of the message received from the client
     uint32_t plaintext_len;
     string user_choice, final_msg;  //final_msg: message of successful cancellation
 
@@ -1738,9 +1738,11 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
             clear_arr(aad.data(), aad.size());
             clear_arr(ciphertext.data(), ciphertext.size());
             return -1;
-        }
-        else
+        } else {
             final_msg = "File Deleted Successfully";
+        }
+    } else {
+        final_msg = "File not deleted";
     }
 
     // === Cleaning ===
@@ -1766,7 +1768,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, ciphertext.begin(), ciphertext.begin() + payload_size);                             
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != -1)
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1)
     {
         cerr<<"Error during sending CONFIRM_OPERATION phase (S->C)"<<endl;
 
