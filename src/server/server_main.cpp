@@ -5,9 +5,8 @@ int main() {
 
     fd_set master;
     fd_set read_set;
-    int fd_max;
-    int new_sd;
-    struct timeval timeout;         
+    //int fd_max;
+    //struct timeval timeout;         
 
     //set to zero
     FD_ZERO(&master);
@@ -15,7 +14,7 @@ int main() {
 
     // add listener to master set
     FD_SET(server->getListener(), &master);     // add listener to set master
-    fd_max = server->getListener();
+    //fd_max = server->getListener();
     // select sockets ready 
 
 

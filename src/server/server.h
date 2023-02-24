@@ -18,8 +18,7 @@ struct UserInfo {
 
 class Server {
 
-    unordered_map<int, UserInfo*> connectedClient;    // client sockd, session
-    //unordered_map<string, int> socketClient;      // client username, socket descriptor -> to find if a client is already connected and what is his sockd
+    unordered_map<int, UserInfo*> connectedClient;    // client socket descriptor, user data
 
     EVP_PKEY *priv_key;
 
@@ -68,8 +67,6 @@ class Server {
     int sendFileList(int sockd);
     void logoutClient(int sockd); 
 
-    //void sendErrorMsg(int sockd, string errorMsg);
-
     /****************************************************/
 
     public:
@@ -79,9 +76,6 @@ class Server {
         int acceptConnection();
         int getListener();
         void run_thread(int sd);
-
-        //void joinThread();
-
 };
 
 struct ThreadArgs {
@@ -92,4 +86,3 @@ struct ThreadArgs {
 };
 
 void* client_thread_code(void *arg);
-//void joinThread();
