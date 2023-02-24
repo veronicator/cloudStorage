@@ -78,7 +78,6 @@ long searchFile(string filename, string username, bool server_side){
     }
     else{
         //file present
-        cout << "file present" << endl;
         if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
             cerr << "Invalid path" << endl;
             return -3;
@@ -89,6 +88,7 @@ long searchFile(string filename, string username, bool server_side){
             cout << "File not present! Do not enter" << endl;
             return -1;
         }
+        
         if(buffer.st_size >= MAX_FILE_DIMENSION){
             cerr << "File too big" << endl;
             return -2;
@@ -515,7 +515,7 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     int ct_len = 0;
 
     cout<<"ENC_PLAIN"<<endl;                
-    //BIO_dump_fp(stdout, plaintext, pt_len); 
+    //BIO_dump_fp(stdout, (const char*)plaintext, pt_len); 
     cout << "ENC_PT_LEN: " << pt_len << endl;
 
     unsigned char *ciphertext = (unsigned char*)malloc(pt_len + BLOCK_SIZE);
@@ -620,8 +620,9 @@ uint32_t Session::encryptMsg(unsigned char *plaintext, int pt_len, unsigned char
     // cout << "session->encryptMsg5" << endl;
     memcpy(output + written_bytes, tag, TAG_SIZE);
     written_bytes += TAG_SIZE;
+    
     cout<<"ENC_CT"<<endl;
-    //BIO_dump_fp(stdout, ciphertext, ct_len); 
+    //BIO_dump_fp(stdout, (const char*)ciphertext, ct_len); 
 
     free(iv);
     free(ciphertext);
@@ -693,7 +694,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     read_bytes += ct_len;
 
     cout<<"DEC_CT"<<endl;
-    //BIO_dump_fp(stdout, ciphertext, ct_len);
+    //BIO_dump_fp(stdout, (const char*)ciphertext, ct_len);
 
     mempcpy(tag, input_buffer + read_bytes, TAG_SIZE);
     read_bytes += TAG_SIZE;
@@ -766,7 +767,7 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
     free(ciphertext);
 
     cout<<"DEC_PLAIN"<<endl;
-    //BIO_dump_fp(stdout, plaintext, pt_len);
+    //BIO_dump_fp(stdout, (const char*)plaintext, pt_len);
 
     //cout << "RET: " << ret << endl;
 
@@ -781,48 +782,20 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, int payload_size, unsi
    }
 }
 
-int32_t checkFileExist(string filename, string username, string path_side)
+int removeFile(string filename, string username, bool server_side)
 {
-    string path = path_side + username + "/" + filename;
-    struct stat buffer;
+    char curr_dir[1024];
+    string path;
+    if(server_side)
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + filename;
+    else
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/client/users/" + username + "/" + filename;
 
-    if (stat(path.c_str(),&buffer)!=0)  //stat failed
-    { 
-        return 0;   //File dosen't exist
-	}
-	
-	return -1;  //File exist
-}
-
-int removeFile(string filename, string username, string path_side)
-{
-    string path = path_side + username + "/" + filename;
-
-    //If the file is successfully deleted return 0. On failure a nonzero value (!=0) is returned.
-    if (remove(path.c_str()) != 0)
-    {   
-        perror ("\n\t * * * ERROR: ");
+    if(remove(path.c_str()) != 0){   
+        perror ("\n * * * ERROR");
         return -1;
     }
-    else
-    {
-        return 1;
-    }
-
-    /* --- EXEC_version ---
-    void
-    deleteFileExeclEasy(string filename)
-    {  
-        if(filename.length() > 20)
-        {   cout << "\n\t -- Error: Filename too long --\n" << endl; return;    }
-
-        string pathFile = FILE_PATH_CL + filename;
-
-        execl("/bin/rm", "rm", pathFile.c_str(), (char*)0);
-
-        return;   
-    }
-    */
+    return 1;
 }
 
 void print_progress_bar(int total, unsigned int fragment)
