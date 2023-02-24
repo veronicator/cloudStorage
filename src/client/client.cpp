@@ -136,7 +136,8 @@ int Client::sendMsg(uint32_t payload_size) {
     */
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    //cout << payload_size << " received payload length" << endl;
+    cout << payload_size << " received payload length" << endl;
+    cout << msg_size << " received msg size" << endl;
     //check if all data are received
     if (payload_size != size_t(msg_size) - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
@@ -1044,10 +1045,10 @@ int Client::uploadFile(){
     cout<<"****************************************"<<endl<<endl;
 
     readFilenameInput(filename, "Insert filename: ");
-    file_dim = searchFile(filename, this->username, false);
+    file_dim = searchFile(filename, this->username, CLIENT_SIDE);
 
     if(file_dim < 0 && file_dim != -1 && file_dim != -3){
-        cerr << "File is too big! Upload terminated" << endl;
+        cerr << "File is too big! Upload terminated ---- " << file_dim << endl;
         return -1;
     }
     else if  (file_dim == -1){
@@ -1151,7 +1152,6 @@ int Client::uploadFile(){
     ret = sendMsgChunks(filename);
 
     if(ret == 1){
-        //TODO: receive server response to check if file was saved
         plaintext.resize(MAX_BUF_SIZE);        
         received_len = receiveMsg();
 
@@ -1320,14 +1320,19 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
     {
         if(i == tot_chunks - 1)
         {
-            to_receive = filedimension - i* FRAGM_SIZE;
+            to_receive = filedimension - i * FRAGM_SIZE;
         }
         else
         {
             to_receive = FRAGM_SIZE;
         }
 
+        cout << "---- " << i << ".1" << " ----" << endl;
+
         received_len = receiveMsg();
+        
+        cout << "---- " << i << ".2" << " ----" << endl;
+
         if(received_len <= 0)
         {
             cerr<<"Error! Exiting receive phase"<<endl;
@@ -1335,6 +1340,9 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
         }
         pt_len = this->active_session->decryptMsg(this->recv_buffer.data(),
                                 received_len, aad.data(), plaintext.data());
+
+        cout << "---- " << i << ".3" << " ----" << endl;
+
         if (pt_len == 0) {
             cerr << " Error during decryption" << endl;
             clear_arr(plaintext.data(), plaintext.size());
@@ -1344,6 +1352,8 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
         }
 
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+
+        cout << "---- " << i << ".4" << " ----" << endl;
         
         if((opcode == DOWNLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1))
         {
@@ -1357,28 +1367,35 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
             return -1;
         }
 
-        outfile << plaintext.data();
-        print_progress_bar(tot_chunks, i);
+        cout << "---- " << i << ".5" << " ----" << endl;
+
+        outfile << string(plaintext.begin(), plaintext.begin() + pt_len);
+        clear_arr(plaintext.data(), plaintext.size());
+        clear_arr(aad.data(), aad.size());
+        outfile.flush();
+
+        cout << "---- " << i << ".6" << " ----" << endl;
+        //print_progress_bar(tot_chunks, i);
     }
 
     clear_arr(aad.data(), aad.size());
     plaintext.fill('0');
-
+    outfile.close();
     return 1;
 }
 
 int Client::downloadFile()
 {
     string filename;
-    uint32_t file_size, payload_size, payload_size_n, filedimension;   
+    uint32_t filename_size, filename_size_n, payload_size, payload_size_n, filedimension;   
     array<unsigned char, AAD_LEN> aad;
-    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
 
     readFilenameInput(filename, "Insert the name of the file you want to Download: ");
 
     // === Checking and managing the existence of the file within the Download folder ===
-    if (checkFileExist(filename, this->username, FILE_PATH_CLT) != 1)
+    if (searchFile(filename, this->username, CLIENT_SIDE) >= 0)
     {
         string choice;
 
@@ -1392,29 +1409,34 @@ int Client::downloadFile()
 
         while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
         {
-            cout<<"\nError: The parameter of choice is wrong!"<<endl;
-            cout<<"-- Try again: [y/n]: ";
+            cout << "\nError: Type Y/y or N/n!" << endl <<"Try again: [y/n] ";
             getline(cin, choice);
 
             if(!cin)
-            {   cerr << "\n === Error during input ===\n" << endl; return -1; }
+            {
+                cerr << "\n === Error during input ===\n" << endl;
+                return -1;
+            }
         }
         if(choice == "N" || choice == "n")
         {
-            //--Canceling Download operation
-            //terminate();
             cout<<"\n\t~ The file *( "<< filename << " )* will not be overwritten. ~\n\n"<<endl;
             return -1;
         }
-        
-        if(removeFile(filename, this->username, FILE_PATH_CLT) != 1)
+
+        if(removeFile(filename, this->username, CLIENT_SIDE) != 1)
         {
-            cout << "\n\t --- Error during Deleting file ---\n" << endl; 
+            cout << "\n\t --- Error during Deleting file ---\n" << endl;
+            return -1; 
         }
     }
     
     // === Preparing Data Sending and Encryption ===
-    plaintext.insert(plaintext.begin(), filename.begin(), filename.end());
+    filename_size = filename.size();
+    filename_size_n = htonl(filename_size);
+    memcpy(plaintext.data(), &filename_size_n, NUMERIC_FIELD_SIZE);
+    plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, filename.begin(), filename.begin() + filename.size());
+    BIO_dump_fp(stdout, (const char*)plaintext.data(), plaintext.size());
 
     this->active_session->createAAD(aad.data(), DOWNLOAD_REQ);
     
@@ -1434,7 +1456,8 @@ int Client::downloadFile()
 
     send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, ciphertext.begin(),
+
+    send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, ciphertext.begin(),
                         ciphertext.begin() + payload_size);
     ciphertext.fill('0');
 
@@ -1506,7 +1529,9 @@ int Client::downloadFile()
 // _BEGIN_(2)------ [M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] ------
     
     /*--- Check Response file existence in the Cloud Storage by the Server ---*/
-    server_response = ((char*)plaintext.data());
+    filedimension = ntohl(*(uint32_t*)plaintext.data());
+    server_response.insert(server_response.begin(), plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.begin() + plaintext_len);    
+    
     if(server_response != MESSAGE_OK)
     {       
         cout<<"The file cannot be downloaded: "<< server_response <<endl;
@@ -1523,57 +1548,7 @@ int Client::downloadFile()
 // _END_(2)------ [ M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] )------
 
     cout << "\nThe requested file is in the cloud storage and can be downloaded."<<endl;
-    cout<<"\n\t ...Download file " + filename +" in progress...\n\n"<<endl;  
-
-    // === Cleaning ===
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-    clear_arr(aad.data(), aad.size());
-
-    // === Reuse of vectors declared at the beginning ===
-    plaintext.resize(MAX_BUF_SIZE);
-
-    received_len = receiveMsg();
-    if(received_len <= 0)
-    {
-        cout<<"Error during receive phase (S->C)"<<endl;
-
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');
-
-        return -1;
-    }
-
-    //received from server in terms of byte
-    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
-                                                    aad.data(), plaintext.data());
-    if (plaintext_len == 0) {
-        cerr << " Error during decryption" << endl;
-        clear_two_vec(plaintext, recv_buffer);
-        clear_arr(aad.data(), aad.size());
-        return -1;
-    }
-
-    //Opcode sent by the server, must be checked before proceeding (Lies into aad)
-    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
-    if(opcode != DOWNLOAD)
-    {
-        cout<<"Error! Exiting download request phase"<<endl;
-
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');
-
-        return -1;
-    }
-    
-    filedimension = ntohl(*(uint32_t*)(plaintext.data()));
-    
+    cout<<"\n\t ...Download file " + filename +" in progress...\n\n"<<endl;    
 
 // _BEGIN_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
 
@@ -1594,16 +1569,11 @@ int Client::downloadFile()
 
 // _END_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
 
-
-    cout << "\n\tFile Download Completed!" << endl;
-
     // === Cleaning ===
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-    clear_arr(aad.data(), aad.size());
-
-    // === Reuse of vectors declared at the beginning ===
-    plaintext.resize(MAX_BUF_SIZE);
+    clear_vec(plaintext);
+    clear_arr(aad.data(), aad.size()); 
+    
+    cout << "\n\tFile Download Completed!" << endl;
 
     // === Preparing Data Sending and Encryption ===    
     this->active_session->createAAD(aad.data(), END_OP);
@@ -1647,11 +1617,10 @@ int Client::downloadFile()
 // _END_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
 
     // === Cleaning ===
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
+    clear_vec(plaintext);
     clear_arr(aad.data(), aad.size());
     ciphertext.fill('0');
-    
+
     return 1;
 }
 
@@ -1770,8 +1739,7 @@ int Client::deleteFile()
 
     while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
     {
-        cout << "\nError: The parameter of choice is wrong!" << endl
-            <<"Try again: [y/n] ";
+        cout << "\nError: Type Y/y or N/n!" << endl <<"Try again: [y/n] ";
         getline(cin, choice);
 
         if(!cin)
@@ -1784,18 +1752,8 @@ int Client::deleteFile()
         }
     }
 
-    if(choice == "N" || choice == "n")
-    {
-        //--termination Delete_Operation
-        //terminate();
-
+    if(choice == "N" || choice == "n") {
         cout << "\n\t The file '" << filename << "' will not be deleted. \n"<<endl;
-
-         // === Cleaning ===
-        //clear_vec(plaintext);
-        //ciphertext.fill('0');
-        
-        //return -1;
     }
         
     
@@ -1804,9 +1762,6 @@ int Client::deleteFile()
     // === Cleaning ===
     clear_vec(plaintext);
     clear_arr(aad.data(), aad.size());
-
-    // === Reuse of vectors declared at the beginning ===
-    //plaintext.resize(MAX_BUF_SIZE);
 
     // === Preparing Data Sending and Encryption ===    
     this->active_session->createAAD(aad.data(), DELETE_CONFIRM);

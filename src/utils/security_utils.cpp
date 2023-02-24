@@ -105,6 +105,7 @@ long searchFile(string filename, string username, bool server_side){
             free(canon_file);
             return -1;
         }
+        
         if(buffer.st_size >= MAX_FILE_DIMENSION){
             cerr << "File too big" << endl;
             free(canon_file);
@@ -799,46 +800,20 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, uint64_t payload_size,
    }
 }
 
-int32_t checkFileExist(string filename, string username, string path_side)
+int removeFile(string filename, string username, bool server_side)
 {
-    string path = path_side + username + "/" + filename;
-    struct stat buffer;
+    char curr_dir[1024];
+    string path;
+    if(server_side)
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + filename;
+    else
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/client/users/" + username + "/" + filename;
 
-    if (stat(path.c_str(),&buffer)!=0)  //stat failed
-    { 
-        return 1;   //File doesn't exist
-	}
-	
-	return -1;  //File exist
-}
-
-int removeFile(string filename, string username, string path_side)
-{
-    string path = path_side + username + "/" + filename;
-
-    //If the file is successfully deleted return 0. On failure a nonzero value (!=0) is returned.
-    if (remove(path.c_str()) != 0)
-    {   
-        perror ("\n\t * * * ERROR: ");
+    if(remove(path.c_str()) != 0){   
+        perror ("\n * * * ERROR");
         return -1;
     }
     return 1;
-    
-
-    /* --- EXEC_version ---
-    void
-    deleteFileExeclEasy(string filename)
-    {  
-        if(filename.length() > 20)
-        {   cout << "\n\t -- Error: Filename too long --\n" << endl; return;    }
-
-        string pathFile = FILE_PATH_CL + filename;
-
-        execl("/bin/rm", "rm", pathFile.c_str(), (char*)0);
-
-        return;   
-    }
-    */
 }
 
 void print_progress_bar(int total, unsigned int fragment)

@@ -899,6 +899,7 @@ int Server::sendFileList(int sockd) {
     
     
     uint32_t num_chunks = ceil(float(file_list.size())/FRAGM_SIZE);
+
     cout << "NUM CHUNKS: " << num_chunks << endl;
     plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
@@ -1073,7 +1074,8 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
 int
 Server::sendMsgChunks(UserInfo* ui, string filename)
 {
-    string path = FILE_PATH_SVR + ui->username + "/" + filename;                         
+    string path = FILE_PATH_SRV + ui->username + "/" + filename; 
+    cout << "PATH: " << path << endl;                        
     FILE* file = fopen(path.c_str(), "rb");                                             
     struct stat buffer;
 
@@ -1096,14 +1098,13 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       
     array<unsigned char, MAX_BUF_SIZE> ciphertext;                                     
     
-    //=== Managemetn Buffer ===
-    frag_buffer.fill('0');
-    ui->send_buffer.assign(ui->send_buffer.size(), '0');
-    ui->send_buffer.clear();
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+    //=== Management Buffer ===
+    clear_vec_array(ui->send_buffer, frag_buffer.data(), frag_buffer.size());
+    cout << "TOT_CHUNKS: " << tot_chunks << endl;
 
     for(uint32_t i = 0; i < tot_chunks; i++)
     {
+        cout << "Chunk n. " << i << " of " << tot_chunks << endl;
         if(i == tot_chunks - 1)
         {
             to_send = buffer.st_size - i * FRAGM_SIZE;
@@ -1115,54 +1116,65 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
             ui->client_session->createAAD(aad.data(), DOWNLOAD);  //intermediate chunks
         }
 
+        //cout << "---- " << i << ".1" << " ----" << endl;
+
         ret = fread(frag_buffer.data(), sizeof(char), to_send, file);
+
+        //cout << "---- " << i << ".2" << " ----" << endl;
 
         if(ferror(file) != 0 || ret != to_send)
         {
             cerr<<"ERROR while reading file"<<endl;
 
             clear_arr(aad.data(), aad.size());
-            frag_buffer.fill('0');
+            clear_arr(frag_buffer.data(), frag_buffer.size());
 
             return -1;
         }
 
-        payload_size = ui->client_session->encryptMsg(frag_buffer.data(),
-                    frag_buffer.size(), aad.data(), ciphertext.data());
+        //cout << "---- " << i << ".3" << " ----" << endl;
 
-        payload_size_n = htonl(payload_size);
+        payload_size = ui->client_session->encryptMsg(frag_buffer.data(), to_send, aad.data(), ciphertext.data());
+        
+        cout << "payload size(encrypt): " << payload_size << endl;
 
-        //=== Managemetn Buffer ===
         clear_arr(aad.data(), aad.size());
         frag_buffer.fill('0');
 
+        if(payload_size == 0){
+            cerr << " Error during encryption" << endl;
+            return -1;
+        }
+
+        payload_size_n = htonl(payload_size);
+
+        //cout << "---- " << i << ".4" << " ----" << endl;
+
+        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
         memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
         ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
                                 ciphertext.begin(), ciphertext.begin() + payload_size);
 
-        //=== Managemetn Buffer ===   
-        ciphertext.fill('0');
-        ui->send_buffer.assign(ui->send_buffer.size(), '0');
-        ui->send_buffer.clear();
-        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+        //cout << "---- " << i << ".5" << " ----" << endl;
 
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1)
         {
-            cerr<<"Error during send phase (C->S) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
+            cerr<<"Error during send phase (S->C) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
 
             //=== Cleaining ===
-            clear_arr(aad.data(), aad.size());
+            aad.fill('0')
             frag_buffer.fill('0');
             ciphertext.fill('0');
 
             return -1;
         }
-
-        print_progress_bar(tot_chunks, i);
+        clear_vec_array(ui->send_buffer, ciphertext.data(), ciphertext.size());
+        //cout << "---- " << i << ".6" << " ----" << endl;
+        //print_progress_bar(tot_chunks, i);
     }
 
     //=== Cleaining ===
-    clear_arr(aad.data(), aad.size());
+    aad.fill('0')
     frag_buffer.fill('0');
     ciphertext.fill('0');
     
@@ -1207,7 +1219,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     if(!file_ok){
         cerr<<"file not correct! Reception of the file terminated"<<endl;
         ack_msg = MALFORMED_FILENAME;
-    } else if(searchFile(filename, ui->username, true) >= 0) {
+    } else if(searchFile(filename, ui->username, SERVER_SIDE) >= 0) {
         cout<<"File already present"<<endl;
         ack_msg = FILE_PRESENT;
         file_ok = false;
@@ -1242,7 +1254,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
     if(strcmp(ack_msg.c_str(), FILE_PRESENT) == 0){
         cout << "File was already present. Upload rejected" << endl;
-        return 1;       
+        return -1;       
     }
  
     clear_vec_array(ui->send_buffer, output.data(), output.size());
@@ -1289,7 +1301,8 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
 {
     string filename;
-    uint32_t payload_size, payload_size_n;
+    ssize_t file_dim;
+    uint32_t payload_size, payload_size_n, name_len, file_dimension;
     string ack_msg;
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
@@ -1309,30 +1322,38 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
 
 // _BEGIN_(1))------ [ M1: SEND_CONFIRMATION_DOWNLOAD_REQUEST_TO_CLIENT ] )------
 
-    filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.end());
+    name_len = ntohl(*(uint32_t*)plaintext.data());
+    filename.insert(filename.begin(), plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.begin() + NUMERIC_FIELD_SIZE + name_len);
 
+    cout <<filename << endl;
     const auto allowed = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
     file_ok = regex_match(filename, allowed);
 
     if(!file_ok)
     {
         cerr<<"File not correct! Termination of the Download_Operation in progress"<<endl;
-        ack_msg = "Filename not allowed";
+        ack_msg = MALFORMED_FILENAME;
     }
 
-    if(checkFileExist(filename, ui->username, FILE_PATH_SVR) != 1)
+    file_dim = searchFile(filename, ui->username, SERVER_SIDE);
+    if(file_dim < 0)
     {
         cerr<<"Error: this file is not present in the folder"<<endl;
-        ack_msg = "File not present in the Cloud Storage";
+        ack_msg = FILE_NOT_PRESENT;
 
         file_ok = false;
     }
 
     if(file_ok)
-    {   ack_msg = MESSAGE_OK; }                    
+    {   
+        ack_msg = MESSAGE_OK; 
+    }  
 
-    //=== Preparing Data Sending and Encryption ===
-    plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
+    file_dimension = htonl((uint32_t)(file_dim));
+    plaintext.resize(NUMERIC_FIELD_SIZE);
+    
+    memcpy(plaintext.data(), &file_dimension, NUMERIC_FIELD_SIZE);
+    plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, ack_msg.begin(), ack_msg.end());
 
     ui->client_session->createAAD(aad.data(), DOWNLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(),
@@ -1347,27 +1368,25 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
                             ciphertext.begin(), ciphertext.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || !file_ok)
-    {
-        cerr<<"Error during sending DOWNLOAD_REQUEST_RESPONSE phase (S->C)"<<endl;
-
-        // === Cleaning ===
-        clear_vec(plaintext);
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');
-
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0){
+        cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
+        cout<<"****************************************"<<endl;
         return -1;
     }
 
+    if(strcmp(ack_msg.c_str(), FILE_NOT_PRESENT) == 0){
+        cout << "File was already present. Upload rejected" << endl;
+        return -1;       
+    }
 // _END_(1)------ [ M1: SEND_CONFIRMATION_DOWNLOAD_REQUEST_TO_CLIENT ] )------
 
 
 // _BEGIN_(2)-------------- [ M2: SEND_FILE_TO_CLIENT ] --------------
 
-    int pt_len;                                                          
+    uint32_t pt_len;                                                          
     uint16_t opcode;
     uint32_t fileChunk;  
-    uint64_t received_len;
+    long received_len;
     string client_feedback; //DOWNLOAD_TERMINATED
 
     // === Cleaning ===
@@ -1417,6 +1436,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
             return -1;
         }
         
+        client_feedback = ((char*)plaintext.data());
         if(client_feedback != DOWNLOAD_TERMINATED)
         {
             cerr<<"DOWNLOAD_OPERATION interrupted. ERROR: "<<client_feedback<<endl;
@@ -1447,7 +1467,10 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     plaintext.clear();
     ciphertext.fill('0');
 
+    cout << "----------- DOWNLOAD TERMINATED --------------" << endl;
     return 1;
+
+    
 }
 
 int Server::changeName(string old_filename, string new_filename, string username){
@@ -1514,13 +1537,13 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
         cerr<<"Filename not correct! Rename terminated"<<endl;
         ack_msg = "Filename not correct";
     } else { //TODO: handle -2 and -3 cases
-        if(searchFile(old_filename, ui->username, true) == -1) {
+        if(searchFile(old_filename, ui->username, SERVER_SIDE) == -1) {
             cerr << "Filename to change doesn't correspond to any file"<<endl;
             ack_msg = "Filename to change doesn't correspond to any file\n";
             file_ok = false;
         }
 
-        if(searchFile(new_filename, ui->username, true) >= 0){
+        if(searchFile(new_filename, ui->username, SERVER_SIDE) >= 0){
             cerr << "The new filename is already used by another file" << endl;
             ack_msg += "The new filename is already used by another file\n";
             file_ok = false;
@@ -1607,7 +1630,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     {
         cerr<<"File not correct! Termination of the Delete_Operation in progress"<<endl;
         ack_msg = "Filename not allowed";
-    } else if(checkFileExist(filename, ui->username, FILE_PATH_SVR) != 1)
+    } else if(searchFile(filename, ui->username, SERVER_SIDE) < 0)
     {
         cerr << "Error: file not present in the user storage" << endl;
         ack_msg = "File not present in the Cloud Storage";
@@ -1655,7 +1678,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 // _BEGIN_(2)-------------- [ M2: RECEIVE_CHOICE_OPERATION_FROM_CLIENT ] --------------
 
     uint16_t opcode;
-    uint64_t received_len;  //legnht of the message received from the client
+    uint64_t received_len;  //length of the message received from the client
     uint32_t plaintext_len;
     string user_choice, final_msg;  //final_msg: message of successful cancellation
 
@@ -1708,16 +1731,16 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     {
         cout<<"\n\t~ The file *( "<< filename << " )* is going to be deleted. ~\n\n"<<endl;
 
-        if(removeFile(filename, ui->username, FILE_PATH_SVR) != 1)
+        if(removeFile(filename, ui->username, SERVER_SIDE) != 1)
         {
-            cout << "\n\t --- Error during Deleting file ---\n" << endl; 
+            cout << "\n\t --- Error during Delete ---\n" << endl; 
             clear_vec(plaintext);
             clear_arr(aad.data(), aad.size());
             clear_arr(ciphertext.data(), ciphertext.size());
             return -1;
         }
-
-        final_msg = "File Deleted Successfully";
+        else
+            final_msg = "File Deleted Successfully";
     }
 
     // === Cleaning ===

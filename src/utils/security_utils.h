@@ -54,9 +54,8 @@ void readInput(string& input, const size_t MAX_SIZE, string);  // read MAX_SIZE 
 void readFilenameInput(string& input, string msg);
 
 //bool searchUserExist(string usr_name);
-long searchFile(string filename, string username, bool server_side);
-int32_t checkFileExist(string filename, string username, string path_side);
-int removeFile(string filename, string username, string path_side);
+long searchFile(string filename, string username, bool side);
+int removeFile(string filename, string username, bool side);
 
 
 void print_progress_bar(int total, unsigned int fragment);
