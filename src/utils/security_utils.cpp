@@ -494,7 +494,6 @@ long Session::serializePubKey(EVP_PKEY* key, unsigned char*& buf_key) {
         cerr << "Error: BIO_get_mem_data failed\n"; 
         return -1;
     }
-    cout << "session->serializePubKey end" << endl;
     return key_size;
 }
 

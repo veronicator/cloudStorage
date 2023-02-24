@@ -172,7 +172,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
     cout << "Msg dimension data: " << payload_size << endl;
-    if(payload_size > size_t(MAX_BUF_SIZE - 1)){
+    if(payload_size > size_t(MAX_BUF_SIZE - 1)) {
         cerr << "Dimension overflow" << endl;
         return -1;
     }
@@ -204,8 +204,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
         return -1;
     }
 
-    if(!recv_buffer.empty())
-        clear_vec(recv_buffer);
+    clear_vec(recv_buffer);
 
     recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
     receiver.fill('0');
@@ -238,12 +237,9 @@ void Server::run_thread(int sockd) {
             connectedClient.erase(sockd);
         } catch(const out_of_range& ex) {
             cerr<<"user not found"<<endl;
-            //close(sockd);
             return;
         }
         
-        //close(sockd);
-        //pthread_exit(NULL); 
         return;
     }
     cout << "Client logged successfully!" << endl;
@@ -279,7 +275,7 @@ void Server::run_thread(int sockd) {
         //BIO_dump_fp(stdout, (const char*)ui->recv_buffer.data(), ui->recv_buffer.size()); 
 
         pt_len = usr->client_session->decryptMsg(usr->recv_buffer.data(), received_len, aad.data(), plaintext.data());
-        if(pt_len <= 0){
+        if(pt_len <= 0) {
             cerr << "run_thread->Error during decryption" << endl;
             clear_arr(aad.data(), aad.size());
             clear_vec(usr->recv_buffer);
@@ -287,7 +283,7 @@ void Server::run_thread(int sockd) {
             break;
         }
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
-        switch(opcode){
+        switch(opcode) {
             case UPLOAD_REQ:
                 cout << to_string(pt_len) + " pt_len -> " << string(plaintext.begin(), plaintext.end()) << endl;
                 uploadFile(sockd, plaintext, pt_len);
@@ -316,7 +312,7 @@ void Server::run_thread(int sockd) {
                 break;
    
             default:
-                cerr << "Error! Unexpected message" << endl;
+                cerr << "Error! Unexpected message: OPCODE not valid!" << endl;
                 end_thread = true;
                 break;
         }
@@ -324,7 +320,6 @@ void Server::run_thread(int sockd) {
 
     pthread_mutex_lock(&mutex_client_list);
     connectedClient.erase(sockd);
-    //todo: add also the erase on che socket_list map
     pthread_mutex_unlock(&mutex_client_list);
     
 }
@@ -404,11 +399,11 @@ bool Server::authenticationClient(int sockd) {
         cerr << "deriveSecret failed " << endl;
         return false;
     }
-        /* 
-    invia lista utenti online
-    -> end authentication */
-    //cout << "authentication send filelist" << endl;
-    sendFileList(sockd);
+
+    if(sendFileList(sockd) != 1) {
+        cerr << "Error: sendFileList failed!" << endl;
+        return false;
+    }
 
     return true;
 }  // call session.generatenonce & sendMsg
@@ -424,7 +419,6 @@ bool Server::authenticationClient(int sockd) {
 bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     // M1 (Authentication)
     vector<unsigned char> recv_buffer;
-    // Authentication M1
     long payload_size;
     uint32_t start_index = 0;
     uint16_t opcode;
@@ -436,7 +430,6 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     if(payload_size <= 0) {
         clear_vec(recv_buffer);
         cerr << "Error on Receive -> close connection with the client on socket: " << sockd << endl;
-        //close(sockd);
         return false;
     }
         
@@ -484,7 +477,6 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         return false;
     }
     new_usr = new UserInfo(sockd, username);
-    //connectedClient.insert(pair<int, UserInfo>(new_sd, new_usr));
     auto ret = connectedClient.insert({sockd, new_usr});
     cout << "connected size " << connectedClient.size() << endl;
 
@@ -519,7 +511,7 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     unsigned char* cert_buf = nullptr;
     EVP_PKEY* srv_priv_k = nullptr;
     unsigned char* ECDH_srv_pub_key = nullptr;
-    uint32_t ECDH_srv_key_size ;
+    uint32_t ECDH_srv_key_size;
     uint32_t ECDH_srv_key_size_n;
     vector<unsigned char> msg_to_sign;
     uint32_t signed_msg_len;
@@ -575,10 +567,12 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     ret = usr->client_session->serializePubKey (
                                     usr->client_session->ECDH_myKey, ECDH_srv_pub_key);
     //BIO_dump_fp(stdout, (const char*)ECDH_srv_pub_key, ECDH_srv_key_size);
-    // cout << "after serialize pub" << endl;
 
     if (ret < 0) {
         cerr << "serializePubKey failed " << endl;
+        EVP_PKEY_free(srv_priv_k);
+        OPENSSL_free(cert_buf);
+        free(ECDH_srv_pub_key);
         return false;
     }
     ECDH_srv_key_size = ret;
@@ -587,11 +581,10 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     msg_to_sign.reserve(NONCE_SIZE + ECDH_srv_key_size);
     msg_to_sign.resize(ECDH_srv_key_size);
 
-    // fields to sign: client nonce + ECDH server key
+    // message to sign: | client nonce | ECDH server key | 
     // -> insert client nonce
     msg_to_sign.insert(msg_to_sign.begin(), clt_nonce.begin(), clt_nonce.end());
-    //cout << "server: received_nonce: " << endl;
-    //BIO_dump_fp(stdout, (const char*)clt_nonce.data(), NONCE_SIZE);
+
     // -> insert ECDH server key 
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_srv_pub_key, ECDH_srv_key_size);
 
@@ -609,13 +602,12 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     if(usr->send_buffer.size() < temp_size) {
         cerr << "vector.resize error " << endl;
-        //TODO: clear all buffer -> cercare come deallocare tutto correttamente
 
         signed_msg.fill('0');
-        msg_to_sign.assign(msg_to_sign.size(), '0');
+        clear_vec(msg_to_sign);
         EVP_PKEY_free(srv_priv_k);
         OPENSSL_free(cert_buf);
-        free(ECDH_srv_pub_key); // TODO: check if it is correct
+        free(ECDH_srv_pub_key);
 
         return false;
     }
@@ -668,12 +660,11 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     if(sendMsg(payload_size, sockd, usr->send_buffer) != 1) {
         cerr << "sendCertSize failed " << endl;
-        //delete usr;
+
         return false;
     }
     cout << "msg sent" << endl;
     
-    //delete usr;
     return true;
 
 }   // send (nonce, ecdh_key, cert, dig_sign)
@@ -796,10 +787,8 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     dig_sign_len = usr->recv_buffer.size() - start_index;
     if(dig_sign_len <= 0) {
         cerr << "Dig_sign length error " << endl;
-        ECDH_client_key.assign(ECDH_client_key.size(), '0');
-        usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
-        ECDH_client_key.clear();
-        usr->recv_buffer.clear();
+        clear_vec(ECDH_client_key);
+        clear_vec(usr->recv_buffer);
         return false;
     }
 
@@ -818,16 +807,13 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     if(!client_pubK) {
         cerr << "get_peerKey failed " << endl;
         // clear buffers and return
-        ECDH_client_key.assign(ECDH_client_key.size(), '0');
-        usr->recv_buffer.assign(usr->recv_buffer.size(), '0');
-        ECDH_client_key.clear();
-        usr->recv_buffer.clear();
+        clear_vec(ECDH_client_key);
+        clear_vec(usr->recv_buffer);
 
         return false;
     }
 
-    if(!temp_buf.empty())
-        temp_buf.clear();
+    temp_buf.clear();
     
     // nonce 
     temp_buf.insert(temp_buf.begin(), received_nonce.begin(), received_nonce.end());
@@ -841,11 +827,6 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
                                                         client_pubK, temp_buf.data(), signed_msg_len);
     
     // clear buffer
-    //memset(buffer.data(), '0', buffer.size());
-    //memset(server_dig_sign.data(), '0', server_dig_sign.size());
-    temp_buf.assign(temp_buf.size(), '0');
-    client_signature.assign(client_signature.size(), '0');
-
     temp_buf.clear();
     client_signature.clear();
 
@@ -853,18 +834,24 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         cerr << "Digital Signature not verified" << endl;
 
         // clear buffer key
-        ECDH_client_key.assign(ECDH_client_key.size(), '0');
-        //memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
-        ECDH_client_key.clear();
+        clear_vec(ECDH_client_key);
+        clear_vec(usr->recv_buffer);
 
         return false;
     }
     cout << " Digital Signature Verified!" << endl;
-    //free(signed_msg);
-    //cout << "ECDH_client_key" << endl;
-    //BIO_dump_fp(stdout, (const char*) ECDH_client_key.data(), ECDH_key_size);
-    usr->client_session->deserializePubKey(ECDH_client_key.data(), ECDH_key_size, 
-                                            usr->client_session->ECDH_peerKey);
+    
+    if(usr->client_session->deserializePubKey(
+                                ECDH_client_key.data(), ECDH_key_size, 
+                                usr->client_session->ECDH_peerKey) != 1) {
+
+        cerr << "Error: deserializePubKey failed!" << endl;
+        clear_vec(ECDH_client_key);
+        clear_vec(usr->recv_buffer);
+        return false;
+    }
+    clear_vec(ECDH_client_key);
+    clear_vec(usr->recv_buffer);
 
     return true;
 }

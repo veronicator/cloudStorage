@@ -207,15 +207,21 @@ bool Client::authentication() {
 // Message M1
 int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     cout << "sendUsername\n";
-    uint start_index = 0;
-    uint32_t payload_size = OPCODE_SIZE + NONCE_SIZE + username.size();
-    uint32_t payload_n = htonl(payload_size);
+    uint32_t start_index = 0;
+    uint32_t payload_size, payload_n;
     uint16_t opcode;
 
     if(active_session->generateNonce(client_nonce.data()) != 1) {
         cerr << "generateNonce failed" << endl;
         return -1;
     }
+
+    if (username.size() > UINT32_MAX - OPCODE_SIZE - NONCE_SIZE) {
+        cerr << "sendUSername -> size overflow " << endl;
+        return -1;
+    }
+    payload_size = OPCODE_SIZE + NONCE_SIZE + username.size();
+    payload_n = htonl(payload_size);
 
     // clear content of the sender buffer
     clear_vec(send_buffer);
@@ -230,28 +236,25 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     start_index += OPCODE_SIZE;
 
     send_buffer.insert(send_buffer.end(), client_nonce.begin(), client_nonce.end());
-    //memcpy(send_buffer.data() + start_index, active_session->nonce.data(), NONCE_SIZE);
     start_index += NONCE_SIZE;
 
     send_buffer.insert(send_buffer.end(), username.begin(), username.end());
-    //memcpy(send_buffer.data() + start_index, username.c_str(), username.size());
     start_index += username.size();
 
-    //cout << "sendUsername buffer msg: " << endl;
-    //////BIO_dump_fp(stdout, (const char*)send_buffer.data(), send_buffer.size());
-
     //sendMsg
-    cout << "authentication->sendMsg M1: nonce, username " << endl;
+    cout << "authentication->sendMsg M1: nonceClient, username " << endl;
     if(sendMsg(payload_size) != 1) {
         client_nonce.fill('0');
         return -1;
     }
+
     return 1;
 }
 
 // M2
 bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce, 
                                 vector<unsigned char> &srv_nonce) {
+
     cout << "receiveCertSign\n";
 
     ssize_t payload_size;
@@ -298,11 +301,11 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         return false;
     }
 
-    if(start_index > UINT32_MAX - uint32_t(NONCE_SIZE * NONCE_SIZE) || 
-        start_index + uint32_t(NONCE_SIZE + NONCE_SIZE) >= recv_buffer.size()) {
+    if(start_index > UINT32_MAX - uint32_t(NONCE_SIZE + NONCE_SIZE) || 
+            start_index + uint32_t(NONCE_SIZE + NONCE_SIZE) >= recv_buffer.size()) {
+            
         cerr << "Received msg size error" << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
         return false;
     }
 
@@ -310,7 +313,6 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     received_nonce.insert(received_nonce.begin(), 
                         recv_buffer.begin() + start_index, 
                         recv_buffer.begin() + start_index + NONCE_SIZE);
-    //memcpy(received_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);
     start_index += NONCE_SIZE;
 
     
@@ -318,10 +320,13 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         cerr << "Received nonce not valid\n";
 
         received_nonce.clear();
-        client_nonce.fill('0');
         // TODO: check and clear all used buffers
         recv_buffer.assign(recv_buffer.size(), '0');
         recv_buffer.clear();    //fill('0');
+        
+        clear_vec(received_nonce);
+        client_nonce.fill('0');
+        clear_vec(recv_buffer);
 
         return false;
     }
@@ -347,8 +352,8 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     cert_size = ntohl(cert_size);
     start_index += NUMERIC_FIELD_SIZE;
     
-    if(start_index > UINT32_MAX - cert_size || 
-        start_index + cert_size >= recv_buffer.size()) {
+    if(start_index > UINT32_MAX - cert_size || start_index + cert_size >= recv_buffer.size()) {
+        
         cerr << "Received msg size error " << endl;
         clear_vec(recv_buffer);
         return false;
@@ -363,8 +368,8 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
 
     // deserialize, verify certificate & extract server pubKey
     if(!verifyCert(temp_buffer.data(), cert_size, srv_pubK)) {
+        
         cerr << "Server certificate not verified\n";
-
         clear_vec(temp_buffer);
         clear_vec(recv_buffer);
 
@@ -373,8 +378,9 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     cout << "Server certificate verified!" << endl;
     clear_vec(temp_buffer);
     
-    if(start_index > UINT32_MAX - NUMERIC_FIELD_SIZE ||
+    if(start_index > UINT32_MAX - NUMERIC_FIELD_SIZE || 
         start_index + NUMERIC_FIELD_SIZE >= recv_buffer.size()) {
+        
         cerr << "Received msg size error " << endl;
         clear_vec(recv_buffer);
         return false;
@@ -387,12 +393,13 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     
     if(start_index > UINT32_MAX - ECDH_key_size ||
         start_index + ECDH_key_size >= recv_buffer.size()) {
+        
         cerr << "Received msg size error " << endl;
         clear_vec(recv_buffer);
         return false;
     }
 
-    //get key
+    //get server ECDH key
     ECDH_server_key.insert(ECDH_server_key.begin(), 
                         recv_buffer.begin() + start_index,
                         recv_buffer.begin() + start_index + ECDH_key_size);
@@ -412,6 +419,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
                         recv_buffer.begin() + start_index, 
                         recv_buffer.end());
     start_index += dig_sign_len;
+
     if(payload_size > 0 && uint32_t(payload_size) != start_index - NUMERIC_FIELD_SIZE) {
         cerr << "Received data size error" << endl;
         clear_vec(server_signature);
@@ -420,18 +428,25 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         return false;
     }
     
-    // verify digital signature
+    /* verify digital signature: | nonce_client | server ECDH key | */
+    if(ECDH_key_size > UINT32_MAX - uint32_t(NONCE_SIZE)) {
+        cerr << "receiveCertSign -> size overflow " << endl;
+        clear_vec(server_signature);
+        clear_vec(ECDH_server_key);
+        clear_vec(recv_buffer);
+        return false;
+    }
     signed_msg_len = NONCE_SIZE + ECDH_key_size;
 
     // nonce client
     clear_vec(temp_buffer);
-    
+
     temp_buffer.insert(temp_buffer.begin(), client_nonce.begin(), client_nonce.end());
-    //memcpy(temp_buffer.data(), client_nonce.data(), NONCE_SIZE);
     start_index = NONCE_SIZE;
+
     // server ECDH public key
     temp_buffer.insert(temp_buffer.end(), ECDH_server_key.begin(), ECDH_server_key.end());
-    //memcpy(temp_buffer.data() + start_index, ECDH_server_key.data(), ECDH_key_size);
+    
     bool verified = active_session->verifyDigSign(server_signature.data(), dig_sign_len, 
                                                     srv_pubK, temp_buffer.data(), signed_msg_len);
     
@@ -448,9 +463,15 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         return false;
     }
     cout << " Digital Signature Verified!" << endl;
-    //free(signed_msg);
-    ////BIO_dump_fp(stdout, (const char*) ECDH_server_key.data(), ECDH_key_size);
-    active_session->deserializePubKey(ECDH_server_key.data(), ECDH_key_size, active_session->ECDH_peerKey);
+    
+    if(active_session->deserializePubKey(ECDH_server_key.data(), ECDH_key_size, active_session->ECDH_peerKey) != 1) {
+        cerr << "Error: deserializePubKey failed!" << endl;
+        
+        clear_vec(ECDH_server_key);
+        return false;
+    }
+
+    clear_vec(ECDH_server_key);
     return true;
 }
 
@@ -481,6 +502,12 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     ECDH_my_key_size = active_session->serializePubKey(
                                     active_session->ECDH_myKey, ECDH_my_pub_key);
 
+    if(ECDH_my_key_size < 0) {
+        cerr << "Error: serializePubKey failed " << endl;
+        free(ECDH_my_pub_key);
+        return -1;
+    }
+
 
     cout << "ECDH_my_key_size " << ECDH_my_key_size << endl;
     msg_to_sign.resize(ECDH_my_key_size);
@@ -491,14 +518,18 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
 
     if( signed_msg_len < 0) {
         cerr << "signMsg failed" << endl;
+        free(ECDH_my_pub_key);
         clear_vec(msg_to_sign);
         clear_vec(signed_msg);
         return -1;
     }
 
     if(uint64_t(signed_msg_len) > uint64_t(UINT32_MAX - OPCODE_SIZE - uint32_t(NONCE_SIZE) -
-        NUMERIC_FIELD_SIZE - ECDH_my_key_size)) {
-            cerr << "sendSign -> size overflow" << endl;
+                                NUMERIC_FIELD_SIZE - ECDH_my_key_size)) {
+            
+        cerr << "sendSign -> size overflow" << endl;
+        // cleaning
+        free(ECDH_my_pub_key);
         clear_vec(msg_to_sign);
         clear_vec(signed_msg);
         return -1;
@@ -536,7 +567,8 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     // send msg to server
     ret = sendMsg(payload_size);
 
-    // clear buffer
+    // clear buffers      
+    free(ECDH_my_pub_key);
     clear_vec(msg_to_sign);
     clear_vec(signed_msg);
 
