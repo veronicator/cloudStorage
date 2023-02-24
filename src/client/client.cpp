@@ -52,8 +52,10 @@ bool Client::createSocket(string srv_ip) {
  * @return: 1 on success, 0 or -1 on error
  */
 int Client::sendMsg(uint32_t payload_size) {
-    //cout << "sendMsg new" << endl;
     uint32_t payload_size_n;
+    ssize_t ret;
+    array<unsigned char, NUMERIC_FIELD_SIZE> arr;
+
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
         send_buffer.assign(send_buffer.size(), '0');
@@ -62,11 +64,13 @@ int Client::sendMsg(uint32_t payload_size) {
     }
     payload_size += NUMERIC_FIELD_SIZE;
     payload_size_n = htonl(payload_size);
-    array<unsigned char, NUMERIC_FIELD_SIZE> arr;
+
     memcpy(arr.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
 
-    if(send(sd, arr.data(), NUMERIC_FIELD_SIZE, 0) < NUMERIC_FIELD_SIZE){
-        perror("Errore invio dimensione messaggio");
+    ret = send(sd, arr.data(), NUMERIC_FIELD_SIZE, 0);
+
+    if(ret < 0 || (ret >= 0 && size_t(ret) < NUMERIC_FIELD_SIZE)){
+        perror("Error sending message size");
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
         return -1;
@@ -74,7 +78,8 @@ int Client::sendMsg(uint32_t payload_size) {
     clear_arr(arr.data(), arr.size());
 
     //cout << "sentMsg->payload size: " << payload_size << endl;
-    if(send(sd, send_buffer.data(), payload_size, 0) < payload_size) {
+    ret = send(sd, send_buffer.data(), payload_size, 0);
+    if(ret < 0 || (ret >= 0 && size_t(ret) < payload_size)) {
         perror("Socker error: send message failed");
         send_buffer.assign(send_buffer.size(), '0');
         send_buffer.clear();
@@ -97,8 +102,7 @@ int Client::sendMsg(uint32_t payload_size) {
     ssize_t msg_size = 0;
     uint32_t payload_size;
 
-    recv_buffer.assign(recv_buffer.size(), '0');
-    recv_buffer.clear();
+    clear_vec(recv_buffer);
 
     msg_size = recv(sd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
     cout << "Msg dimension size: " << msg_size << endl;
@@ -106,7 +110,7 @@ int Client::sendMsg(uint32_t payload_size) {
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
     cout << "Msg dimension data: " << payload_size << endl;
-    if((long)payload_size > (long)(MAX_BUF_SIZE - 1)){
+    if(payload_size > size_t(MAX_BUF_SIZE - 1)){
         cerr << "Dimension overflow" << endl;
         return -1;
     }
@@ -119,7 +123,8 @@ int Client::sendMsg(uint32_t payload_size) {
         return 0;
     }
 
-    if (msg_size < 0 || msg_size < (uint)NUMERIC_FIELD_SIZE + (uint)OPCODE_SIZE) {
+    if (msg_size < 0 || 
+        (msg_size >= 0 && size_t(msg_size) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
         return -1;
@@ -133,7 +138,7 @@ int Client::sendMsg(uint32_t payload_size) {
     payload_size = ntohl(payload_size);
     //cout << payload_size << " received payload length" << endl;
     //check if all data are received
-    if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
+    if (payload_size != size_t(msg_size) - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         return -1;
@@ -192,8 +197,7 @@ bool Client::authentication() {
 
     active_session->deriveSecret();     // derive secrete & compute session key
     cout << "active_session -> derive secret " << endl;
-    // TODO
-    //receive login ack or file list?
+
     return receiveFileList() != -1;
     //return true;
 }
@@ -214,12 +218,9 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     }
 
     // clear content of the sender buffer
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();    //fill('0');
-    //memset(send_buffer, 0, MAX_BUF_SIZE);
+    clear_vec(send_buffer);
 
     // prepare buffer: | payload_size | opcode_LOGIN | nonce_client | username |
-    //memcpy(vec.data(), &p, NUMERIC_FIELD_SIZE);
     send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE);
     memcpy(send_buffer.data(), &payload_n, NUMERIC_FIELD_SIZE);
     start_index += NUMERIC_FIELD_SIZE;
@@ -250,11 +251,11 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
 
 // M2
 bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce, 
-                            vector<unsigned char> &srv_nonce) {
+                                vector<unsigned char> &srv_nonce) {
     cout << "receiveCertSign\n";
 
-    long payload_size;
-    uint start_index = 0;
+    ssize_t payload_size;
+    uint32_t start_index = 0;
     uint16_t opcode;
     
     vector<unsigned char> received_nonce;
@@ -275,7 +276,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     }
     
     //cout << "receiveCertSign buffer msg: " << endl;
-    //////BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
+    //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
 
     start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
 
@@ -292,13 +293,13 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
             cerr << "Received not expected message" << endl;
         }
         
-        recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
 
         return false;
     }
 
-    if(start_index >= recv_buffer.size() - (uint)NONCE_SIZE - (uint)NONCE_SIZE) {
+    if(start_index > UINT32_MAX - uint32_t(NONCE_SIZE * NONCE_SIZE) || 
+        start_index + uint32_t(NONCE_SIZE + NONCE_SIZE) >= recv_buffer.size()) {
         cerr << "Received msg size error" << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
         recv_buffer.clear();
@@ -333,7 +334,8 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     //memcpy(srv_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);   // server nonce
     start_index += NONCE_SIZE;
 
-    if(start_index >= recv_buffer.size() - (uint)NUMERIC_FIELD_SIZE) {
+    if(start_index > UINT32_MAX - NUMERIC_FIELD_SIZE || 
+        start_index + NUMERIC_FIELD_SIZE >= recv_buffer.size()) {
         cerr << "Received msg size error " << endl;
         recv_buffer.assign(recv_buffer.size(), '0');
         recv_buffer.clear();
@@ -345,10 +347,10 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     cert_size = ntohl(cert_size);
     start_index += NUMERIC_FIELD_SIZE;
     
-    if(start_index >= recv_buffer.size() - cert_size) {
+    if(start_index > UINT32_MAX - cert_size || 
+        start_index + cert_size >= recv_buffer.size()) {
         cerr << "Received msg size error " << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
         return false;
     }
 
@@ -363,23 +365,18 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     if(!verifyCert(temp_buffer.data(), cert_size, srv_pubK)) {
         cerr << "Server certificate not verified\n";
 
-        temp_buffer.assign(temp_buffer.size(), '0');
-        recv_buffer.assign(recv_buffer.size(), '0');
-
-        temp_buffer.clear();
-        recv_buffer.clear();
+        clear_vec(temp_buffer);
+        clear_vec(recv_buffer);
 
         return false;
     }
     cout << "Server certificate verified!" << endl;
-    //memset(buffer.data(), '0', buffer.size());
-    temp_buffer.assign(temp_buffer.size(), '0');
-    temp_buffer.clear();
+    clear_vec(temp_buffer);
     
-    if(start_index >= recv_buffer.size() - (uint)NUMERIC_FIELD_SIZE) {
+    if(start_index > UINT32_MAX - NUMERIC_FIELD_SIZE ||
+        start_index + NUMERIC_FIELD_SIZE >= recv_buffer.size()) {
         cerr << "Received msg size error " << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
         return false;
     }
 
@@ -388,10 +385,10 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     ECDH_key_size = ntohl(ECDH_key_size);
     start_index += NUMERIC_FIELD_SIZE;
     
-    if(start_index >= recv_buffer.size() - ECDH_key_size) {
+    if(start_index > UINT32_MAX - ECDH_key_size ||
+        start_index + ECDH_key_size >= recv_buffer.size()) {
         cerr << "Received msg size error " << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
         return false;
     }
 
@@ -406,8 +403,8 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     dig_sign_len = recv_buffer.size() - start_index;
     if(dig_sign_len <= 0) {
         cerr << "Dig_sign length error " << endl;
-        ECDH_server_key.assign(ECDH_server_key.size(), '0');
-        ECDH_server_key.clear();
+        clear_vec(recv_buffer);
+        clear_vec(ECDH_server_key);
         return false;
     }
 
@@ -415,12 +412,11 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
                         recv_buffer.begin() + start_index, 
                         recv_buffer.end());
     start_index += dig_sign_len;
-    if(start_index - NUMERIC_FIELD_SIZE != payload_size) {
+    if(payload_size > 0 && uint32_t(payload_size) != start_index - NUMERIC_FIELD_SIZE) {
         cerr << "Received data size error" << endl;
-        server_signature.assign(server_signature.size(), '0');
-        ECDH_server_key.assign(ECDH_server_key.size(), '0');
-        ECDH_server_key.clear();
-        server_signature.clear();
+        clear_vec(server_signature);
+        clear_vec(ECDH_server_key);
+        clear_vec(recv_buffer);
         return false;
     }
     
@@ -428,10 +424,8 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     signed_msg_len = NONCE_SIZE + ECDH_key_size;
 
     // nonce client
-    if(!temp_buffer.empty()) {
-        temp_buffer.assign(temp_buffer.size(), '0');
-        temp_buffer.clear();
-    }
+    clear_vec(temp_buffer);
+    
     temp_buffer.insert(temp_buffer.begin(), client_nonce.begin(), client_nonce.end());
     //memcpy(temp_buffer.data(), client_nonce.data(), NONCE_SIZE);
     start_index = NONCE_SIZE;
@@ -441,22 +435,15 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     bool verified = active_session->verifyDigSign(server_signature.data(), dig_sign_len, 
                                                     srv_pubK, temp_buffer.data(), signed_msg_len);
     
-    // clear buffer
-    //memset(buffer.data(), '0', buffer.size());
-    //memset(server_dig_sign.data(), '0', server_dig_sign.size());
-    temp_buffer.assign(temp_buffer.size(), '0');
-    server_signature.assign(server_signature.size(), '0');
-
-    temp_buffer.clear();
-    server_signature.clear();
+    // clear buffers    
+    clear_vec(temp_buffer);
+    clear_vec(server_signature);
 
     if(!verified) {
         cerr << "Digital Signature not verified" << endl;
 
         // clear buffer key
-        ECDH_server_key.assign(ECDH_server_key.size(), '0');
-        //memset(ECDH_server_key.data(), '0', ECDH_server_key.size());
-        ECDH_server_key.clear();
+        clear_vec(ECDH_server_key);
 
         return false;
     }
@@ -498,28 +485,29 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     cout << "ECDH_my_key_size " << ECDH_my_key_size << endl;
     msg_to_sign.resize(ECDH_my_key_size);
     msg_to_sign.insert(msg_to_sign.begin(), srv_nonce.begin(), srv_nonce.end());
-    //memcpy(msg_to_sign, srv_nonce.data(), NONCE_SIZE);
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
     
     signed_msg_len = active_session->signMsg(msg_to_sign.data(), NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg.data());
 
     if( signed_msg_len < 0) {
         cerr << "signMsg failed" << endl;
-        msg_to_sign.assign(msg_to_sign.size(), '0');
-        msg_to_sign.clear();
+        clear_vec(msg_to_sign);
+        clear_vec(signed_msg);
         return -1;
     }
-    //cout << "client: singMsg done" << endl;    
 
-    // prepare send buffer
-    if(!send_buffer.empty()) {
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();
+    if(uint64_t(signed_msg_len) > uint64_t(UINT32_MAX - OPCODE_SIZE - uint32_t(NONCE_SIZE) -
+        NUMERIC_FIELD_SIZE - ECDH_my_key_size)) {
+            cerr << "sendSign -> size overflow" << endl;
+        clear_vec(msg_to_sign);
+        clear_vec(signed_msg);
+        return -1;
     }
+    // prepare send buffer
+    clear_vec(send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE + OPCODE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size);
-    //memset(send_buffer, 0, MAX_BUF_SIZE);
 
-    payload_size = OPCODE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE + ECDH_my_key_size + signed_msg_len;
+    payload_size = OPCODE_SIZE + uint32_t(NONCE_SIZE) + NUMERIC_FIELD_SIZE + ECDH_my_key_size + uint32_t(signed_msg_len);
     payload_n = htonl(payload_size);
     memcpy(send_buffer.data(), &payload_n, NUMERIC_FIELD_SIZE);
     start_index = NUMERIC_FIELD_SIZE;
@@ -530,7 +518,6 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
 
     send_buffer.insert(send_buffer.begin() + start_index, srv_nonce.begin(), srv_nonce.end());
     cout << "serv_nonce inserted" << endl;
-    //memcpy(send_buffer.data() + start_index, srv_nonce.data(), NONCE_SIZE);
     start_index += NONCE_SIZE;
 
     ECDH_my_key_size_n = htonl(ECDH_my_key_size);
@@ -545,20 +532,13 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     
     send_buffer.insert(send_buffer.end(), signed_msg.begin(), signed_msg.end());
     cout << "signed msg inserted " << endl;
-    //memcpy(send_buffer.data() + start_index, signed_msg, signed_msg_len);
 
     // send msg to server
-    cout <<"authentication sendMsg (ecdh pub key)" << endl;
     ret = sendMsg(payload_size);
 
     // clear buffer
-    //memset(msg_to_sign.data(), '0', msg_to_sign.size());
-    //memset(signed_msg.data(), '0', signed_msg.size());
-    msg_to_sign.assign(msg_to_sign.size(), '0');
-    signed_msg.assign(signed_msg.size(), '0');
-
-    msg_to_sign.clear();
-    signed_msg.clear();
+    clear_vec(msg_to_sign);
+    clear_vec(signed_msg);
 
     cout << "sendSign end" << endl;
 
@@ -570,7 +550,7 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
 
 bool Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
     // load CA certificate
-    string ca_cert_filename = "./client/FoundationOfCybersecurity_cert.pem";    // controllare percorso directory
+    string ca_cert_filename = "./client/FoundationOfCybersecurity_cert.pem";
     FILE* ca_cert_file = fopen(ca_cert_filename.c_str(), "r");
     if(!ca_cert_file) {
         cerr << "CA_cert file does not exists" << endl;
@@ -665,6 +645,7 @@ bool Client::verifyCert(unsigned char* cert_buf, long cert_size, EVP_PKEY*& srv_
 
         return false;
     }
+
     if(X509_STORE_CTX_init(certvfy_ctx, store, certToCheck, NULL) != 1) {
         cerr << "X50_STORE_CTX_init error\n" 
             << ERR_error_string(ERR_get_error(), NULL) << endl;
@@ -823,10 +804,10 @@ int Client::receiveFileList() {
     uint16_t opcode;
     string filelist = "";
 
-    while(true){
+    while(true) {
         received_len = receiveMsg();
         //cout << "receiveFileList msg received" << endl;
-        if(received_len < MIN_LEN){
+        if(received_len <= 0 || (received_len > 0 && uint32_t(received_len) < MIN_LEN)){
             cerr<<"Error! Exiting receive file list phase"<<endl;
             return -1;
         }
@@ -891,14 +872,18 @@ void Client::logout() {
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
     if (sendMsg(payload_size) != 1)
-        cerr<<"Error during logout phase! Trying again"<<endl;
+        cerr << "Error during logout phase! Trying again" << endl;
 
     long received_len;
     int pt_len;
     uint16_t opcode;
 
     received_len = receiveMsg();
-    if(received_len >= MIN_LEN){
+    if(received_len <= 0) {
+        cerr << "Error on the receiveMsg -> closing connection..." << endl;
+        exit(EXIT_FAILURE);
+    }
+    if(uint32_t(received_len) >= MIN_LEN){
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
         if(pt_len != 0){
             opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
@@ -958,17 +943,16 @@ uint32_t Client::sendMsgChunks(string filename){
         return -1;
     }
 
-    size_t tot_chunks = ceil((float)buf.st_size / FRAGM_SIZE);                          //total number of chunks needed form the upload
-    size_t to_send;                                                                     //number of byte to send in the specific msg
-    uint32_t payload_size, payload_size_n;                                              //size of the msg payload both in host and network format
-    int ret;                                                                            //bytes read by the fread function
+    uint32_t tot_chunks = ceil((float)buf.st_size / FRAGM_SIZE);                          //total number of chunks needed form the upload
+    size_t ret, to_send;                                                                     //number of byte to send in the specific msg
+    uint32_t payload_size, payload_size_n;                                       //bytes read by the fread function
     array<unsigned char, AAD_LEN> aad;                                                          //aad of the msg
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       //msg to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                                          //encrypted text
     
     clear_vec_array(send_buffer, frag_buffer.data(), frag_buffer.size());
 
-    for(int i = 0; i < tot_chunks; i++){
+    for(uint32_t i = 0; i < tot_chunks; i++){
         cout << "Chunk n: " << i + 1 << " of " << tot_chunks << endl;
         if(i == tot_chunks - 1){
             to_send = buf.st_size - i * FRAGM_SIZE;
@@ -1094,8 +1078,10 @@ int Client::uploadFile(){
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len < MIN_LEN){
+    if(received_len <= 0 ||
+        (received_len > 0 && uint32_t(received_len) < MIN_LEN)){
         cerr<<"Error during receive phase (S->C, upload)"<<endl;
+        clear_vec(recv_buffer);
         return -1;
     }
 
@@ -1136,7 +1122,9 @@ int Client::uploadFile(){
         //TODO: receive server response to check if file was saved
         plaintext.resize(MAX_BUF_SIZE);        
         received_len = receiveMsg();
-            if(received_len < MIN_LEN){
+
+        if(received_len <= 0 ||
+            (received_len > 0 && uint32_t(received_len) < MIN_LEN)) {
         cerr<<"Error during receive phase (S->C)"<<endl;
         return -1;
         }
@@ -1148,7 +1136,7 @@ int Client::uploadFile(){
             clear_arr(aad.data(), aad.size());
             return -1;
         }
-        opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
+        opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if(opcode != END_OP){
             cerr<<"Error! Exiting upload phase." << endl;
             return -1;
@@ -1244,7 +1232,8 @@ int Client::renameFile(){
     string server_response;
 
     received_len = receiveMsg();
-    if(received_len < MIN_LEN){
+    if(received_len <= 0 ||
+        (received_len > 0 && uint32_t(received_len) < MIN_LEN)){
         cerr <<"Error during receive phase (S->C, rename)";
         return -1;
     }
@@ -1284,17 +1273,18 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
     string path = FILE_PATH_CLT + this->username + "/" + filename;
     ofstream outfile(path, ofstream::binary);
 
-    size_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
-    size_t to_receive;
-    int received_len, pt_len;
-    uint32_t opcode;
-
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> plaintext;
 
+    size_t to_receive;
+    long received_len;
+    uint32_t opcode, pt_len;
+
+    uint32_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
+
     plaintext.fill('0');
 
-    for(int i = 0; i < tot_chunks; i++)
+    for(uint32_t i = 0; i < tot_chunks; i++)
     {
         if(i == tot_chunks - 1)
         {
@@ -1306,7 +1296,7 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
         }
 
         received_len = receiveMsg();
-        if(received_len == -1 || received_len == 0)
+        if(received_len <= 0)
         {
             cerr<<"Error! Exiting receive phase"<<endl;
             return -1;
@@ -1444,7 +1434,7 @@ int Client::downloadFile()
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len == 0 || received_len == -1)
+    if(received_len <= 0)
     {
         cout<<"Error during receive phase (S->C)"<<endl;
 
@@ -1512,7 +1502,7 @@ int Client::downloadFile()
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len == 0 || received_len == -1)
+    if(received_len <= 0)
     {
         cout<<"Error during receive phase (S->C)"<<endl;
 

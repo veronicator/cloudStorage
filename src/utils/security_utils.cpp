@@ -27,6 +27,21 @@ void handleErrors(const char *error, int sockd) {
 
 /********************************************************************/
 
+/**
+ * @return true if overflow, false otherwise
+*/
+bool checkSumOverflow(long a, long b) {
+    return (b >= 0 && a > LONG_MAX - b) ||
+        (b < 0 && a < LONG_MIN - b);
+}
+
+bool checkSumOverflow(uint32_t a, uint32_t b) {
+    return a > UINT32_MAX - b;
+}
+
+
+/********************************************************************/
+
 void clear_vec(vector<unsigned char> &v) {
     if(!v.empty()) {
         v.assign(v.size(), '0');
@@ -72,27 +87,30 @@ long searchFile(string filename, string username, bool server_side){
     char* canon_file = realpath(path.c_str(), NULL);
     
     if(!canon_file){
-        //file not present
-        cout << "file not present" << endl;
+        // file not found
+        cout << "The file does not exist" << endl;
+        free(canon_file);
         return -1;
-    }
-    else{
-        //file present
-        cout << "file present" << endl;
+    } else {
+        //file found
         if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
             cerr << "Invalid path" << endl;
+            free(canon_file);
             return -3;
         }
 
         struct stat buffer;
         if(stat(path.c_str(), &buffer) != 0){
             cout << "File not present! Do not enter" << endl;
+            free(canon_file);
             return -1;
         }
         if(buffer.st_size >= MAX_FILE_DIMENSION){
             cerr << "File too big" << endl;
+            free(canon_file);
             return -2;
         }
+        free(canon_file);
         return buffer.st_size; 
     }
 }
