@@ -121,6 +121,7 @@ bool Server::searchUserExist(string usr_name){
  */
 int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer) {
     uint32_t payload_size_n;
+    ssize_t ret;
     cout << payload_size << " sendMsg: payload size" << endl;
     if(payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
@@ -1107,13 +1108,8 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
     array<unsigned char, FRAGM_SIZE> frag_buffer;                                       
     array<unsigned char, MAX_BUF_SIZE> ciphertext;                                     
     
-    //=== Managemetn Buffer ===
-    frag_buffer.fill('0');
-    ciphertext.fill('0');
-    ui->send_buffer.assign(ui->send_buffer.size(), '0');
-    ui->send_buffer.clear();
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
-
+    //=== Management Buffer ===
+    clear_vec_array(ui->send_buffer, frag_buffer.data(), frag_buffer.size());
     cout << "TOT_CHUNKS: " << tot_chunks << endl;
 
     for(int i = 0; i < tot_chunks; i++)
@@ -1130,7 +1126,11 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
             ui->client_session->createAAD(aad.data(), DOWNLOAD);  //intermediate chunks
         }
 
+        //cout << "---- " << i << ".1" << " ----" << endl;
+
         ret = fread(frag_buffer.data(), sizeof(char), to_send, file);
+
+        //cout << "---- " << i << ".2" << " ----" << endl;
 
         if(ferror(file) != 0 || ret != to_send)
         {
@@ -1142,26 +1142,34 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
             return -1;
         }
 
-        payload_size = ui->client_session->encryptMsg(frag_buffer.data(),
-                    frag_buffer.size(), aad.data(), ciphertext.data());
+        //cout << "---- " << i << ".3" << " ----" << endl;
 
-        payload_size_n = htonl(payload_size);
+        payload_size = ui->client_session->encryptMsg(frag_buffer.data(), to_send, aad.data(), ciphertext.data());
+        
+        cout << "payload size(encrypt): " << payload_size << endl;
 
-        //=== Managemetn Buffer ===
         clear_arr(aad.data(), aad.size());
         frag_buffer.fill('0');
 
+        if(payload_size == 0){
+            cerr << " Error during encryption" << endl;
+            return -1;
+        }
+
+        payload_size_n = htonl(payload_size);
+
+        //cout << "---- " << i << ".4" << " ----" << endl;
+
+        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
         memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
         ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
                                 ciphertext.begin(), ciphertext.begin() + payload_size);
 
-        //=== Managemetn Buffer ===   
-        clear_vec(ui->send_buffer);
-        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+        //cout << "---- " << i << ".5" << " ----" << endl;
 
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1)
         {
-            cerr<<"Error during send phase (C->S) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
+            cerr<<"Error during send phase (S->C) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
 
             //=== Cleaining ===
             clear_arr(aad.data(), aad.size());
@@ -1170,6 +1178,8 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
 
             return -1;
         }
+        clear_vec_array(ui->send_buffer, ciphertext.data(), ciphertext.size());
+        //cout << "---- " << i << ".6" << " ----" << endl;
         //print_progress_bar(tot_chunks, i);
     }
 

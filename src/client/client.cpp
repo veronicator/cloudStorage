@@ -127,7 +127,8 @@ int Client::sendMsg(uint32_t payload_size) {
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    //cout << payload_size << " received payload length" << endl;
+    cout << payload_size << " received payload length" << endl;
+    cout << msg_size << " received msg size" << endl;
     //check if all data are received
     if (payload_size != msg_size - (int)NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
@@ -1282,7 +1283,12 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
             to_receive = FRAGM_SIZE;
         }
 
+        cout << "---- " << i << ".1" << " ----" << endl;
+
         received_len = receiveMsg();
+
+        cout << "---- " << i << ".2" << " ----" << endl;
+
         if(received_len == -1 || received_len == 0)
         {
             cerr<<"Error! Exiting receive phase"<<endl;
@@ -1290,6 +1296,9 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
         }
         pt_len = this->active_session->decryptMsg(this->recv_buffer.data(),
                                 received_len, aad.data(), plaintext.data());
+
+        cout << "---- " << i << ".3" << " ----" << endl;
+
         if (pt_len == 0) {
             cerr << " Error during decryption" << endl;
             clear_arr(plaintext.data(), plaintext.size());
@@ -1299,6 +1308,8 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
         }
 
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+
+        cout << "---- " << i << ".4" << " ----" << endl;
         
         if((opcode == DOWNLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1))
         {
@@ -1312,13 +1323,20 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
             return -1;
         }
 
-        outfile << plaintext.data();
+        cout << "---- " << i << ".5" << " ----" << endl;
+
+        outfile << string(plaintext.begin(), plaintext.begin() + pt_len);
+        clear_arr(plaintext.data(), plaintext.size());
+        clear_arr(aad.data(), aad.size());
+        outfile.flush();
+
+        cout << "---- " << i << ".6" << " ----" << endl;
         //print_progress_bar(tot_chunks, i);
     }
 
     clear_arr(aad.data(), aad.size());
     plaintext.fill('0');
-
+    outfile.close();
     return 1;
 }
 
@@ -1554,10 +1572,9 @@ int Client::downloadFile()
 // _END_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
 
     // === Cleaning ===
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
+    clear_vec(plaintext);
     clear_arr(aad.data(), aad.size());
-    ciphertext.fill('0');
+    clear_arr(ciphertext.data(), ciphertext.size());
     
     return 1;
 }
