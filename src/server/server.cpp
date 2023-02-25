@@ -96,9 +96,9 @@ int Server::getListener() {
  *  registered on the server
  * @usr_name: client username
 */
-bool Server::searchUserExist(string usr_name){
+bool Server::searchUserExist(string usr_name) {
     string path = "./server/userKeys/";
-    for (const auto& entry : fs::directory_iterator(path)){
+    for (const auto& entry : fs::directory_iterator(path)) {
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
         std::smatch match;
@@ -247,7 +247,7 @@ void Server::run_thread(int sockd) {
     try {
         usr = connectedClient.at(sockd);
     }
-    catch(const out_of_range& ex){
+    catch(const out_of_range& ex) {
         cerr<<"Impossible to find the user"<<endl;
         return;
     }    
@@ -870,7 +870,7 @@ int Server::sendFileList(int sockd) {
     try{
         ui = connectedClient.at(sockd);
     }
-    catch(const out_of_range& ex){
+    catch(const out_of_range& ex) {
         cerr<<"Impossible to find the user"<<endl;
         return -1;
     }
@@ -880,12 +880,12 @@ int Server::sendFileList(int sockd) {
     //cout << "path_file: " << path << endl;
 
     int found_files = 0;
-    for (const auto& entry : fs::directory_iterator(path)){
+    for (const auto& entry : fs::directory_iterator(path)) {
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
         std::smatch match;
 
-        if (std::regex_search(s, match, rgx)){
+        if (std::regex_search(s, match, rgx)) {
             file_list += "-) " + string(match[0]) + "\n";
             found_files++;
             //cout << "File list" << found_files << " :" << file_list << endl;
@@ -903,8 +903,8 @@ int Server::sendFileList(int sockd) {
     cout << "NUM CHUNKS: " << num_chunks << endl;
     plaintext.insert(plaintext.begin(), file_list.begin(), file_list.end());
 
-    for(uint32_t i = 0; i < num_chunks; i++){
-        if(i == num_chunks - 1){
+    for(uint32_t i = 0; i < num_chunks; i++) {
+        if(i == num_chunks - 1) {
             ui->client_session->createAAD(aad.data(), END_OP);
             send_frag.insert(send_frag.begin(), plaintext.begin() + FRAGM_SIZE * i, plaintext.end());
         }
@@ -935,7 +935,7 @@ int Server::sendFileList(int sockd) {
 
         //BIO_dump_fp(stdout, (const char*)ui->send_buffer.data(), ui->send_buffer.size());      
 
-        if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1){
+        if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1) {
             cerr<<"Error during send phase (S->C) | File List Phase"<<endl;
             return -1;
         }
@@ -952,7 +952,7 @@ void Server::logoutClient(int sockd) {
     try{
         ui = connectedClient.at(sockd);
     }
-    catch(const out_of_range& ex){
+    catch(const out_of_range& ex) {
         cerr<<"Impossible to find the user"<<endl;
         return;
     }
@@ -1018,7 +1018,7 @@ void Server::joinThread() {
 int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename) {
     string path = path_file + ui->username + "/" + filename;
     ofstream outfile(path, ofstream::binary);
-    if(!outfile.is_open()){
+    if(!outfile.is_open()) {
         cout<<"It was not possible to create or open the new file"<<endl;
         return -1;
     }
@@ -1141,7 +1141,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
         clear_arr(aad.data(), aad.size());
         frag_buffer.fill('0');
 
-        if(payload_size == 0){
+        if(payload_size == 0) {
             cerr << " Error during encryption" << endl;
             return -1;
         }
@@ -1200,7 +1200,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     try{
         ui = connectedClient.at(sockd);
     }
-    catch(const out_of_range& ex){
+    catch(const out_of_range& ex) {
         cerr<<"Impossible to find the user"<<endl;
         cout<<"****************************************"<<endl;
         return -1;
@@ -1216,7 +1216,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"}; //TODO: check if (^\w[\w\\\/\.\-\+_!@#$%^&()~]{0,19}$) (contains also \/ chars)
     file_ok = regex_match(filename, re);
 
-    if(!file_ok){
+    if(!file_ok) {
         cerr<<"file not correct! Reception of the file terminated"<<endl;
         ack_msg = MALFORMED_FILENAME;
     } else if(searchFile(filename, ui->username, SERVER_SIDE) >= 0) {
@@ -1246,13 +1246,13 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, 
                             output.begin(), output.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0){
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0) {
         cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
         cout<<"****************************************"<<endl;
         return -1;
     }
 
-    if(strcmp(ack_msg.c_str(), FILE_PRESENT) == 0){
+    if(strcmp(ack_msg.c_str(), FILE_PRESENT) == 0) {
         cout << "File is already in the cloud storage. Upload rejected" << endl;
         return -1;       
     }
@@ -1263,7 +1263,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
     int ret = receiveMsgChunks(ui, filedimension, filename);
     
-    if(ret == -1){
+    if(ret == -1) {
         cerr<<"Error! Something went wrong while receiving the file"<<endl;
         ack_msg = "File not received correctly\n";
     }
@@ -1288,7 +1288,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
     clear_vec_array(plaintext, aad.data(), aad.size());
     
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1){
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1) {
         cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
         return -1;
     }
@@ -1368,13 +1368,13 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
                             ciphertext.begin(), ciphertext.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0){
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0) {
         cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
         cout<<"****************************************"<<endl;
         return -1;
     }
 
-    if(strcmp(ack_msg.c_str(), FILE_NOT_PRESENT) == 0){
+    if(strcmp(ack_msg.c_str(), FILE_NOT_PRESENT) == 0) {
         cout << "File not found in the cloud storage. Download rejected" << endl;
         return -1;       
     }
@@ -1473,13 +1473,13 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     
 }
 
-int Server::changeName(string old_filename, string new_filename, string username){
+int Server::changeName(string old_filename, string new_filename, string username) {
     char curr_dir[1024];
     string old_path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + old_filename;
     string new_path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + new_filename;
 
     int result = rename(old_path.c_str(), new_path.c_str());
-    if(result == 0){
+    if(result == 0) {
         cout << "File renamed" << endl;
         return 0;
     }
@@ -1505,7 +1505,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     try{
         ui = connectedClient.at(sockd);
     }
-    catch(const out_of_range& ex){
+    catch(const out_of_range& ex) {
         cerr<<"Impossible to find the user"<<endl;
         return -1;
     }
@@ -1533,7 +1533,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
     file_ok = (regex_match(old_filename, re) && regex_match(new_filename, re));
 
-    if(!file_ok){
+    if(!file_ok) {
         cerr<<"Filename not correct! Rename terminated"<<endl;
         ack_msg = "Filename not correct";
     } else { //TODO: handle -2 and -3 cases
@@ -1543,16 +1543,16 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
             file_ok = false;
         }
 
-        if(searchFile(new_filename, ui->username, SERVER_SIDE) >= 0){
+        if(searchFile(new_filename, ui->username, SERVER_SIDE) >= 0) {
             cerr << "The new filename is already used by another file" << endl;
             ack_msg += "The new filename is already used by another file\n";
             file_ok = false;
         }
     }
     
-    if(file_ok){
+    if(file_ok) {
         ack_msg = MESSAGE_OK;
-        if(changeName(old_filename, new_filename, ui->username) == -1){
+        if(changeName(old_filename, new_filename, ui->username) == -1) {
             cout << "Error during rename" << endl;
             return -1;
         }
@@ -1581,7 +1581,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1){
+    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1) {
         cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
         cout<<"****************************************"<<endl;
         return -1;
