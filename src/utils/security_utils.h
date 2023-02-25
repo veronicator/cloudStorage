@@ -65,11 +65,6 @@ void custom_act(int signum); //the function to be called when signal is sent to 
 
 void clear_vec(vector<unsigned char>& v);
 void clear_arr(unsigned char* arr, int arr_len);
-void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3);
-void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len);
-void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2);
-
-
 
 class Session {
     unsigned char* session_key = nullptr;

@@ -1,7 +1,5 @@
 #include "../utils/security_utils.h"
 
-#define path_file "./server/userStorage/"
-
 struct UserInfo {
     string username;    // client username
     int sockd;

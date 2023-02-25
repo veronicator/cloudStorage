@@ -53,23 +53,6 @@ void clear_arr(unsigned char* arr, int arr_len) {
     memset(arr, '0', sizeof(char)*arr_len);
 }
 
-
-void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3){
-    clear_vec(v1);
-    clear_vec(v2);
-    clear_vec(v3);
-}
-
-void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2){
-    clear_vec(v1);
-    clear_vec(v2); 
-}
-
-void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len){
-    clear_vec(v1);
-    memset(arr, '0', sizeof(char)*arr_len);
-}
-
 long searchFile(string filename, string username, bool server_side){
     char curr_dir[1024];
     getcwd(curr_dir, sizeof(curr_dir));
@@ -805,9 +788,9 @@ int removeFile(string filename, string username, bool server_side)
     char curr_dir[1024];
     string path;
     if(server_side)
-        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + filename;
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + FILE_PATH_SERVER + username + "/" + filename;
     else
-        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/client/users/" + username + "/" + filename;
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + FILE_PATH_CLIENT + username + "/" + filename;
 
     if(remove(path.c_str()) != 0){   
         perror ("\n * * * ERROR");
