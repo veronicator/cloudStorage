@@ -1022,13 +1022,13 @@ uint32_t Client::sendMsgChunks(string filename){
 
 
 int Client::uploadFile(){
-    long file_dim;  //TODO: long is better than uint (return values of searchFile can be negative) ?                                                          //dimension (in byte) of the file to upload
-    uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
-    uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
-    string filename;                                                        //name of the file to upload
-    array<unsigned char, AAD_LEN> aad;                                     //aad of the msg
-    vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
-    array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
+    long file_dim;
+    uint32_t payload_size, payload_size_n;
+    uint32_t file_dim_l_n, file_dim_h_n;
+    string filename;
+    array<unsigned char, AAD_LEN> aad;
+    vector<unsigned char> plaintext(FILE_SIZE_FIELD);
+    array<unsigned char, MAX_BUF_SIZE> output;
 
     cout<<"****************************************"<<endl;
     cout<<"*********     UPLOAD FILE      *********"<<endl;
@@ -1050,10 +1050,6 @@ int Client::uploadFile(){
         return -1;
     }                   
 
-    cout << "file_dim: " << to_string(file_dim) << endl;
-    cout << "filename: " << filename.data()<< endl;
-    cout << "filename_dim: " << filename.size() << endl;
-    //insert in the plaintext filedimension and filename
     file_dim_h_n = htonl((uint32_t) (file_dim >> 32));
     file_dim_l_n = htonl((uint32_t) (file_dim));
     memcpy(plaintext.data(), &file_dim_l_n, NUMERIC_FIELD_SIZE);
@@ -1062,36 +1058,31 @@ int Client::uploadFile(){
 
     this->active_session->createAAD(aad.data(), UPLOAD_REQ);                
 
-    //send the basic information of the upload operation
-    //to be sent: payload_size | IV | count_cs | opcode | {output}_Kcs | TAG
-
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    clear_arr(aad.data(), aad.size());
+    clear_vec(plaintext);
+
     if (payload_size == 0) {
-        cerr << " Error during encryption" << endl;
-        clear_vec_array(plaintext, output.data(), output.size());
+        cerr << " Error during encryption" << endl;     
+        clear_arr(output.data(), output.size());
         return -1;
     }
     payload_size_n = htonl(payload_size);
 
-    //clear aad, plaintext and send_buffer
-    clear_two_vec(plaintext, send_buffer);
-    clear_arr(aad.data(), aad.size());
-
+    clear_vec(send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
+    clear_vec(send_buffer);
     if(sendMsg(payload_size) != 1){
         cerr<<"Error during send phase (C->S | Upload Request Phase)"<<endl;
+        clear_arr(output.data(), output.size());
         return -1;
     }
 
-    //clear send_buffer and output array
-    clear_vec_array(send_buffer, output.data(), output.size());
+    clear_arr(output.data(), output.size());
 
-    //receive from the server the response to the upload request
-    //received_len:  legnht of the message received from the server
-    //server_response: message from the server containing the response to the request
     int pt_len;                                                          
     uint16_t opcode;
     uint32_t ret;  
@@ -1109,20 +1100,24 @@ int Client::uploadFile(){
     }
 
     pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
+    clear_vec(recv_buffer);
     if (pt_len == 0) {
         cerr << " Error during decryption" << endl;
-        clear_two_vec(plaintext, recv_buffer);
+        clear_vec(plaintext);
         clear_arr(aad.data(), aad.size());
         return -1;
     }
 
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+    clear_arr(aad.data(), aad.size());
     if(opcode != UPLOAD_REQ){
         cerr<<"Error! Exiting upload request phase"<<endl;
+        clear_vec(plaintext);
         return -1;
     }
     
     server_response = ((char*)plaintext.data());
+    clear_vec(plaintext);
     if(server_response == FILE_PRESENT){      
         cout << "File not accepted. " << server_response << endl;
         return 1;
@@ -1132,38 +1127,41 @@ int Client::uploadFile(){
         return -1;
     }
    
-    //start of the upload
-    cout<<"        -------- UPLOADING --------"<<endl;
+    cout<<"*****           UPLOADING          *****"<<endl;
     
-    //clear aad, plaintext and send_buffer
-    clear_two_vec(plaintext, send_buffer);
-    clear_arr(aad.data(), aad.size());
+    clear_vec(send_buffer);
 
     ret = sendMsgChunks(filename);
 
     if(ret == 1){
         plaintext.resize(MAX_BUF_SIZE);        
         received_len = receiveMsg();
-
         if(received_len <= 0 ||
             (received_len > 0 && uint32_t(received_len) < MIN_LEN)) {
         cerr<<"Error during receive phase (S->C)"<<endl;
+        clear_vec(recv_buffer);
         return -1;
         }
         
         pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
+        clear_vec(recv_buffer);
         if (pt_len == 0) {
             cerr << " Error during decryption" << endl;
-            clear_two_vec(plaintext, recv_buffer);
+            clear_vec(plaintext);
             clear_arr(aad.data(), aad.size());
             return -1;
         }
-        opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+
+        opcode = ntohs(*(uint16_t*)(aad.data() + sizeof(uint32_t)));
+        clear_arr(aad.data(), aad.size());
         if(opcode != END_OP){
             cerr<<"Error! Exiting upload phase." << endl;
+            clear_vec(plaintext);
             return -1;
         }
+
         server_response = string(plaintext.begin(), plaintext.begin() + pt_len);
+        clear_vec(plaintext);
         if(server_response != OP_TERMINATED){
             cerr<<"Upload not correcty terminated. "<< server_response <<endl;
             return -1;
@@ -1173,8 +1171,10 @@ int Client::uploadFile(){
         cerr<<"Error! Exiting upload phase"<<endl;
         return -1;
     }
-    cout<<"        ---- UPLOAD TERMINATED ----"<<endl<<endl;
-    cout<<"****************************************"<<endl<<endl;
+
+    cout<<"****************************************"<<endl;
+    cout<<"*****       UPLOAD TERMINATED      *****"<<endl;
+    cout<<"****************************************"<<endl;
 
     return 1;
 }
@@ -1183,69 +1183,58 @@ int Client::uploadFile(){
 int Client::renameFile(){
 
     string old_filename, new_filename;
-    array<unsigned char, AAD_LEN> aad;                                              //aad of the msg
-    vector<unsigned char> plaintext(2 * NUMERIC_FIELD_SIZE);                       //plaintext to be encrypted
+    array<unsigned char, AAD_LEN> aad;
+    vector<unsigned char> plaintext(2 * NUMERIC_FIELD_SIZE);
     array<unsigned char, MAX_BUF_SIZE> output;
     uint32_t old_filename_lenght, old_filename_lenght_n;
-    uint32_t new_filename_lenght, new_filename_lenght_n;   
+    uint32_t new_filename_lenght, new_filename_lenght_n;
     uint32_t payload_size, payload_size_n;
 
     cout<<"****************************************"<<endl;
-    cout<<"*********     Rename File      *********"<<endl;
+    cout<<"*********     RENAME FILE      *********"<<endl;
     cout<<"****************************************"<<endl;
 
     readFilenameInput(old_filename, "Insert the name of the file to be changed: ");
     readFilenameInput(new_filename, "Insert the new name of the file: ");
 
-    //old_filename_lenght = old_filename.length();
-    cout << "OLD: "<<endl;
-    BIO_dump_fp(stdout, old_filename.data(), old_filename.size());
-    cout << "NEW: " << endl;
-    BIO_dump_fp(stdout, new_filename.data(), new_filename.size());
     old_filename_lenght = old_filename.size();
     new_filename_lenght = new_filename.size();
-    cout << "old_filename_len: " << old_filename_lenght << endl;
-    cout << "new_filename_len: " << new_filename_lenght << endl;
 
     old_filename_lenght_n = htonl(old_filename_lenght);
-
     new_filename_lenght_n = htonl(new_filename_lenght);
 
     memcpy(plaintext.data(), &old_filename_lenght_n, NUMERIC_FIELD_SIZE);
-    //plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, old_filename.begin(), old_filename.end());
-    //plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE + old_filename_lenght, new_filename.begin(), new_filename.end());
     memcpy(plaintext.data() + NUMERIC_FIELD_SIZE, &new_filename_lenght_n, NUMERIC_FIELD_SIZE);
     plaintext.insert(plaintext.begin() + 2 * NUMERIC_FIELD_SIZE, old_filename.begin(), old_filename.end());
     plaintext.insert(plaintext.begin() + 2 * NUMERIC_FIELD_SIZE + old_filename_lenght, new_filename.begin(), new_filename.end());
 
-    BIO_dump_fp(stdout, (const char*)plaintext.data(), plaintext.size());
-
     this->active_session->createAAD(aad.data(), RENAME_REQ);
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
-    //clear aad, plaintext and send_buffer
-    clear_two_vec(plaintext, send_buffer);
-    clear_arr(aad.data(), aad.size());    
+    clear_vec(plaintext);
+    clear_arr(aad.data(), aad.size());
+
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
+        clear_arr(output.data(), output.size());
         return -1;
     }
-    payload_size_n = htonl(payload_size);
-
+    clear_vec(send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    payload_size_n = htonl(payload_size);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    output.fill('0');
+    clear_arr(output.data(), output.size());
 
     if(sendMsg(payload_size) != 1){
         cerr<<"Error during send phase (C->S | Rename Request Phase)"<<endl;
+        clear_vec(send_buffer);
         return -1;
     }
-    //send the information of the rename operation
-    //to be sent: <count_cs, opcode=3, {old_filename, new_filename}_Kcs>
 
-    //server response: <count_sc, op_code=9, {ResponseMsg}_Kcs>
+    clear_vec(send_buffer);
     plaintext.resize(MAX_BUF_SIZE);
 
     uint16_t opcode;
@@ -1257,24 +1246,29 @@ int Client::renameFile(){
     if(received_len <= 0 ||
         (received_len > 0 && uint32_t(received_len) < MIN_LEN)){
         cerr <<"Error during receive phase (S->C, rename)";
+        clear_vec(recv_buffer);
         return -1;
     }
 
     pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len, aad.data(), plaintext.data());
+    clear_vec(recv_buffer);
     if (pt_len == 0) {
         cerr << " Error during decryption" << endl;
-        clear_two_vec(plaintext, send_buffer);
+        clear_vec(plaintext);
         clear_arr(aad.data(), aad.size());
         return -1;
     }
 
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+    clear_arr(aad.data(), aad.size());
     if(opcode != END_OP){
         cerr << "Error! Exiting rename request phase"<<endl;
+        clear_vec(plaintext);
         return -1;
     }
 
     server_response = ((char*)plaintext.data());
+    clear_vec(plaintext);
     if(server_response != MESSAGE_OK){
         cerr << "Rename not accepted. "<< server_response <<endl;
         return -1;
@@ -1292,7 +1286,7 @@ int Client::renameFile(){
 
 int Client::receiveMsgChunks( uint32_t filedimension, string filename)
 {
-    string path = FILE_PATH_CLT + this->username + "/" + filename;
+    string path = FILE_PATH_CLIENT + this->username + "/" + filename;
     ofstream outfile(path, ofstream::binary);
 
     array<unsigned char, AAD_LEN> aad;
@@ -1304,72 +1298,54 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
 
     uint32_t tot_chunks = ceil((float)filedimension / FRAGM_SIZE);
 
-    plaintext.fill('0');
-
-    for(uint32_t i = 0; i < tot_chunks; i++)
-    {
+    for(int i = 0; i < tot_chunks; i++){
         if(i == tot_chunks - 1)
-        {
             to_receive = filedimension - i * FRAGM_SIZE;
-        }
         else
-        {
             to_receive = FRAGM_SIZE;
-        }
-
-        cout << "---- " << i << ".1" << " ----" << endl;
 
         received_len = receiveMsg();
-        
-        cout << "---- " << i << ".2" << " ----" << endl;
 
         if(received_len <= 0)
         {
             cerr<<"Error! Exiting receive phase"<<endl;
+            clear_vec(recv_buffer);
             return -1;
         }
+        
         pt_len = this->active_session->decryptMsg(this->recv_buffer.data(),
                                 received_len, aad.data(), plaintext.data());
-
-        cout << "---- " << i << ".3" << " ----" << endl;
-
+        clear_vec(recv_buffer);
+        
         if (pt_len == 0) {
             cerr << " Error during decryption" << endl;
-            clear_arr(plaintext.data(), plaintext.size());
-            clear_vec(recv_buffer);
+            clear_arr(plaintext.data(), plaintext.size());    
             clear_arr(aad.data(), aad.size());
             return -1;
         }
 
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
-
-        cout << "---- " << i << ".4" << " ----" << endl;
+        clear_arr(aad.data(), aad.size());
         
-        if((opcode == DOWNLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1))
-        {
+        if((opcode == DOWNLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)){
             outfile.close();
             cerr << "Wrong message format. Exiting"<<endl;
+            clear_arr(plaintext.data(), plaintext.size());
             
             if(remove(path.c_str()) != 0)
-            {
                 cerr << "File not correctly cancelled"<<endl;
-            }
+            
             return -1;
         }
-
-        cout << "---- " << i << ".5" << " ----" << endl;
 
         outfile << string(plaintext.begin(), plaintext.begin() + pt_len);
         clear_arr(plaintext.data(), plaintext.size());
         clear_arr(aad.data(), aad.size());
         outfile.flush();
-
-        cout << "---- " << i << ".6" << " ----" << endl;
-        //print_progress_bar(tot_chunks, i);
     }
 
     clear_arr(aad.data(), aad.size());
-    plaintext.fill('0');
+    clear_arr(plaintext.data(), plaintext.size());
     outfile.close();
     return 1;
 }
@@ -1385,37 +1361,32 @@ int Client::downloadFile()
     readFilenameInput(filename, "Insert the name of the file you want to Download: ");
 
     // === Checking and managing the existence of the file within the Download folder ===
-    if (searchFile(filename, this->username, CLIENT_SIDE) >= 0)
-    {
+    if (searchFile(filename, this->username, CLIENT_SIDE) >= 0){
         string choice;
 
         cout << "The requested file already exists in the Download folder, "
-        << "do you want to overwrite it?: [y/n]\n\n "<<endl;
+        << "do you want to overwrite it?: [y/n]\n"<<endl;
         cout<<"_Ans: ";
         getline(cin, choice);
 
         if(!cin)
-        {   cerr << "\n === Error during input ===\n" << endl; return -1; }
+            cerr << "\n === Error during input ===\n" << endl; return -1;
 
-        while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
-        {
+        while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" ){
             cout << "\nError: Type Y/y or N/n!" << endl <<"Try again: [y/n] ";
             getline(cin, choice);
 
-            if(!cin)
-            {
+            if(!cin){
                 cerr << "\n === Error during input ===\n" << endl;
                 return -1;
             }
         }
-        if(choice == "N" || choice == "n")
-        {
+        if(choice == "N" || choice == "n"){
             cout<<"\n\t~ The file *( "<< filename << " )* will not be overwritten. ~\n\n"<<endl;
             return -1;
         }
-
-        if(removeFile(filename, this->username, CLIENT_SIDE) != 1)
-        {
+        
+        if(removeFile(filename, this->username, CLIENT_SIDE) != 1){
             cout << "\n\t --- Error during Deleting file ---\n" << endl;
             return -1; 
         }
@@ -1426,30 +1397,27 @@ int Client::downloadFile()
     filename_size_n = htonl(filename_size);
     memcpy(plaintext.data(), &filename_size_n, NUMERIC_FIELD_SIZE);
     plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, filename.begin(), filename.begin() + filename.size());
-    BIO_dump_fp(stdout, (const char*)plaintext.data(), plaintext.size());
 
     this->active_session->createAAD(aad.data(), DOWNLOAD_REQ);
     
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
                                                     aad.data(), ciphertext.data());
+    clear_vec(plaintext);
+    clear_arr(aad.data(), aad.size());
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
-        clear_two_vec(plaintext, send_buffer);
-        clear_arr(aad.data(), aad.size());
+        clear_arr(ciphertext.data(), ciphertext.size());
         return -1;
     }
-    payload_size_n = htonl(payload_size);
-
-    // === Cleaning ===
-    clear_two_vec(plaintext, send_buffer);
-    clear_arr(aad.data(), aad.size());
-
+    clear_vec(plaintext);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    payload_size_n = htonl(payload_size);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
 
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, ciphertext.begin(),
                         ciphertext.begin() + payload_size);
-    ciphertext.fill('0');
+    clear_arr(ciphertext.data(), ciphertext.size());
 
 
 // _BEGIN_(1)-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------
@@ -1457,13 +1425,7 @@ int Client::downloadFile()
     if(sendMsg(payload_size) != 1)
     {
         cout<<"Error during send phase (C->S)"<<endl;
-        
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');
-
+        clear_vec(send_buffer);
         return -1;
     }
 
@@ -1482,37 +1444,27 @@ int Client::downloadFile()
     if(received_len <= 0)
     {
         cout<<"Error during receive phase (S->C)"<<endl;
-
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        aad.fill('0');
-        ciphertext.fill('0');
-
+        clear_vec(recv_buffer);
         return -1;
     }
 
     //received from server in terms of byte
     plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
+    clear_vec(recv_buffer);
     if (plaintext_len == 0) {
         cerr << " Error during decryption" << endl;
-        clear_arr(ciphertext.data(), ciphertext.size());
-        clear_two_vec(plaintext, recv_buffer);
+        clear_vec(plaintext);
         clear_arr(aad.data(), aad.size());
         return -1;
     }
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
-    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE)); 
+    clear_arr(aad.data(), aad.size());   
     if(opcode != DOWNLOAD_REQ)
     {
         cout<<"Error! Exiting download request phase"<<endl;
-
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-
+        clear_vec(plaintext);
         return -1;
     }
 
@@ -1521,17 +1473,10 @@ int Client::downloadFile()
     /*--- Check Response file existence in the Cloud Storage by the Server ---*/
     filedimension = ntohl(*(uint32_t*)plaintext.data());
     server_response.insert(server_response.begin(), plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.begin() + plaintext_len);    
-    
-    if(server_response != MESSAGE_OK)
-    {       
+    clear_vec(plaintext);
+
+    if(server_response != MESSAGE_OK){       
         cout<<"The file cannot be downloaded: "<< server_response <<endl;
-
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');
-
         return -1;
     }
     
@@ -1544,24 +1489,12 @@ int Client::downloadFile()
 
     fileChunk = receiveMsgChunks(filedimension, filename);
 
-    if(fileChunk == -1)
-    {
-        cout<<"Error! Exiting Download phase"<<endl;
-
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');
-        
+    if(fileChunk == -1){
+        cout<<"Error! Exiting Download phase"<<endl;      
         return -1;
     }
 
 // _END_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
-
-    // === Cleaning ===
-    clear_vec(plaintext);
-    clear_arr(aad.data(), aad.size()); 
     
     cout << "\n\tFile Download Completed!" << endl;
 
@@ -1573,44 +1506,33 @@ int Client::downloadFile()
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
                                                     aad.data(), ciphertext.data());
+    clear_vec(plaintext);
+    clear_arr(aad.data(), aad.size());
+    
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
-        clear_two_vec(plaintext, send_buffer);
-        clear_arr(aad.data(), aad.size());
+        clear_arr(ciphertext.data(), ciphertext.size());
         return -1;
     }
-    payload_size_n = htonl(payload_size);
-
-    clear_two_vec(plaintext, send_buffer);
-    clear_arr(aad.data(), aad.size());
-
+    clear_vec(send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    payload_size_n = htonl(payload_size);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin()+ NUMERIC_FIELD_SIZE, ciphertext.begin(),
                         ciphertext.begin() + payload_size);
+    clear_arr(ciphertext.data(), ciphertext.size());
 
 // _BEGIN_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
 
-    if(sendMsg(payload_size) != 1)
-    {
+    if(sendMsg(payload_size) != 1){
         cout<<"Error during send phase (C->S)"<<endl;
-
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');
-
+        clear_vec(send_buffer);
         return -1;
     }
     
 // _END_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
-
-    // === Cleaning ===
-    clear_vec(plaintext);
-    clear_arr(aad.data(), aad.size());
-    ciphertext.fill('0');
-
+    
     return 1;
 }
 
@@ -1633,27 +1555,28 @@ int Client::deleteFile()
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
                                                     aad.data(), ciphertext.data());
     // === Cleaning ===
-    clear_two_vec(plaintext, send_buffer);
+    clear_vec(plaintext);
     clear_arr(aad.data(), aad.size());
 
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
         clear_arr(ciphertext.data(), ciphertext.size());
+     
         return -1;
     }
-    payload_size_n = htonl(payload_size);
 
+    clear_vec(send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    payload_size_n = htonl(payload_size);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE, 
                         ciphertext.begin(), ciphertext.begin() + payload_size);
-    ciphertext.fill('0');
+    clear_arr(ciphertext.data(), ciphertext.size());
 
-    if(sendMsg(payload_size) != 1)
-    {
+    if(sendMsg(payload_size) != 1){
         cout<<"Error during send phase (C->S)"<<endl;
         clear_vec(send_buffer);
-
         return -1;
     }
 
@@ -1664,27 +1587,27 @@ int Client::deleteFile()
 
     uint16_t opcode;
     long received_len;  
-    uint32_t plaintext_len;
+    uint32_t pt_len;
     string server_response, choice; 
 
     // === Reuse of vectors declared at the beginning ===
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len <= 0)
-    {
+    if(received_len <= 0){
         cout<<"Error during receive phase (S->C)"<<endl;
-        clear_vec(plaintext);
-
+        clear_vec(recv_buffer);
         return -1;
     }
 
     //received from server in terms of byte
-    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+    pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
-    if (plaintext_len == 0) {
+    clear_vec(recv_buffer);
+
+    if (pt_len == 0) {
         cerr << " Error during decryption" << endl;
-        clear_two_vec(plaintext, recv_buffer);
+        clear_vec(plaintext);
         clear_arr(aad.data(), aad.size());
         return -1;
     }
@@ -1692,52 +1615,38 @@ int Client::deleteFile()
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
     clear_arr(aad.data(), aad.size());
-    if(opcode != DELETE_REQ)
-    {
-        cout<<"Error! Exiting DELETE request phase"<<endl;
-        // === Cleaning ===
-        clear_vec(plaintext);
 
+    if(opcode != DELETE_REQ){
+        cout<<"Error! Exiting DELETE request phase"<<endl;
+        clear_vec(plaintext);
         return -1;
     }
     
     /*--- Check Response existence of file in the Cloud Storage by the Server ---*/
     server_response = ((char*)plaintext.data());
+    clear_vec(plaintext);
 
-    if(server_response != MESSAGE_OK)
-    {       
+    if(server_response != MESSAGE_OK){       
         cout << "The delete request was refused: " << server_response << endl;
-        // === Cleaning ===
-        clear_vec(plaintext);
         return -1;
     }
     
 // _END_(2)-------- [ M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] --------
     
     cout << "Are you sure to delete the file " << filename << "?: [y/n]\n" <<endl;
- 
     getline(cin, choice);
 
-    if(!cin)
-    {
+    if(!cin){
         cerr << "\n === Error during input ===\n" << endl;
-        // === Cleaning ===
-        clear_vec(plaintext);
-
         return -1;
     }
 
-    while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" )
-    {
+    while(choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" ){
         cout << "\nError: Type Y/y or N/n!" << endl <<"Try again: [y/n] ";
         getline(cin, choice);
 
-        if(!cin)
-        {
+        if(!cin){
             cerr << "\n === Error during input ===\n" << endl;
-
-            // === Cleaning ===
-            clear_vec(plaintext);
             return -1;
         }
     }
@@ -1748,10 +1657,6 @@ int Client::deleteFile()
         
     
 // _BEGIN_(3)-------------- [ M3: SEND_USER-CHOICE_TO_SERVER ] --------------
-    
-    // === Cleaning ===
-    clear_vec(plaintext);
-    clear_arr(aad.data(), aad.size());
 
     // === Preparing Data Sending and Encryption ===    
     this->active_session->createAAD(aad.data(), DELETE_CONFIRM);
@@ -1760,33 +1665,29 @@ int Client::deleteFile()
 
     payload_size = this->active_session->encryptMsg(plaintext.data(), plaintext.size(),
                                                     aad.data(), ciphertext.data());
+    clear_vec(plaintext);
+    clear_arr(aad.data(), aad.size());
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
-        clear_two_vec(plaintext, send_buffer);
-        clear_arr(aad.data(), aad.size());
+        clear_arr(ciphertext.data(), ciphertext.size());
         return -1;
     }
-    payload_size_n = htonl(payload_size);
-
+    clear_vec(send_buffer);
     send_buffer.resize(NUMERIC_FIELD_SIZE);
+
+    payload_size_n = htonl(payload_size);
     memcpy(send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     send_buffer.insert(send_buffer.begin() + NUMERIC_FIELD_SIZE,
                         ciphertext.begin(), ciphertext.begin() + payload_size);
-    ciphertext.fill('0');
+    clear_arr(ciphertext.data(), ciphertext.size());
 
-
-    if(sendMsg(payload_size) != 1)
-    {
+    if(sendMsg(payload_size) != 1){
         cout<<"Error during send phase (C->S)"<<endl;
-        
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');
-
+        clear_vec(send_buffer);
         return -1;
     }
+
+    clear_vec(send_buffer);
     
 // _END_(3)-------------- [ M3: SEND_USER-CHOICE_TO_SERVER] --------------
 
@@ -1797,55 +1698,38 @@ int Client::deleteFile()
     plaintext.resize(MAX_BUF_SIZE);
 
     received_len = receiveMsg();
-    if(received_len <= 0)
-    {
+    if(received_len <= 0){
         cout<<"Error during receive phase (S->C)"<<endl;
-
-        // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');   
-            
+        clear_vec(recv_buffer) ;
         return -1;
     }
 
     //received from server in terms of byte
-    plaintext_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
+    pt_len = this->active_session->decryptMsg(recv_buffer.data(), received_len,
                                                 aad.data(), plaintext.data());
-    if (plaintext_len == 0) {
+    clear_vec(recv_buffer);
+
+    if (pt_len == 0) {
         cerr << " Error during decryption" << endl;
-        clear_two_vec(plaintext, recv_buffer);
+        clear_vec(plaintext);
         clear_arr(aad.data(), aad.size());
         return -1;
     }
 
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
-    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
-    if(opcode != END_OP)
-    {
-        cout<<"Error! Exiting DELETE phase"<<endl;
+    opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
+    clear_arr(aad.data(), aad.size()) ;
 
-         // === Cleaning ===
-        plaintext.assign(plaintext.size(), '0');
-        plaintext.clear();
-        clear_arr(aad.data(), aad.size());
-        ciphertext.fill('0');
-        
+    if(opcode != END_OP){
+        cout<<"Error! Exiting DELETE phase"<<endl;
+        clear_vec(plaintext);
         return -1;
     }
     
     server_response = ((char*)plaintext.data());
-    
+    clear_vec(plaintext);
     cout<<"\nEND_DELETE_OPERATION_MSG: "<< server_response <<endl;
 
-//_END_(4)----------- [ M4: RECEIVE_CONFIRMATION_DELETE_OPERATION_FROM_SERVER ] -----------
-
-    // === Cleaning ===
-    plaintext.assign(plaintext.size(), '0');
-    plaintext.clear();
-    clear_arr(aad.data(), aad.size());
-    ciphertext.fill('0');
-    
+//_END_(4)----------- [ M4: RECEIVE_CONFIRMATION_DELETE_OPERATION_FROM_SERVER ] -----------    
     return 1;
 }

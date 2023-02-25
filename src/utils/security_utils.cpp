@@ -788,9 +788,9 @@ int removeFile(string filename, string username, bool server_side)
     char curr_dir[1024];
     string path;
     if(server_side)
-        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + filename;
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + FILE_PATH_SERVER + username + "/" + filename;
     else
-        path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/client/users/" + username + "/" + filename;
+        path = string(getcwd(curr_dir, sizeof(curr_dir))) + FILE_PATH_CLIENT + username + "/" + filename;
 
     if(remove(path.c_str()) != 0){   
         perror ("\n * * * ERROR");
