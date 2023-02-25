@@ -54,6 +54,7 @@ void readInput(string& input, const size_t MAX_SIZE, string);  // read MAX_SIZE 
 void readFilenameInput(string& input, string msg);
 
 //bool searchUserExist(string usr_name);
+char* canonicalizationPath(string path, string dir_path);
 long searchFile(string filename, string username, bool side);
 int removeFile(string filename, string username, bool side);
 

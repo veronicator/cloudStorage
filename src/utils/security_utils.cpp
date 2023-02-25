@@ -54,27 +54,57 @@ void clear_arr(unsigned char* arr, int arr_len) {
 }
 
 
-void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3){
+void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3) {
     clear_vec(v1);
     clear_vec(v2);
     clear_vec(v3);
 }
 
-void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2){
+void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2) {
     clear_vec(v1);
     clear_vec(v2); 
 }
 
-void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len){
+void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len) {
     clear_vec(v1);
     memset(arr, '0', sizeof(char)*arr_len);
 }
 
-long searchFile(string filename, string username, bool server_side){
+char* canonicalizationPath(string file_path, string dir_path) {
+    cout << "canonicalization path: " << file_path << endl;
+    char *canon_file = realpath(file_path.c_str(), NULL);
+    
+    if(!canon_file) {
+        cerr << "realpath canon_file failed" << endl;
+        free(canon_file);
+        return nullptr;
+    }
+
+    char *canon_dir = realpath(dir_path.c_str(), NULL);
+    if(!canon_dir) {
+        cerr << "realpath canon_dir failed" << endl;
+        free(canon_file);
+        free(canon_dir);
+        return nullptr;
+    }
+
+    if(strncmp(canon_dir, canon_file, strlen(canon_dir)) != 0) {
+            cerr << "Invalid path" << endl;
+            free(canon_file);
+            free(canon_dir);
+            return nullptr;
+    }
+
+    free(canon_dir);
+    return canon_file;
+        
+}
+
+long searchFile(string filename, string username, bool server_side) {
     char curr_dir[1024];
     getcwd(curr_dir, sizeof(curr_dir));
     string path, ok_dir;
-    if(server_side){
+    if(server_side) {
         ok_dir = string(curr_dir) + "/server/userStorage/" + username;
         path = ok_dir + "/" + filename;
     }
@@ -83,37 +113,27 @@ long searchFile(string filename, string username, bool server_side){
         path = ok_dir + "/" + filename;
     }
 
-    cout << "path: " << path << endl;
-    char* canon_file = realpath(path.c_str(), NULL);
-    
-    if(!canon_file){
-        // file not found
-        cout << "The file does not exist" << endl;
+    char* canon_file = canonicalizationPath(path, ok_dir);
+    if (!canon_file) {
+        cerr << "Invalid filename. Canonicalization failed." << endl;
         free(canon_file);
         return -1;
-    } else {
-        //file found
-        if(strncmp(ok_dir.c_str(), canon_file, ok_dir.size()) != 0){
-            cerr << "Invalid path" << endl;
-            free(canon_file);
-            return -3;
-        }
-
-        struct stat buffer;
-        if(stat(path.c_str(), &buffer) != 0){
-            cout << "File not present! Do not enter" << endl;
-            free(canon_file);
-            return -1;
-        }
-        
-        if(buffer.st_size >= MAX_FILE_DIMENSION){
-            cerr << "File too big" << endl;
-            free(canon_file);
-            return -2;
-        }
-        free(canon_file);
-        return buffer.st_size; 
     }
+
+    struct stat buffer;
+    if(stat(canon_file, &buffer) != 0) {
+        cout << "File not present! Do not enter" << endl;
+        free(canon_file);
+        return -1;
+    }
+    
+    if(buffer.st_size >= MAX_FILE_DIMENSION) {
+        cerr << "File too big" << endl;
+        free(canon_file);
+        return -2;
+    }
+    free(canon_file);
+    return buffer.st_size; 
 }
 
 void readFilenameInput(string& input, string msg) {
@@ -249,23 +269,23 @@ int Session::computeHash(unsigned char* msg, int msg_len, unsigned char*& msg_di
     // create & init context
     EVP_MD_CTX* hCtx;
     hCtx = EVP_MD_CTX_new();
-    if(!hCtx){
+    if(!hCtx) {
         perror("EVP_MD_CTX_new returned NULL");
         return -1;
     }
     // allocate mem for digest
     msg_digest = (unsigned char*)malloc(DIGEST_SIZE);
-    if(!msg_digest){
+    if(!msg_digest) {
         perror("Malloc error msg_digest");
         return -1;
     }
     //hashing: init, update, finalize digest
-    if(EVP_DigestInit(hCtx, HASH_FUN) != 1){
+    if(EVP_DigestInit(hCtx, HASH_FUN) != 1) {
         free(msg_digest);
         perror("DigestInit error");
         return -1;
     }
-    if(EVP_DigestUpdate(hCtx, msg, msg_len) != 1){
+    if(EVP_DigestUpdate(hCtx, msg, msg_len) != 1) {
         free(msg_digest);
         perror("DigestUpdate error");
         return -1;
@@ -330,7 +350,7 @@ bool Session::verifyDigSign(unsigned char* dig_sign, unsigned int dig_sign_len, 
         EVP_MD_CTX_free(md_ctx);
         return false;
     }
-    if(EVP_VerifyUpdate(md_ctx, msg_buf, msg_len) != 1){
+    if(EVP_VerifyUpdate(md_ctx, msg_buf, msg_len) != 1) {
         cerr << "EVP_VerifyUpdate error" << endl;
         EVP_MD_CTX_free(md_ctx);
         return false;    
@@ -427,7 +447,7 @@ int Session::deriveSecret() {
         return -1;
     }
 
-    if(EVP_PKEY_derive_init(derive_ctx) <= 0){
+    if(EVP_PKEY_derive_init(derive_ctx) <= 0) {
         perror("EVP_PKEY_derive_init err");
         return -1;
     }
@@ -437,7 +457,7 @@ int Session::deriveSecret() {
     }
 
     // determine buffer length
-    if(EVP_PKEY_derive(derive_ctx, NULL, &secret_len) <= 0){
+    if(EVP_PKEY_derive(derive_ctx, NULL, &secret_len) <= 0) {
         perror("EVP_PKEY_derive err");
         return -1;
     }
@@ -809,7 +829,7 @@ int removeFile(string filename, string username, bool server_side)
     else
         path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/client/users/" + username + "/" + filename;
 
-    if(remove(path.c_str()) != 0){   
+    if(remove(path.c_str()) != 0) {   
         perror ("\n * * * ERROR");
         return -1;
     }
@@ -949,7 +969,7 @@ void custom_act(int signum)
 /********************************************************************/
 
 
-Session::~Session(){
+Session::~Session() {
     cout << "~Session" << endl;
     //TODO: check if everything is deallocated
 
