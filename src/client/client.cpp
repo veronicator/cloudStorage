@@ -724,6 +724,7 @@ void Client::showCommands() {
 
 // TODO
 bool Client::handlerCommand(string& command) {
+    int ret = 1;
     //if else con la gestione dei diversi comandi
     if(command.compare("!help") == 0) {
         showCommands();
@@ -731,7 +732,7 @@ bool Client::handlerCommand(string& command) {
     } else if(command.compare("!list") == 0) {
         // opcode 8
         cout << "FileList operation requested" << endl;
-        requestFileList();
+        ret = requestFileList();
         /*
         string msg = "Available users?";
         active_session->userList((unsigned char*)msg.c_str(), msg.length());*/
@@ -740,22 +741,22 @@ bool Client::handlerCommand(string& command) {
         // opcode 1
         cout << "Upload operation requested" << endl;
         // TODO
-        uploadFile();    // username saved in class member
+        ret = uploadFile();    // username saved in class member
     } else if(command.compare("!download") == 0) {
         // opcode 2
         cout << "Download operation requested" << endl;
         // TODO
-        downloadFile();
+        ret = downloadFile();
     } else if(command.compare("!rename") == 0) {
         // opcode 3
         cout << "Rename operation requested " << endl;
         // TODO
-        renameFile();    // username saved in class member
+        ret = renameFile();    // username saved in class member
     } else if(command.compare("!delete") == 0) {
         // opcode 4
         cout << "Delete operation requested" << endl;
         // TODO
-        deleteFile();
+        ret = deleteFile();
     } else if(command.compare("!exit") == 0) {
         // logout from server - opcode 10
         cout << "Logout requested" << endl; 
@@ -767,7 +768,7 @@ bool Client::handlerCommand(string& command) {
         showCommands();
         //return false;
     }
-    return true;
+    return ret == 1;
 }
 
 int Client::requestFileList() {

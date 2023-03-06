@@ -36,10 +36,6 @@ Server::Server() {
     }
 }
 
-Server::~Server() {
-    
-}
-
 bool Server::createSrvSocket() {
     cout << "createServerSocket" << endl;
     if((listener_sd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {  // socket TCP
@@ -264,7 +260,7 @@ void Server::run_thread(int sockd) {
     vector<unsigned char> plaintext(MAX_BUF_SIZE);
 
 
-    while(!end_thread || ret == 1) {
+    while(!end_thread && ret == 1) {
         clear_arr(aad.data(), aad.size());
         clear_two_vec(usr->recv_buffer, plaintext);
         plaintext.resize(FILE_SIZE_FIELD + 20);
@@ -272,6 +268,7 @@ void Server::run_thread(int sockd) {
         received_len = receiveMsg(sockd, usr->recv_buffer);
         if(received_len < 0 || (received_len >= 0 && size_t(received_len) < MIN_LEN)) {
             cerr << "Error during receiving request msg" << endl;
+            cout << received_len << "<-len " << MIN_LEN << endl;
             break;
         }
         
@@ -963,10 +960,10 @@ int Server::sendFileList(int sockd) {
 
 void Server::logoutClient(int sockd) {
     cout << "logoutClient" << endl;
-    UserInfo* ui = nullptr;
+    UserInfo* usr = nullptr;
     // retrive UserInfo relative to the client
     try{
-        ui = connectedClient.at(sockd);
+        usr = connectedClient.at(sockd);
     }
     catch(const out_of_range& ex) {
         cerr << "User not found" << endl;
@@ -979,32 +976,32 @@ void Server::logoutClient(int sockd) {
     uint32_t payload_size, payload_size_n;
     string ack_msg = "Logout confirmed";
 
-    ui->client_session->createAAD(aad.data(), END_OP);
+    usr->client_session->createAAD(aad.data(), END_OP);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
-    payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
+    payload_size = usr->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl
             << "exit anyway" << endl;
-        delete ui;
+        //delete usr;
         clear_vec(plaintext);
         aad.fill('0');
         return;
         //payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     }
-    clear_two_vec(plaintext, ui->send_buffer);
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
+    clear_two_vec(plaintext, usr->send_buffer);
+    usr->send_buffer.resize(NUMERIC_FIELD_SIZE);
     payload_size_n = htonl(payload_size);
-    memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
-    ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
+    memcpy(usr->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
+    usr->send_buffer.insert(usr->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
-    if(sendMsg(payload_size, sockd, ui->send_buffer) != 1)
+    if(sendMsg(payload_size, sockd, usr->send_buffer) != 1)
         cerr << "Error during send phase (S->C | Logout)" << endl;
 
     clear_vec(plaintext);
     aad.fill('0');
     clear_arr(output.data(), output.size());
 
-    delete ui;
+    //delete usr;
     return;
 }
     
