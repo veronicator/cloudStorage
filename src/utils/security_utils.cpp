@@ -70,69 +70,40 @@ void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len)
     memset(arr, '0', sizeof(char)*arr_len);
 }
 
-char* canonicalizationPath(string file_path, string dir_path) {
-    cout << "canonicalization path: " << file_path << endl;
-    char *canon_file = realpath(file_path.c_str(), NULL);
-    
-    if(!canon_file) {
-        cerr << "realpath canon_file failed" << endl;
-        free(canon_file);
-        return nullptr;
-    }
+/** this method performs the canonicalization of a file name, 
+ * to check if there is a directory traversal for that file
+ * @file_dir_path: path of the directory containing the file to check
+ */
+char* canonicalizationPath(string file_dir_path) {
 
-    char *canon_dir = realpath(dir_path.c_str(), NULL);
+    char *canon_dir = realpath(file_dir_path.c_str(), NULL);
     if(!canon_dir) {
-        cerr << "realpath canon_dir failed" << endl;
-        free(canon_file);
+        cerr << "realpath returned NULL" << endl;
         free(canon_dir);
         return nullptr;
     }
 
-    if(strncmp(canon_dir, canon_file, strlen(canon_dir)) != 0) {
-            cerr << "Invalid path" << endl;
-            free(canon_file);
-            free(canon_dir);
-            return nullptr;
-    }
-
-    free(canon_dir);
-    return canon_file;
+    return canon_dir;
         
 }
 
-long searchFile(string filename, string username, bool server_side) {
-    char curr_dir[1024];
-    getcwd(curr_dir, sizeof(curr_dir));
-    string path, ok_dir;
-    if(server_side) {
-        ok_dir = string(curr_dir) + "/server/userStorage/" + username;
-        path = ok_dir + "/" + filename;
-    }
-    else{
-        ok_dir = string(curr_dir) + "/client/users/" + username;
-        path = ok_dir + "/" + filename;
-    }
-
-    char* canon_file = canonicalizationPath(path, ok_dir);
-    if (!canon_file) {
-        cerr << "Invalid filename. Canonicalization failed." << endl;
-        free(canon_file);
-        return -1;
-    }
+//long searchFile(string filename, string username, bool server_side)
+/** this method search if a file is already in the cloud storage of a user
+ * @file_path: path of the file requested
+ * @return: the size of the file if found, -1 or -2 on error
+*/
+long searchFile(string file_path) {
 
     struct stat buffer;
-    if(stat(canon_file, &buffer) != 0) {
-        cout << "File not present! Do not enter" << endl;
-        free(canon_file);
+    if(stat(file_path.c_str(), &buffer) != 0) {
+        cout << "File not found! Do not enter" << endl;
         return -1;
     }
     
     if(buffer.st_size >= MAX_FILE_DIMENSION) {
         cerr << "File too big" << endl;
-        free(canon_file);
         return -2;
     }
-    free(canon_file);
     return buffer.st_size; 
 }
 
@@ -150,7 +121,7 @@ void readFilenameInput(string& input, string msg) {
 
         if(input.empty()) continue;
 
-        const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+        const auto re = regex{R"(^\w[\w\.\-\+_!#$%^&()]{0,19}$)"};
         string_ok = regex_match(input, re);
 
         if(!string_ok)
@@ -820,16 +791,16 @@ uint32_t Session::decryptMsg(unsigned char *input_buffer, uint64_t payload_size,
    }
 }
 
-int removeFile(string filename, string username, bool server_side)
+int removeFile(string canon_path)
 {
-    char curr_dir[1024];
+    /*char curr_dir[1024];
     string path;
     if(server_side)
         path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + filename;
     else
         path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/client/users/" + username + "/" + filename;
-
-    if(remove(path.c_str()) != 0) {   
+    */
+    if(remove(canon_path.c_str()) != 0) {   
         perror ("\n * * * ERROR");
         return -1;
     }

@@ -36,6 +36,10 @@ Server::Server() {
     }
 }
 
+Server::~Server() {
+    
+}
+
 bool Server::createSrvSocket() {
     cout << "createServerSocket" << endl;
     if((listener_sd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {  // socket TCP
@@ -97,8 +101,8 @@ int Server::getListener() {
  * @usr_name: client username
 */
 bool Server::searchUserExist(string usr_name) {
-    string path = "./server/userKeys/";
-    for (const auto& entry : fs::directory_iterator(path)) {
+    //string path = "./server/userKeys/";
+    for (const auto& entry : fs::directory_iterator(string(KEY_PATH_SRV))) {
         const std::string s = entry.path();
         std::regex rgx("[^/]*$");
         std::smatch match;
@@ -220,7 +224,7 @@ void Server::run_thread(int sockd) {
 
     UserInfo *usr = nullptr;
 
-    //long ret;
+    int ret = 1;
     bool retb;
 
     // todo: check if the user is already registered on the server
@@ -233,10 +237,10 @@ void Server::run_thread(int sockd) {
         // TODO: erase the client from the map
         try {
             usr = connectedClient.at(sockd);
-            
+            delete usr;
             connectedClient.erase(sockd);
         } catch(const out_of_range& ex) {
-            cerr<<"user not found"<<endl;
+            cerr << "user not found" << endl;
             return;
         }
         
@@ -248,7 +252,7 @@ void Server::run_thread(int sockd) {
         usr = connectedClient.at(sockd);
     }
     catch(const out_of_range& ex) {
-        cerr<<"Impossible to find the user"<<endl;
+        cerr << "Impossible to find the user" << endl;
         return;
     }    
 
@@ -260,14 +264,14 @@ void Server::run_thread(int sockd) {
     vector<unsigned char> plaintext(MAX_BUF_SIZE);
 
 
-    while(!end_thread) {
+    while(!end_thread || ret == 1) {
         clear_arr(aad.data(), aad.size());
         clear_two_vec(usr->recv_buffer, plaintext);
         plaintext.resize(FILE_SIZE_FIELD + 20);
 
         received_len = receiveMsg(sockd, usr->recv_buffer);
         if(received_len < 0 || (received_len >= 0 && size_t(received_len) < MIN_LEN)) {
-            cerr<<"Error during receiving request msg"<<endl;
+            cerr << "Error during receiving request msg" << endl;
             break;
         }
         
@@ -286,23 +290,23 @@ void Server::run_thread(int sockd) {
         switch(opcode) {
             case UPLOAD_REQ:
                 cout << to_string(pt_len) + " pt_len -> " << string(plaintext.begin(), plaintext.end()) << endl;
-                uploadFile(sockd, plaintext, pt_len);
+                ret = uploadFile(sockd, plaintext, pt_len);
                 break;
 
             case DOWNLOAD_REQ:
-                downloadFile(sockd, plaintext);     //TODO: change to correct name
+                ret = downloadFile(sockd, plaintext);     //TODO: change to correct name
                 break;
 
             case RENAME_REQ:
-                renameFile(sockd, plaintext, pt_len);
+                ret = renameFile(sockd, plaintext, pt_len);
                 break;
 
             case DELETE_REQ:
-                deleteFile(sockd, plaintext, pt_len);       //TODO: change to correct name
+                ret = deleteFile(sockd, plaintext, pt_len);       //TODO: change to correct name
                 break;
 
             case FILE_LIST:
-                sendFileList(sockd);
+                ret = sendFileList(sockd);
                 break;
              
             case LOGOUT:
@@ -319,6 +323,7 @@ void Server::run_thread(int sockd) {
     }
 
     pthread_mutex_lock(&mutex_client_list);
+    delete usr;
     connectedClient.erase(sockd);
     pthread_mutex_unlock(&mutex_client_list);
     
@@ -337,12 +342,20 @@ EVP_PKEY* Server::getPeerKey(string username) {
      * 
     */
 
-    string path = "./server/userKeys/" + username + "/" + username + "_pub.pem";
-    FILE* pubK_file = fopen(path.c_str(), "r");
-    if(!pubK_file) {
-        cerr << "Cannot open pub key pem file for client " << username << endl;
+    string path = KEY_PATH_SRV + username + "/" + username + "_pub.pem";
+    char *canon_path = canonicalizationPath(path);
+    if(!canon_path) {
+        cerr << "Invalid user! Username key not found on the server!" << endl;
+        free(canon_path);
         return nullptr;
     }
+    FILE* pubK_file = fopen(canon_path, "r");
+    if(!pubK_file) {
+        cerr << "Cannot open pub key pem file for client " << username << endl;
+        free(canon_path);
+        return nullptr;
+    }
+    free(canon_path);
 
     EVP_PKEY* peerKey = PEM_read_PUBKEY(pubK_file, NULL, NULL, NULL);
     fclose(pubK_file);
@@ -465,11 +478,14 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     cout << "username " << username << endl;
     clear_vec(recv_buffer);
     // check user existence
-    if (!searchUserExist(username)) {
-        cerr << "User not registered on the cloud -> can not authenticate" << endl;
+    
+    string path = KEY_PATH_SRV + username + "/" + username + "_pub.pem";
+    char *canon_path = canonicalizationPath(path);
+    if(!canon_path) {
+        cerr << "Invalid user! Username not found on the server!" << endl;
+        free(canon_path);
         return false;
     }
-
     
     pthread_mutex_lock(&mutex_client_list);
     if(connectedClient.find(sockd) != connectedClient.end()) {
@@ -871,7 +887,7 @@ int Server::sendFileList(int sockd) {
         ui = connectedClient.at(sockd);
     }
     catch(const out_of_range& ex) {
-        cerr<<"Impossible to find the user"<<endl;
+        cerr << "Impossible to find the user" << endl;
         return -1;
     }
     
@@ -936,7 +952,7 @@ int Server::sendFileList(int sockd) {
         //BIO_dump_fp(stdout, (const char*)ui->send_buffer.data(), ui->send_buffer.size());      
 
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1) {
-            cerr<<"Error during send phase (S->C) | File List Phase"<<endl;
+            cerr << "Error during send phase (S->C) | File List Phase" << endl;
             return -1;
         }
     }
@@ -953,7 +969,7 @@ void Server::logoutClient(int sockd) {
         ui = connectedClient.at(sockd);
     }
     catch(const out_of_range& ex) {
-        cerr<<"Impossible to find the user"<<endl;
+        cerr << "User not found" << endl;
         return;
     }
 
@@ -970,11 +986,12 @@ void Server::logoutClient(int sockd) {
         cerr << " Error during encryption" << endl
             << "exit anyway" << endl;
         delete ui;
-        
+        clear_vec(plaintext);
+        aad.fill('0');
+        return;
         //payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     }
     clear_two_vec(plaintext, ui->send_buffer);
-    clear_arr(aad.data(), aad.size());
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     payload_size_n = htonl(payload_size);
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -984,11 +1001,11 @@ void Server::logoutClient(int sockd) {
         cerr << "Error during send phase (S->C | Logout)" << endl;
 
     clear_vec(plaintext);
-    clear_arr(aad.data(), aad.size());
+    aad.fill('0');
     clear_arr(output.data(), output.size());
 
     delete ui;
-    //ui = nullptr;
+    return;
 }
     
 /*
@@ -1015,11 +1032,11 @@ void Server::joinThread() {
     }
 }*/
 
-int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename) {
-    string path = path_file + ui->username + "/" + filename;
-    ofstream outfile(path, ofstream::binary);
+int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string canon_path) {
+    //string path = path_file + ui->username + "/" + filename;
+    ofstream outfile(canon_path, ofstream::binary);
     if(!outfile.is_open()) {
-        cout<<"It was not possible to create or open the new file"<<endl;
+        cout << "It was not possible to create or open the new file" << endl;
         return -1;
     }
 
@@ -1039,7 +1056,7 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
         cout << "MIN LEN : " << MIN_LEN << endl;
         if(received_len < 0 || (received_len >=0 && uint32_t(received_len) < MIN_LEN)) {
             cout << "---------------------------------" << endl;
-            cerr<<"Error! Exiting receive phase"<<endl;
+            cerr << "Error! Exiting receive phase" << endl;
             return -1;
         }
 
@@ -1055,9 +1072,9 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
         opcode = ntohs(*(uint32_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if((opcode == UPLOAD_REQ && i == tot_chunks - 1) || (opcode == END_OP && i != tot_chunks - 1)) {
             outfile.close();
-            cerr << "Wrong message format. Exiting"<<endl;
-            if(remove(path.c_str()) != 0) {
-                cerr << "File not correctly cancelled"<<endl;
+            cerr << "Wrong message format. Exiting" << endl;
+            if(remove(canon_path.c_str()) != 0) {
+                cerr << "File not correctly cancelled" << endl;
             }
             return -1;
         }
@@ -1071,23 +1088,23 @@ int Server::receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filena
     return 1;
 }
 
-int
-Server::sendMsgChunks(UserInfo* ui, string filename)
+int Server::sendMsgChunks(UserInfo* ui, string canon_path)
 {
-    string path = FILE_PATH_SRV + ui->username + "/" + filename; 
-    cout << "PATH: " << path << endl;                        
-    FILE* file = fopen(path.c_str(), "rb");                                             
+    //string path = FILE_PATH_SRV + ui->username + "/" + filename; 
+    cout << "PATH: " << canon_path << endl;                        
+    FILE* file = fopen(canon_path.c_str(), "rb");                                             
     struct stat buffer;
 
     if(!file)
     {
-        cerr<<"Error during file opening"<<endl;
+        cerr << "Error during file opening" << endl;
         return -1;
     }
 
-    if(stat(path.c_str(), &buffer) != 0)
+    if(stat(canon_path.c_str(), &buffer) != 0)
     {
-        cerr<<filename + "doesn't exist in " + ui->username + "folder" <<endl;
+        cerr << "The requested file doesn't exist in "
+            << ui->username << " folder" << endl;
         return -1;
     }
 
@@ -1124,7 +1141,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
 
         if(ferror(file) != 0 || ret != to_send)
         {
-            cerr<<"ERROR while reading file"<<endl;
+            cerr << "ERROR while reading file" << endl;
 
             clear_arr(aad.data(), aad.size());
             clear_arr(frag_buffer.data(), frag_buffer.size());
@@ -1159,7 +1176,7 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
 
         if(sendMsg(payload_size, ui->sockd, ui->send_buffer) != 1)
         {
-            cerr<<"Error during send phase (S->C) | Upload Chunk Phase (chunk num: "<<i<<")"<<endl;
+            cerr << "Error during send phase (S->C) | Upload Chunk Phase (chunk num: " <<i<< ")" << endl;
 
             //=== Cleaining ===
             aad.fill('0');
@@ -1191,9 +1208,12 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> output;
     bool file_ok = true;
-    cout<<"****************************************"<<endl;
-    cout<<"***********   RECEIVING FILE   *********"<<endl;
-    cout<<"****************************************"<<endl;
+    //char* canon_file;
+    string file_path;
+    long ret;
+    cout << "****************************************" << endl;
+    cout << "***********   RECEIVING FILE   *********" << endl;
+    cout << "****************************************" << endl;
 
     // retrieve UserInfo relative to the client
     UserInfo* ui = nullptr;
@@ -1201,8 +1221,8 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         ui = connectedClient.at(sockd);
     }
     catch(const out_of_range& ex) {
-        cerr<<"Impossible to find the user"<<endl;
-        cout<<"****************************************"<<endl;
+        cerr << "Impossible to find the user" << endl;
+        cout << "****************************************" << endl;
         return -1;
     }
 
@@ -1213,19 +1233,25 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.begin() + pt_len);
     cout << "filename: " << filename << endl;
 
-    const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"}; //TODO: check if (^\w[\w\\\/\.\-\+_!@#$%^&()~]{0,19}$) (contains also \/ chars)
+    const auto re = regex{R"(^\w[\w\.\-\+_!#$%^&()]{0,19}$)"}; //TODO: check if (^\w[\w\\\/\.\-\+_!#$%^&()]{0,19}$) (contains also \/ chars)
     file_ok = regex_match(filename, re);
 
     if(!file_ok) {
-        cerr<<"file not correct! Reception of the file terminated"<<endl;
+        cerr << "Wrong filename! Reception of the file terminated" << endl;
         ack_msg = MALFORMED_FILENAME;
-    } else if(searchFile(filename, ui->username, SERVER_SIDE) >= 0) {
-        cout<<"File already in the cloud storage"<<endl;
+    } else {
+
+        file_path = FILE_PATH_SRV + ui->username + "/" + filename;
+        ret = searchFile(file_path);
+
+        if (ret >= 0) {
+        cout << "File already in the cloud storage" << endl;
         ack_msg = FILE_PRESENT;
         file_ok = false;
+        }
     }
 
-    if(file_ok)
+    if (file_ok)
         ack_msg = MESSAGE_OK;
     
     clear_vec_array(plaintext, aad.data(), aad.size());
@@ -1247,24 +1273,24 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
                             output.begin(), output.begin() + payload_size);
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0) {
-        cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
-        cout<<"****************************************"<<endl;
+        cerr << "Error during send phase (S->C | Upload response phase)" << endl;
+        cout << "****************************************" << endl;
         return -1;
     }
 
     if(strcmp(ack_msg.c_str(), FILE_PRESENT) == 0) {
-        cout << "File is already in the cloud storage. Upload rejected" << endl;
+        cout << "The file is already in the cloud storage. Upload rejected" << endl;
         return -1;       
     }
  
     clear_vec_array(ui->send_buffer, output.data(), output.size());
 
-    cout << "       -------- RECEIVING FILE --------"<<endl;
+    cout << "       -------- RECEIVING FILE --------" << endl;
 
-    int ret = receiveMsgChunks(ui, filedimension, filename);
+    ret = receiveMsgChunks(ui, filedimension, file_path);
     
     if(ret == -1) {
-        cerr<<"Error! Something went wrong while receiving the file"<<endl;
+        cerr << "Error! Something went wrong while receiving the file" << endl;
         ack_msg = "File not received correctly\n";
     }
     else{
@@ -1289,11 +1315,11 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     clear_vec_array(plaintext, aad.data(), aad.size());
     
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1) {
-        cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
+        cerr << "Error during send phase (S->C | Upload end phase)" << endl;
         return -1;
     }
-    cout<<"       -------- RECEPTION ENDED --------" << endl;
-    cout<<"****************************************"<<endl;
+    cout << "       -------- RECEPTION ENDED --------" << endl;
+    cout << "****************************************" << endl;
     return 1;
 }
 
@@ -1307,6 +1333,8 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
     bool file_ok = true;
+    char *canon_file;
+    //string file_path;
 
     UserInfo *ui = nullptr;
 
@@ -1316,7 +1344,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     }
     catch(const out_of_range& ex)
     {
-        cerr<<"_User NOT FOUND!_"<<endl;
+        cerr << "_User NOT FOUND!_" << endl;
         return -1;
     }
 
@@ -1325,23 +1353,33 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     name_len = ntohl(*(uint32_t*)plaintext.data());
     filename.insert(filename.begin(), plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.begin() + NUMERIC_FIELD_SIZE + name_len);
 
-    cout <<filename << endl;
-    const auto allowed = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+    cout << filename << endl;
+    const auto allowed = regex{R"(^\w[\w\.\-\+_!#$%^&()]{0,19}$)"};
     file_ok = regex_match(filename, allowed);
 
     if(!file_ok)
     {
-        cerr<<"File not correct! Termination of the Download_Operation in progress"<<endl;
+        cerr << "File not correct! Termination of the Download_Operation in progress" << endl;
         ack_msg = MALFORMED_FILENAME;
-    }
+    } else {
+        canon_file = canonicalizationPath(FILE_PATH_SRV + ui->username + "/" + filename);
+        if(!canon_file) {
+            cerr << "File not found! Download rejected!" << endl;
+            free(canon_file);
+            ack_msg = FILE_NOT_PRESENT;
+            file_ok = false;
+        }
+        if (file_ok) {
+            file_dim = searchFile(canon_file);
+            if(file_dim < 0)
+            {
+                cerr << "Error: the file '" << filename 
+                    << "' does not exist in the cloud storage of the user" << endl;
+                ack_msg = FILE_NOT_PRESENT;
 
-    file_dim = searchFile(filename, ui->username, SERVER_SIDE);
-    if(file_dim < 0)
-    {
-        cerr << "Error: the file " << filename << " does not exist in the folder" << endl;
-        ack_msg = FILE_NOT_PRESENT;
-
-        file_ok = false;
+                file_ok = false;
+            }
+        }
     }
 
     if(file_ok)
@@ -1358,6 +1396,13 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     ui->client_session->createAAD(aad.data(), DOWNLOAD_REQ);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(),
                                             aad.data(), ciphertext.data());
+    if (payload_size == 0) {
+        cerr << " Error during encryption" << endl;
+        clear_vec(plaintext);
+        aad.fill('0');
+        free(canon_file);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
     
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
@@ -1369,13 +1414,15 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
                             ciphertext.begin(), ciphertext.begin() + payload_size);
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || strcmp(ack_msg.c_str(), MALFORMED_FILENAME) == 0) {
-        cerr<<"Error during send phase (S->C | Upload response phase)"<<endl;
-        cout<<"****************************************"<<endl;
+        cerr << "Error during send phase (S->C | Upload response phase)" << endl;
+        cout << "****************************************" << endl;
+        free(canon_file);
         return -1;
     }
 
     if(strcmp(ack_msg.c_str(), FILE_NOT_PRESENT) == 0) {
         cout << "File not found in the cloud storage. Download rejected" << endl;
+        free(canon_file);
         return -1;       
     }
 // _END_(1)------ [ M1: SEND_CONFIRMATION_DOWNLOAD_REQUEST_TO_CLIENT ] )------
@@ -1398,7 +1445,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     ui->send_buffer.clear();
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
-    fileChunk = sendMsgChunks(ui, filename);
+    fileChunk = sendMsgChunks(ui, canon_file);
 
 // _END_(2)-------------- [ M2: SEND_FILE_TO_CLIENT ] --------------
 
@@ -1412,7 +1459,8 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
         received_len = receiveMsg(sockd, ui->recv_buffer);
         if(received_len == 0 || received_len == -1)
         {
-            cerr<<"Error during receive phase (C->S)"<<endl;
+            cerr << "Error during receive phase (C->S)" << endl;
+            free(canon_file);
             return -1;
         }
         
@@ -1422,40 +1470,41 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
             cerr << "dowload->Error during decryption" << endl;
             clear_two_vec(plaintext, ui->recv_buffer);
             clear_arr(aad.data(), aad.size());
+            free(canon_file);
             return -1;
         }
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if(opcode != END_OP)
         {
-            cerr<<"Error! Exiting DOWNLOAD_OPERATION." << endl;
+            cerr << "Error! Exiting DOWNLOAD_OPERATION." << endl;
 
             clear_arr(aad.data(), aad.size());
             plaintext.assign(plaintext.size(), '0');
             plaintext.clear();
-            
+            free(canon_file);
             return -1;
         }
         
         client_feedback = ((char*)plaintext.data());
         if(client_feedback != DOWNLOAD_TERMINATED)
         {
-            cerr<<"DOWNLOAD_OPERATION interrupted. ERROR: "<<client_feedback<<endl;
+            cerr << "DOWNLOAD_OPERATION interrupted. ERROR: " <<client_feedback<< endl;
 
             clear_arr(aad.data(), aad.size());
             plaintext.assign(plaintext.size(), '0');
             plaintext.clear();
-
+            free(canon_file);
             return -1;
         }
     }
     else
     {
-        cerr<<"Error! Exiting from DOWNLOAD_OPERATION phase"<<endl;
+        cerr << "Error! Exiting from DOWNLOAD_OPERATION phase" << endl;
 
         clear_arr(aad.data(), aad.size());
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
-        
+        free(canon_file);
         return -1;
     }
 
@@ -1468,15 +1517,16 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     ciphertext.fill('0');
 
     cout << "----------- DOWNLOAD TERMINATED --------------" << endl;
+    free(canon_file);
     return 1;
 
     
 }
 
-int Server::changeName(string old_filename, string new_filename, string username) {
-    char curr_dir[1024];
-    string old_path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + old_filename;
-    string new_path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + new_filename;
+int Server::changeName(string old_path, string new_path, string username) {
+    //char curr_dir[1024];
+    //string old_path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + old_filename;
+    //string new_path = string(getcwd(curr_dir, sizeof(curr_dir))) + "/server/userStorage/" + username + "/" + new_filename;
 
     int result = rename(old_path.c_str(), new_path.c_str());
     if(result == 0) {
@@ -1497,16 +1547,18 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> output;
     bool file_ok = true;
+    //char *canon_file_old, *canon_file_new;
+    string file_path_old, file_path_new;
     UserInfo* ui = nullptr;
-    cout<<"****************************************"<<endl;
-    cout<<"***********   Rename Request   *********"<<endl;
-    cout<<"****************************************"<<endl;
+    cout << "****************************************" << endl;
+    cout << "***********   Rename Request   *********" << endl;
+    cout << "****************************************" << endl;
 
     try{
         ui = connectedClient.at(sockd);
     }
     catch(const out_of_range& ex) {
-        cerr<<"Impossible to find the user"<<endl;
+        cerr << "Impossible to find the user" << endl;
         return -1;
     }
 
@@ -1525,38 +1577,42 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     new_filename.insert(new_filename.begin(), plaintext.begin() + FILE_SIZE_FIELD + old_name_len, plaintext.end());
     */
     /* ema code
-    cout << "OLD: "<<endl;
+    cout << "OLD: " << endl;
     BIO_dump_fp(stdout, old_filename.data(), old_filename.size());
     cout << "NEW: " << endl;
     BIO_dump_fp(stdout, new_filename.data(), new_filename.size());
     */
-    const auto re = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+    const auto re = regex{R"(^\w[\w\.\-\+_!#$%^&()]{0,19}$)"};
     file_ok = (regex_match(old_filename, re) && regex_match(new_filename, re));
 
-    if(!file_ok) {
-        cerr<<"Filename not correct! Rename terminated"<<endl;
+    if (!file_ok) {
+        cerr << "Filename not correct! Rename terminated" << endl;
         ack_msg = "Filename not correct";
     } else { //TODO: handle -2 and -3 cases
-        if(searchFile(old_filename, ui->username, SERVER_SIDE) == -1) {
-            cerr << "Filename to change doesn't correspond to any file"<<endl;
+        file_path_old = FILE_PATH_SRV + ui->username + "/" + old_filename;
+        file_path_new = FILE_PATH_SRV + ui->username + "/" + new_filename;
+    
+        if (searchFile(file_path_old) == -1) {
+            cerr << "Filename to change doesn't correspond to any file" << endl;
             ack_msg = "Filename to change doesn't correspond to any file\n";
             file_ok = false;
         }
-
-        if(searchFile(new_filename, ui->username, SERVER_SIDE) >= 0) {
+    
+        if (searchFile(file_path_new) >= 0) {
             cerr << "The new filename is already used by another file" << endl;
             ack_msg += "The new filename is already used by another file\n";
             file_ok = false;
+        }    
+
+        if (file_ok) {
+            ack_msg = MESSAGE_OK;
+            if (changeName(file_path_old, file_path_new, ui->username) == -1) {
+                cout << "Error during renaming file" << endl;
+                return -1;
+            }
         }
     }
-    
-    if(file_ok) {
-        ack_msg = MESSAGE_OK;
-        if(changeName(old_filename, new_filename, ui->username) == -1) {
-            cout << "Error during rename" << endl;
-            return -1;
-        }
-    }
+
     ui->client_session->createAAD(aad.data(), END_OP);
 
     clear_vec(plaintext);
@@ -1572,9 +1628,9 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
 
     clear_two_vec(plaintext, ui->send_buffer);
     clear_arr(aad.data(), aad.size());
-    /*  cout << "plaintext: "<<endl;
+    /*  cout << "plaintext: " << endl;
     BIO_dump_fp(stdout, plaintext.data(), plaintext.size());
-    cout << "enc_text: "<<endl;
+    cout << "enc_text: " << endl;
     BIO_dump_fp(stdout, output.data(), output.size());*/  
     ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
@@ -1582,16 +1638,16 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE, output.begin(), output.begin() + payload_size);
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1) {
-        cerr<<"Error during send phase (S->C | Upload end phase)"<<endl;
-        cout<<"****************************************"<<endl;
+        cerr << "Error during send phase (S->C | Upload end phase)" << endl;
+        cout << "****************************************" << endl;
         return -1;
     }
     
     clear_vec_array(ui->send_buffer, output.data(), output.size());
 
-    cout<<"****************************************"<<endl;
-    cout<<"******     Rename Terminated      ******"<<endl;
-    cout<<"****************************************"<<endl;
+    cout << "****************************************" << endl;
+    cout << "******     Rename Terminated      ******" << endl;
+    cout << "****************************************" << endl;
 
     return 1;
 }
@@ -1599,12 +1655,13 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
 
 int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len)
 {
-    string filename;
+    string filename, file_path;
     uint32_t payload_size, payload_size_n;
     string ack_msg;
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
     bool file_ok = true;
+    char *canon_file;
 
     UserInfo *ui = nullptr;
 
@@ -1614,7 +1671,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     }
     catch(const out_of_range& ex)
     {
-        cerr<<"_User NOT FOUND!_"<<endl;
+        cerr << "_User NOT FOUND!_" << endl;
         return -1;
     }
 
@@ -1623,19 +1680,22 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     filename = string(plaintext.begin(), plaintext.begin() + pt_len);
     //BIO_dump_fp(stdout, (const char*)plaintext.data(), pt_len);
 
-    const auto allowed = regex{R"(^\w[\w\.\-\+_!@#$%^&()~]{0,19}$)"};
+    const auto allowed = regex{R"(^\w[\w\.\-\+_!#$%^&()]{0,19}$)"};
     file_ok = regex_match(filename, allowed);
 
     if(!file_ok)
     {
-        cerr<<"File not correct! Termination of the Delete_Operation in progress"<<endl;
+        cerr << "File not correct! Termination of the Delete_Operation in progress" << endl;
         ack_msg = "Filename not allowed";
-    } else if(searchFile(filename, ui->username, SERVER_SIDE) < 0)
-    {
-        cerr << "Error: file not found in the user storage" << endl;
-        ack_msg = "File not found in the Cloud Storage";
-
-        file_ok = false;
+    } else {
+        file_path = FILE_PATH_SRV + ui->username + "/" + filename;
+        canon_file = canonicalizationPath(file_path);
+        if (!canon_file) {
+            cerr << "Invalid filename. Delete operation failed." << endl;
+            free(canon_file);
+            ack_msg = "File not found in the Cloud Storage";
+            file_ok = false;
+        }
     }
 
     if(file_ok)
@@ -1651,6 +1711,12 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     ui->client_session->createAAD(aad.data(), DELETE_REQ);
 
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ciphertext.data());
+    if (payload_size == 0) {
+        cerr << "Error during encryption" << endl;
+        aad.fill('0');
+        clear_vec(plaintext);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
     
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
@@ -1662,13 +1728,13 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1 || !file_ok)
     {
-        cerr<<"Error during sending DELETE_REQUEST_RESPONSE phase (S->C)"<<endl;
+        cerr << "Error during sending DELETE_REQUEST_RESPONSE phase (S->C)" << endl;
 
         // === Cleaning ===
         clear_vec(plaintext);
         aad.fill('0');
         ciphertext.fill('0');
-
+        free(canon_file);
         return -1;
     }
 
@@ -1689,12 +1755,13 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     received_len = receiveMsg(sockd, ui->recv_buffer);
     if(received_len <= 0)
     {
-        cout<<"Error during receive phase (C->S)"<<endl;
+        cout << "Error during receive phase (C->S)" << endl;
 
         // === Cleaning ===
         clear_vec(plaintext);
         aad.fill('0');
         ciphertext.fill('0');
+        free(canon_file);
 
         return -1;
     }
@@ -1711,11 +1778,12 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
     if(opcode != DELETE_CONFIRM)
     {
-        cout<<"Error! Exiting DELETE_OPERATION phase"<<endl;
+        cout << "Error! Exiting DELETE_OPERATION phase" << endl;
 
         // === Cleaning ===
         clear_vec(plaintext);
         clear_arr(aad.data(), aad.size());
+        free(canon_file);
 
         return -1;
     }
@@ -1729,14 +1797,15 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
     if(user_choice == "Y" || user_choice == "y")
     {
-        cout<<"\n\t~ The file *( "<< filename << " )* is going to be deleted. ~\n\n"<<endl;
+        cout << "\n\t~ The file *( " << filename << " )* is going to be deleted. ~\n\n" << endl;
 
-        if(removeFile(filename, ui->username, SERVER_SIDE) != 1)
+        if(removeFile(canon_file) != 1)
         {
             cout << "\n\t --- Error during Delete ---\n" << endl; 
             clear_vec(plaintext);
             clear_arr(aad.data(), aad.size());
             clear_arr(ciphertext.data(), ciphertext.size());
+            free(canon_file);
             return -1;
         } else {
             final_msg = "File Deleted Successfully";
@@ -1759,6 +1828,12 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
     ui->client_session->createAAD(aad.data(), END_OP);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ciphertext.data());
+    if (payload_size == 0) {
+        cerr << "Error during encryption" << endl;
+        aad.fill('0');
+        clear_vec(plaintext);
+        return -1;
+    }
     payload_size_n = htonl(payload_size);
     
     ui->send_buffer.assign(ui->send_buffer.size(), '0');
@@ -1770,13 +1845,14 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
     if(sendMsg(payload_size, sockd, ui->send_buffer) != 1)
     {
-        cerr<<"Error during sending CONFIRM_OPERATION phase (S->C)"<<endl;
+        cerr << "Error during sending CONFIRM_OPERATION phase (S->C)" << endl;
 
         // === Cleaning ===
         plaintext.assign(plaintext.size(), '0');
         plaintext.clear();
         aad.fill('0');
         ciphertext.fill('0');
+        free(canon_file);
 
         return -1;
     }                                                
@@ -1788,6 +1864,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     plaintext.clear();
     aad.fill('0');
     ciphertext.fill('0');
+    free(canon_file);
 
     return 1; //Successful_State
 }
@@ -1810,7 +1887,7 @@ void* client_thread_code(void *arg) {
     int sockd = args->sockd;
     serv->run_thread(sockd);
     close(sockd);
-    cout<< "exit thread \n";
+    cout << "exit thread \n";
     pthread_exit(NULL);
     return NULL;
 }

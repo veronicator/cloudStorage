@@ -15,12 +15,8 @@ Client::~Client() {
     delete active_session;
     //active_session = nullptr;
     username.clear();
-    if(!send_buffer.empty()) {
-        clear_vec(send_buffer);
-    }
-    if(!recv_buffer.empty()) {
-        clear_vec(recv_buffer);
-    }
+    clear_vec(send_buffer);
+    clear_vec(recv_buffer);
     close(sd);
 }
 
@@ -961,9 +957,9 @@ void Client::sendErrorMsg(string errorMsg) {
 }
 */
 
-uint32_t Client::sendMsgChunks(string filename) {
-    string path = "./client/users/" + username + "/" + filename;                         //where to find the file
-    FILE* file = fopen(path.c_str(), "rb");                                             //opened file
+uint32_t Client::sendMsgChunks(string canon_path) {
+    //string path = "./client/users/" + username + "/" + filename;                         //where to find the file
+    FILE* file = fopen(canon_path.c_str(), "rb");                                             //opened file
     struct stat buf;
 
     if(!file) {
@@ -971,8 +967,8 @@ uint32_t Client::sendMsgChunks(string filename) {
         return -1;
     }
 
-    if(stat(path.c_str(), &buf) != 0) {
-        cerr<<filename + "doesn't exist in " + username + "folder" <<endl;
+    if(stat(canon_path.c_str(), &buf) != 0) {
+        cerr << "The requested file doesn't exist in " + username + "folder" << endl;
         return -1;
     }
 
@@ -1035,7 +1031,8 @@ int Client::uploadFile() {
     long file_dim;  //TODO: long is better than uint (return values of searchFile can be negative) ?                                                          //dimension (in byte) of the file to upload
     uint32_t payload_size, payload_size_n;                                  //size of the msg payload both in host and network format
     uint32_t file_dim_l_n, file_dim_h_n;                                    //low and high part of the file_dim variable in network form
-    string filename;                                                        //name of the file to upload
+    string filename, file_path;                                                        //name of the file to upload
+    char* canon_file;
     array<unsigned char, AAD_LEN> aad;                                     //aad of the msg
     vector<unsigned char> plaintext(FILE_SIZE_FIELD);                       //plaintext to be encrypted
     array<unsigned char, MAX_BUF_SIZE> output;                              //encrypted text
@@ -1044,24 +1041,34 @@ int Client::uploadFile() {
     cout<<"*********     UPLOAD FILE      *********"<<endl;
     cout<<"****************************************"<<endl<<endl;
 
-    readFilenameInput(filename, "Insert filename: ");
-    file_dim = searchFile(filename, username, CLIENT_SIDE);
+    readFilenameInput(filename, "Insert filename: ");    
+    file_path = FILE_PATH_CLT + username + "/" + filename;
+    canon_file = canonicalizationPath(file_path);
+    if (!canon_file) {
+        cerr << "File not found. Upload operation rejected." << endl;
+        free(canon_file);
+        return -1;
+    }
+    file_dim = searchFile(canon_file);
 
     if(file_dim < 0 && file_dim != -1 && file_dim != -3) {
         cerr << "File is too big! Upload terminated ---- " << file_dim << endl;
+        free(canon_file);
         return -1;
     }
     else if  (file_dim == -1) {
         cerr << "File not found! Upload not possible" << endl;
+        free(canon_file);
         return -1;
     }
     else if (file_dim == -3) {
         cerr << "Invalid path! Upload terminated" << endl;
+        free(canon_file);
         return -1;
     }                   
 
     cout << "file_dim: " << to_string(file_dim) << endl;
-    cout << "filename: " << filename.data()<< endl;
+    cout << "filename: " << filename.data() << endl;
     cout << "filename_dim: " << filename.size() << endl;
     //insert in the plaintext filedimension and filename
     file_dim_h_n = htonl((uint32_t) (file_dim >> 32));
@@ -1079,6 +1086,7 @@ int Client::uploadFile() {
     if (payload_size == 0) {
         cerr << " Error during encryption" << endl;
         clear_vec_array(plaintext, output.data(), output.size());
+        free(canon_file);
         return -1;
     }
     payload_size_n = htonl(payload_size);
@@ -1093,6 +1101,7 @@ int Client::uploadFile() {
 
     if(sendMsg(payload_size) != 1) {
         cerr<<"Error during send phase (C->S | Upload Request Phase)"<<endl;
+        free(canon_file);
         return -1;
     }
 
@@ -1115,6 +1124,7 @@ int Client::uploadFile() {
         (received_len > 0 && uint32_t(received_len) < MIN_LEN)) {
         cerr<<"Error during receive phase (S->C, upload)"<<endl;
         clear_vec(recv_buffer);
+        free(canon_file);
         return -1;
     }
 
@@ -1123,22 +1133,26 @@ int Client::uploadFile() {
         cerr << " Error during decryption" << endl;
         clear_two_vec(plaintext, recv_buffer);
         aad.fill('0');
+        free(canon_file);
         return -1;
     }
 
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
     if(opcode != UPLOAD_REQ) {
         cerr<<"Error! Exiting upload request phase"<<endl;
+        free(canon_file);
         return -1;
     }
     
     server_response = ((char*)plaintext.data());
     if(server_response == FILE_PRESENT) {      
         cout << "File not accepted. " << server_response << endl;
+        free(canon_file);
         return 1;
     }
     if(server_response == MALFORMED_FILENAME) {
         cerr << "File not accepted. " << server_response << endl;
+        free(canon_file);
         return -1;
     }
    
@@ -1149,7 +1163,7 @@ int Client::uploadFile() {
     clear_two_vec(plaintext, send_buffer);
     aad.fill('0');
 
-    ret = sendMsgChunks(filename);
+    ret = sendMsgChunks(canon_file);
 
     if(ret == 1) {
         plaintext.resize(MAX_BUF_SIZE);        
@@ -1158,6 +1172,7 @@ int Client::uploadFile() {
         if(received_len <= 0 ||
             (received_len > 0 && uint32_t(received_len) < MIN_LEN)) {
         cerr<<"Error during receive phase (S->C)"<<endl;
+        free(canon_file);
         return -1;
         }
         
@@ -1166,25 +1181,30 @@ int Client::uploadFile() {
             cerr << " Error during decryption" << endl;
             clear_two_vec(plaintext, recv_buffer);
             aad.fill('0');
+            free(canon_file);
             return -1;
         }
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         if(opcode != END_OP) {
             cerr<<"Error! Exiting upload phase." << endl;
+            free(canon_file);
             return -1;
         }
         server_response = string(plaintext.begin(), plaintext.begin() + pt_len);
         if(server_response != OP_TERMINATED) {
             cerr<<"Upload not correcty terminated. "<< server_response <<endl;
+            free(canon_file);
             return -1;
         }
     }
     else{
         cerr<<"Error! Exiting upload phase"<<endl;
+        free(canon_file);
         return -1;
     }
     cout<<"        ---- UPLOAD TERMINATED ----"<<endl<<endl;
     cout<<"****************************************"<<endl<<endl;
+    free(canon_file);
 
     return 1;
 }
@@ -1301,10 +1321,10 @@ int Client::renameFile() {
 
 //---------------------------------------------//
 
-int Client::receiveMsgChunks( uint32_t filedimension, string filename)
+int Client::receiveMsgChunks( uint32_t filedimension, string canon_path)
 {
-    string path = FILE_PATH_CLT + username + "/" + filename;
-    ofstream outfile(path, ofstream::binary);
+    //string path = FILE_PATH_CLT + username + "/" + filename;
+    ofstream outfile(canon_path, ofstream::binary);
 
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> plaintext;
@@ -1361,7 +1381,7 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
             outfile.close();
             cerr << "Wrong message format. Exiting"<<endl;
             
-            if(remove(path.c_str()) != 0)
+            if(remove(canon_path.c_str()) != 0)
             {
                 cerr << "File not correctly cancelled"<<endl;
             }
@@ -1387,16 +1407,17 @@ int Client::receiveMsgChunks( uint32_t filedimension, string filename)
 
 int Client::downloadFile()
 {
-    string filename;
+    string filename, file_path;
     uint32_t filename_size, filename_size_n, payload_size, payload_size_n, filedimension;   
     array<unsigned char, AAD_LEN> aad;
     vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
 
     readFilenameInput(filename, "Insert the name of the file you want to Download: ");
+    file_path = FILE_PATH_CLT + username + "/" + filename;
 
     // === Checking and managing the existence of the file within the Download folder ===
-    if (searchFile(filename, username, CLIENT_SIDE) >= 0)
+    if (searchFile(file_path) >= 0)
     {
         string choice;
 
@@ -1425,7 +1446,7 @@ int Client::downloadFile()
             return -1;
         }
 
-        if(removeFile(filename, username, CLIENT_SIDE) != 1)
+        if(removeFile(file_path) != 1)
         {
             cout << "\n\t --- Error during Deleting file ---\n" << endl;
             return -1; 
@@ -1553,7 +1574,7 @@ int Client::downloadFile()
 
 // _BEGIN_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
 
-    fileChunk = receiveMsgChunks(filedimension, filename);
+    fileChunk = receiveMsgChunks(filedimension, file_path);
 
     if(fileChunk == -1)
     {

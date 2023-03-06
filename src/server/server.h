@@ -2,6 +2,9 @@
 
 #define path_file "./server/userStorage/"
 
+#define FILE_PATH_SRV "./server/userStorage/"
+#define KEY_PATH_SRV "./server/userKeys/"
+
 struct UserInfo {
     string username;    // client username
     int sockd;
@@ -55,8 +58,8 @@ class Server {
     bool receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce);
     bool authenticationClient(int sockd);  // call session.generatenonce & sendMsg
  
-    int receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename);
-    int sendMsgChunks(UserInfo* ui, string filename);
+    int receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string canon_path);
+    int sendMsgChunks(UserInfo* ui, string canon_path);
     
     int changeName(string old_filename, string new_filename, string username);
     int uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len);

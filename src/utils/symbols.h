@@ -15,13 +15,13 @@
 #define ERROR 12
 
 //others
-#define SERVER_SIDE bool(true)
-#define CLIENT_SIDE bool(false)
+//#define SERVER_SIDE bool(true)
+//#define CLIENT_SIDE bool(false)
 
 //Dir Path
-#define SRV_DIR "./server/"
-#define FILE_PATH_CLT "./client/users/"
-#define FILE_PATH_SRV "./server/userStorage/"
+//#define SRV_DIR "./server/"
+//#define FILE_PATH_CLT "./client/users/"
+//#define FILE_PATH_SRV "./server/userStorage/"
 
 //responses
 #define MESSAGE_OK "ack_operation_req"
