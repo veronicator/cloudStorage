@@ -918,8 +918,8 @@ int Server::sendFileList(int sockd) {
             return -1;
         }
 
-        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
         clear_vec(ui->send_buffer);
+        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
         payload_size_n = htonl(payload_size);
         memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -967,8 +967,8 @@ void Server::logoutClient(int sockd) {
         delete ui;
     }
 
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     clear_vec(ui->send_buffer);
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     payload_size_n = htonl(payload_size);
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -1133,8 +1133,8 @@ Server::sendMsgChunks(UserInfo* ui, string filename)
             return -1;
         }
 
-        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
         clear_vec(ui->send_buffer);
+        ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
         payload_size_n = htonl(payload_size);
         memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -1213,8 +1213,8 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         return -1;
     }
 
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     clear_vec(ui->send_buffer);
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     
     payload_size_n = htonl(payload_size);    
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -1261,8 +1261,8 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         return -1;
     }
 
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     clear_vec(ui->send_buffer);
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     payload_size_n = htonl(payload_size);
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -1342,8 +1342,8 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
     clear_arr(aad.data(), aad.size());
     payload_size_n = htonl(payload_size);
     
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     clear_vec(ui->send_buffer);
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
     ui->send_buffer.insert(ui->send_buffer.begin() + NUMERIC_FIELD_SIZE,
@@ -1382,8 +1382,8 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext)
 // _BEGIN_(3)---- [ M3: RECEIVE_FEEDBACK_OPERATION_FROM_CLIENT ] ----
 
     if(fileChunk == 1){
-        plaintext.resize(MAX_BUF_SIZE);
         clear_vec(plaintext);
+        plaintext.resize(MAX_BUF_SIZE);
 
         received_len = receiveMsg(sockd, ui->recv_buffer);
         if(received_len == 0 || received_len == -1){
@@ -1519,8 +1519,8 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t) {
         return -1;
     }
 
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     clear_vec(ui->send_buffer);
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     payload_size_n = htonl(payload_size);
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -1595,8 +1595,8 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     clear_arr(aad.data(), aad.size());
     clear_vec(plaintext);
     
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     clear_vec(ui->send_buffer);
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
 
     payload_size_n = htonl(payload_size);    
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
@@ -1622,7 +1622,6 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
     // === Reuse of vectors declared at the beginning ===
     plaintext.resize(MAX_BUF_SIZE);
-    clear_vec(plaintext);
     clear_vec(ui->recv_buffer);
 
     received_len = receiveMsg(sockd, ui->recv_buffer);
@@ -1679,8 +1678,8 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     clear_arr(aad.data(), aad.size());
     clear_vec(plaintext);
 
-    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     clear_vec(ui->send_buffer);
+    ui->send_buffer.resize(NUMERIC_FIELD_SIZE);
     
     payload_size_n = htonl(payload_size);
     memcpy(ui->send_buffer.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
