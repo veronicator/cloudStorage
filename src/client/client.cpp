@@ -1016,6 +1016,8 @@ uint32_t Client::sendMsgChunks(string filename){
 
         clear_vec(send_buffer);
     }
+
+    fclose(file);
     return 1;
 }
 
