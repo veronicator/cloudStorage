@@ -402,6 +402,7 @@ bool Session::generateECDHKey() {
     return true;
 }
 
+// derive secrete & compute session key
 int Session::deriveSecret() {
     cout << "session->deriveSecret" << endl;
     // shared secret derivation: create context and buffer 

@@ -54,8 +54,7 @@ int Client::sendMsg(uint32_t payload_size) {
 
     if (payload_size > MAX_BUF_SIZE - NUMERIC_FIELD_SIZE) {
         cerr << "Message to send too big" << endl;
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();
+        clear_vec(send_buffer);
         return -1;
     }
     payload_size += NUMERIC_FIELD_SIZE;
@@ -67,8 +66,7 @@ int Client::sendMsg(uint32_t payload_size) {
 
     if (ret < 0 || (ret >= 0 && size_t(ret) < NUMERIC_FIELD_SIZE)) {
         perror("Error sending message size");
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();
+        clear_vec(send_buffer);
         return -1;
     }
     arr.fill('0');
@@ -77,12 +75,11 @@ int Client::sendMsg(uint32_t payload_size) {
     ret = send(sd, send_buffer.data(), payload_size, 0);
     if (ret < 0 || (ret >= 0 && size_t(ret) < payload_size)) {
         perror("Socker error: send message failed");
-        send_buffer.assign(send_buffer.size(), '0');
-        send_buffer.clear();
+        clear_vec(send_buffer);
         return -1;
     }
-    send_buffer.assign(send_buffer.size(), '0');
-    send_buffer.clear();
+    
+    clear_vec(send_buffer);
 
     return 1;    
  }
@@ -92,7 +89,6 @@ int Client::sendMsg(uint32_t payload_size) {
  * @return: return the payload length of the received message, or 0 or -1 on error
 */
  long Client::receiveMsg() {
-    //cout << "receiveMsg new" << endl;
 
     array<unsigned char, MAX_BUF_SIZE> receiver;
     ssize_t msg_size = 0;
@@ -101,13 +97,13 @@ int Client::sendMsg(uint32_t payload_size) {
     clear_vec(recv_buffer);
 
     msg_size = recv(sd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
-    cout << "Msg dimension size: " << msg_size << endl;
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    cout << "Msg dimension data: " << payload_size << endl;
+
     if (payload_size > size_t(MAX_BUF_SIZE - 1)) {
-        cerr << "Dimension overflow" << endl;
+        cerr << "Error: receiveMsg -> size overflow" << endl;
+        receiver.fill('0');
         return -1;
     }
 
@@ -132,8 +128,7 @@ int Client::sendMsg(uint32_t payload_size) {
     */
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    cout << payload_size << " received payload length" << endl;
-    cout << msg_size << " received msg size" << endl;
+
     //check if all data are received
     if (payload_size != size_t(msg_size) - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
@@ -152,7 +147,7 @@ int Client::sendMsg(uint32_t payload_size) {
 
 
 bool Client::authentication() {
-    cout << "Client->autentication\n";
+    //cout << "Client->autentication\n";
     
     int ret;
     array<unsigned char, NONCE_SIZE> client_nonce;
@@ -160,50 +155,56 @@ bool Client::authentication() {
 
     EVP_PKEY *my_priv_key;
 
-    // M1
+    /* M1: sending client username to the server */
     if (sendUsername(client_nonce) != 1) {
-        cerr << "Authentication->sendUsername failed" << endl;
-        //close(sd);
+        cerr << "Authentication->sendUsername phase failed" << endl;
+        client_nonce.fill('0');
         return false;
     }
     
-
-    // M2: receive server cert e ECDH_server_key
-    cout << "authentication->receiveMsg" << endl;
-
-    // receive M2
+    /* M2: receive server certificate and ECDH_server_key */
+    //cout << "authentication->receiveMsg" << endl;
     if (!receiveCertSign(client_nonce, server_nonce)) {
         cerr << "Authentication->receiveCertSign failed" << endl;
+        client_nonce.fill('0');
+        clear_vec(server_nonce);
         return false;
     }
+    
+    client_nonce.fill('0');
     
     my_priv_key = active_session->retrievePrivKey("./client/users/" + username + "/" + username + "_key.pem");
     if (my_priv_key == nullptr) {
         cerr << "retrievePrivKey failed" << endl;
+        clear_vec(server_nonce);
         return false;
     }
     active_session->generateECDHKey();
     ret = sendSign(server_nonce, my_priv_key);
-    cout << "sendsign serv nonce" << endl;
     server_nonce.clear();
     if (ret != 1) {
         cerr << "sendSign failed " << endl;
+        clear_vec(server_nonce);
         EVP_PKEY_free(my_priv_key);
         return false;
     }
 
-    active_session->deriveSecret();     // derive secrete & compute session key
-    cout << "active_session -> derive secret " << endl;
-
+    if (active_session->deriveSecret() != 1) {
+        clear_vec(server_nonce);
+        EVP_PKEY_free(my_priv_key);
+        return false;
+    }     // derive secrete & compute session key
+    
     return receiveFileList() != -1;
-    //return true;
 }
 
 /********************************************************************/
 
-// Message M1
+/** Message M1: sending the <username> to the server
+ * @client_nonce: nonce of the connected client, to prevent a reply attack
+ * @return: 1 on success, -1 on failure
+*/
 int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
-    cout << "sendUsername\n";
     uint32_t start_index = 0;
     uint32_t payload_size, payload_n;
     uint16_t opcode;
@@ -239,7 +240,7 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     start_index += username.size();
 
     //sendMsg
-    cout << "authentication->sendMsg M1: nonceClient, username " << endl;
+    //cout << "authentication->sendMsg M1: nonceClient, username " << endl;
     if (sendMsg(payload_size) != 1) {
         client_nonce.fill('0');
         return -1;
@@ -248,11 +249,13 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     return 1;
 }
 
-// M2
+/** Message M2: receive the certification and the digital signature of the server
+ * @client_nonce: nonce of the client previously sent, to compare with the one received from the server
+ * @server_nonce: vector where store the server nonce received (it will be checked in another method)
+ * @return: true on success, false on failure
+*/
 bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce, 
                                 vector<unsigned char> &srv_nonce) {
-
-    cout << "receiveCertSign\n";
 
     ssize_t payload_size;
     uint32_t start_index = 0;
@@ -275,16 +278,12 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         return false;
     }
     
-    //cout << "receiveCertSign buffer msg: " << endl;
-    //BIO_dump_fp(stdout, (const char*)recv_buffer.data(), recv_buffer.size());
-
     start_index = NUMERIC_FIELD_SIZE;   // reading starts after payload_size field
 
     // check opcode
     opcode = *(uint16_t*)(recv_buffer.data() + start_index);
     opcode = ntohs(opcode);
     start_index += OPCODE_SIZE;
-    //cout << "start index " << start_index << endl;
     if (opcode != LOGIN) {
         if (opcode == ERROR) {
             string errorMsg(recv_buffer.begin() + start_index, recv_buffer.end());
@@ -1308,8 +1307,10 @@ int Client::renameFile() {
 
     server_response = ((char*)plaintext.data());
     if (server_response != MESSAGE_OK) {
-        cerr << "Rename not accepted. " << server_response << endl;
-        return -1;
+        cout << "Rename not accepted. " << server_response << endl;
+        //return -1;
+    } else {
+        cout << "Rename successfully completed" << endl;
     }
 
     cout << "****************************************" << endl;
@@ -1330,7 +1331,7 @@ int Client::receiveMsgChunks( uint32_t filedimension, string canon_path)
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> plaintext;
 
-    size_t to_receive;
+    //size_t to_receive;
     long received_len;
     uint32_t opcode, pt_len;
 
@@ -1340,6 +1341,7 @@ int Client::receiveMsgChunks( uint32_t filedimension, string canon_path)
 
     for (uint32_t i = 0; i < tot_chunks; i++)
     {
+        /*
         if (i == tot_chunks - 1)
         {
             to_receive = filedimension - i * FRAGM_SIZE;
@@ -1348,6 +1350,7 @@ int Client::receiveMsgChunks( uint32_t filedimension, string canon_path)
         {
             to_receive = FRAGM_SIZE;
         }
+        */
 
         cout << "---- " << i << ".1" << " ----" << endl;
 
@@ -1565,7 +1568,7 @@ int Client::downloadFile()
         aad.fill('0');
         ciphertext.fill('0');
 
-        return -1;
+        return 1;
     }
     
 // _END_(2)------ [ M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] )------
@@ -1739,7 +1742,7 @@ int Client::deleteFile()
 
     if (server_response != MESSAGE_OK)
     {       
-        cout << "The delete request was refused: " << server_response << endl;
+        cout << "Delete request refused: " << server_response << endl;
         // === Cleaning ===
         clear_vec(plaintext);
         return -1;

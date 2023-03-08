@@ -1797,7 +1797,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 
         if (removeFile(canon_file) != 1)
         {
-            cout << "\n\t --- Error during Delete ---\n" << endl; 
+            cout << "\n\t --- Error during Delete operation ---\n" << endl; 
             clear_vec(plaintext);
             aad.fill('0');
             ciphertext.fill('0');
