@@ -1,5 +1,7 @@
 #include "../utils/security_utils.h"
 
+#define FILE_PATH_CLT "./client/users/"
+
 class Client {
     string username;
     //EVP_PKEY *my_priv_key;  // togliere?
@@ -41,8 +43,8 @@ class Client {
     void logout();  // dealloca tutto ed esce
 
     int uploadFile();
-    uint32_t sendMsgChunks(string filename);
-    int receiveMsgChunks( uint32_t filedimension, string filename);
+    uint32_t sendMsgChunks(string canon_path);
+    int receiveMsgChunks( uint32_t filedimension, string canon_path);
     int downloadFile();
     int renameFile();
     int deleteFile();

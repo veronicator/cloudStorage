@@ -53,9 +53,9 @@ void generateRandomValue(unsigned char* new_value, int value_size) {
 void readInput(string& input, const size_t MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 void readFilenameInput(string& input, string msg);
 
-//bool searchUserExist(string usr_name);
-long searchFile(string filename, string username, bool side);
-int removeFile(string filename, string username, bool side);
+char* canonicalizationPath(string file_dir_path);
+long getFileSize(string canon_file_path);
+int removeFile(string canon_path);
 
 
 void print_progress_bar(int total, unsigned int fragment);
@@ -64,7 +64,7 @@ int  catch_the_signal(); // Register signal and signal handler
 void custom_act(int signum); //the function to be called when signal is sent to process (handler)
 
 void clear_vec(vector<unsigned char>& v);
-void clear_arr(unsigned char* arr, int arr_len);
+//void clear_arr(unsigned char* arr, int arr_len);
 
 class Session {
     unsigned char* session_key = nullptr;

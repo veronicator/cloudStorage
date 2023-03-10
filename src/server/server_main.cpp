@@ -61,5 +61,6 @@ int main() {
         pthread_join(threads.front(), NULL);
         threads.pop_front();
     }*/
+    delete server;
     return 0;
 }
