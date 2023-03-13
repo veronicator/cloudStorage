@@ -758,7 +758,7 @@ int Client::requestFileList() {
 
     plaintext.insert(plaintext.begin(), msg.begin(), msg.end());
 
-    active_session->createAAD(aad.data(), FILE_LIST);
+    active_session->createAAD(aad.data(), FILE_LIST_REQ);
     payload_size = active_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
     clear_vec(plaintext);
     aad.fill('0');
@@ -1097,7 +1097,7 @@ int Client::uploadFile() {
 
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
     aad.fill('0');
-    if (opcode != UPLOAD_REQ) {
+    if (opcode != UPLOAD) {
         cerr << "Error! Exiting upload request phase" << endl;
         clear_vec(plaintext);
         free(canon_file);
@@ -1442,7 +1442,7 @@ int Client::downloadFile()
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));   
     aad.fill('0');
  
-    if (opcode != DOWNLOAD_REQ) {
+    if (opcode != DOWNLOAD) {
         cerr << "Error! Exiting download request phase" << endl;
         clear_vec(plaintext);
         return -1;
@@ -1596,7 +1596,7 @@ int Client::deleteFile() {
     //Opcode sent by the server, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
     aad.fill('0');
-    if (opcode != DELETE_REQ) {
+    if (opcode != DELETE) {
         cerr << "Error! Exiting DELETE request phase" << endl;
         clear_vec(plaintext);
         return -1;

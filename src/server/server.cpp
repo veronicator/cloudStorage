@@ -268,7 +268,7 @@ void Server::run_thread(int sockd) {
                 ret = deleteFile(sockd, plaintext, pt_len);
                 break;
 
-            case FILE_LIST:
+            case FILE_LIST_REQ:
                 ret = sendFileList(sockd);
                 break;
              
@@ -1164,7 +1164,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     clear_vec(plaintext);
     aad.fill('0');
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
-    ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
+    ui->client_session->createAAD(aad.data(), UPLOAD);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
 
     clear_vec(plaintext);
@@ -1307,7 +1307,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
     memcpy(plaintext.data(), &file_dimension, NUMERIC_FIELD_SIZE);
     plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, ack_msg.begin(), ack_msg.end());
 
-    ui->client_session->createAAD(aad.data(), DOWNLOAD_REQ);
+    ui->client_session->createAAD(aad.data(), DOWNLOAD);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(),
                                             aad.data(), ciphertext.data());
     clear_vec(plaintext);
@@ -1590,7 +1590,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     clear_vec(plaintext);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
 
-    ui->client_session->createAAD(aad.data(), DELETE_REQ);
+    ui->client_session->createAAD(aad.data(), DELETE);
 
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ciphertext.data());
     aad.fill('0');
