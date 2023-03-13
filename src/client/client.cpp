@@ -10,7 +10,7 @@ Client::Client(string username, string srv_ip) {
 }
 
 Client::~Client() {
-    cout << "~Client" << endl;
+    //cout << "~Client" << endl;
     
     delete active_session;
 
@@ -71,7 +71,6 @@ int Client::sendMsg(uint32_t payload_size) {
     }
     arr.fill('0');
 
-    //cout << "sentMsg->payload size: " << payload_size << endl;
     ret = send(sd, send_buffer.data(), payload_size, 0);
     if (ret < 0 || (ret >= 0 && size_t(ret) < payload_size)) {
         perror("Socker error: send message failed");
@@ -108,7 +107,6 @@ int Client::sendMsg(uint32_t payload_size) {
     }
 
     msg_size = recv(sd, receiver.data(), payload_size, 0);
-    //cout << "received msg size: " << msg_size << endl;
 
     if (msg_size == 0) {
         cerr << "The connection has been closed" << endl;
@@ -122,14 +120,10 @@ int Client::sendMsg(uint32_t payload_size) {
         return -1;
     }
 
-    /*    
-    cout << "enc_text: " << endl;
-    BIO_dump_fp(stdout, recv_buffer.data(), recv_buffer.size());
-    */
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
 
-    //check if all data are received
+    //check if all data were received
     if (payload_size != size_t(msg_size) - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
@@ -146,9 +140,7 @@ int Client::sendMsg(uint32_t payload_size) {
 /********************************************************************/
 
 
-bool Client::authentication() {
-    //cout << "Client->autentication\n";
-    
+bool Client::authentication() {    
     int ret;
     array<unsigned char, NONCE_SIZE> client_nonce;
     vector<unsigned char> server_nonce;
@@ -163,7 +155,6 @@ bool Client::authentication() {
     }
     
     /* M2: receive server certificate and ECDH_server_key */
-    //cout << "authentication->receiveMsg" << endl;
     if (!receiveCertSign(client_nonce, server_nonce)) {
         cerr << "Authentication->receiveCertSign failed" << endl;
         client_nonce.fill('0');
@@ -241,8 +232,6 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
     send_buffer.insert(send_buffer.end(), username.begin(), username.end());
     start_index += username.size();
 
-    //sendMsg
-    //cout << "authentication->sendMsg M1: nonceClient, username " << endl;
     if (sendMsg(payload_size) != 1) {
         client_nonce.fill('0');
         return -1;
@@ -335,8 +324,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     if (start_index > UINT32_MAX - NUMERIC_FIELD_SIZE || 
         start_index + NUMERIC_FIELD_SIZE >= recv_buffer.size()) {
         cerr << "Received msg size error " << endl;
-        recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();
+        clear_vec(recv_buffer);
         return false;
     }
 
@@ -484,8 +472,6 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
  * @return: 1 on success, 0 or -1 on error (return of sendMsg())
 */
 int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
-    cout << "Client -> sendSign " << endl;
-
     int ret = 0;
 
     unsigned char* ECDH_my_pub_key = nullptr;
@@ -510,8 +496,6 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
         return -1;
     }
 
-
-    cout << "ECDH_my_key_size " << ECDH_my_key_size << endl;
     msg_to_sign.resize(ECDH_my_key_size);
     msg_to_sign.insert(msg_to_sign.begin(), srv_nonce.begin(), srv_nonce.end());
     memcpy(msg_to_sign.data() + NONCE_SIZE, ECDH_my_pub_key, ECDH_my_key_size);
@@ -550,21 +534,16 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     start_index += OPCODE_SIZE;
 
     send_buffer.insert(send_buffer.begin() + start_index, srv_nonce.begin(), srv_nonce.end());
-    cout << "serv_nonce inserted" << endl;
     start_index += NONCE_SIZE;
 
     ECDH_my_key_size_n = htonl(ECDH_my_key_size);
     memcpy(send_buffer.data() + start_index, &ECDH_my_key_size_n, NUMERIC_FIELD_SIZE);  
-    cout << "memcpy ecdh_key_size done" << endl;  
     start_index += NUMERIC_FIELD_SIZE;
 
     memcpy(send_buffer.data() + start_index, ECDH_my_pub_key, ECDH_my_key_size);
-    cout << "memcpy ecdh_pub_key done" << endl;
     start_index += ECDH_my_key_size;
-    cout << "start index after ecdh key " << start_index << endl; 
-    
+
     send_buffer.insert(send_buffer.end(), signed_msg.begin(), signed_msg.end());
-    cout << "signed msg inserted " << endl;
 
     // send msg to server
     ret = sendMsg(payload_size);
@@ -573,8 +552,6 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     free(ECDH_my_pub_key);
     clear_vec(msg_to_sign);
     clear_vec(signed_msg);
-
-    cout << "sendSign end" << endl;
 
     return ret;
 }
@@ -731,7 +708,7 @@ void Client::showCommands() {
 
 bool Client::handlerCommand(string& command) {
     int ret = 1;
-    //if else con la gestione dei diversi comandi
+
     if (command.compare("!help") == 0) {
         showCommands();
         
@@ -740,11 +717,11 @@ bool Client::handlerCommand(string& command) {
         cout << "FileList operation requested" << endl;
         ret = requestFileList();
     } else if (command.compare("!upload") == 0) {
-        // opcode 1
+        // opcode 5
         cout << "Upload operation requested" << endl;
         ret = uploadFile();    // username saved in class member
     } else if (command.compare("!download") == 0) {
-        // opcode 2
+        // opcode 6
         cout << "Download operation requested" << endl;
         ret = downloadFile();
     } else if (command.compare("!rename") == 0) {
@@ -810,16 +787,16 @@ int Client::requestFileList() {
     clear_vec(send_buffer);
 
     int ret = receiveFileList();
+    if (ret != 1) {
+        cerr << "Receive file list failed" << endl;
+        return -1;
+    }
 
     cout << "****************************************" << endl;
     cout << "*****     File List Received       *****" << endl;
     cout << "****************************************" << endl;
 
-    
-    if (ret == -1)
-        return -1;
-    else
-        return 1;
+    return 1;
 }
 
 int Client::receiveFileList() {
@@ -852,9 +829,9 @@ int Client::receiveFileList() {
         aad.fill('0');
 
         if (opcode == FILE_LIST) {
-            cout << string(plaintext.begin(), plaintext.end());
+            cout << endl << string(plaintext.begin(), plaintext.end());
         } else if (opcode == END_OP) {
-            cout << string(plaintext.begin(), plaintext.begin() + (pt_len)) << endl;
+            cout << endl << string(plaintext.begin(), plaintext.begin() + (pt_len)) << endl;
             break;
         } else {
             cerr << "Error! The received msg was malformed" << endl;
@@ -864,7 +841,7 @@ int Client::receiveFileList() {
 
         clear_vec(plaintext);
     }
-    return 0;
+    return 1;
 }
 
 void Client::logout() {
@@ -942,7 +919,7 @@ void Client::logout() {
         exit(EXIT_FAILURE);
     }
     cout << "****************************************" << endl;
-    cout << "******     Client Logged Out      ******" << endl;
+    cout << "******    Client Disconnected     ******" << endl;
     cout << "****************************************" << endl;
 }
 
@@ -1285,7 +1262,6 @@ int Client::renameFile() {
     clear_vec(plaintext);
     if (server_response != MESSAGE_OK) {
         cout << "Rename not accepted" << server_response << endl;
-        //return -1;
     } else {
         cout << "Rename successfully completed" << endl;
     }
@@ -1389,12 +1365,12 @@ int Client::downloadFile()
             }
         }
         if (choice == "N" || choice == "n") {
-            cout << "\n\t~ The file *( " << filename << " )* will not be overwritten. ~\n\n" << endl;
+            cout << "\n\t~ The file <" << filename << ">  will not be overwritten. ~\n\n" << endl;
             return 1;
         }
 
         if (removeFile(file_path) != 1) {
-            cout << "\n\t --- Error during Deleting file ---\n" << endl;
+            cerr << "\n\t --- Error during Deleting file ---\n" << endl;
             return -1; 
         }
     }
@@ -1431,7 +1407,7 @@ int Client::downloadFile()
 // _BEGIN_(1)-------------- [ M1: INVIO_RICHIESTA_DOWNLOAD_AL_SERVER ] --------------
 
     if (sendMsg(payload_size) != 1) {
-        cout << "Error during send phase (C->S)" << endl;
+        cerr << "Error during send phase (C->S)" << endl;
         clear_vec(send_buffer);
         return -1;
     }
@@ -1446,7 +1422,7 @@ int Client::downloadFile()
 
     received_len = receiveMsg();
     if (received_len <= 0) {
-        cout << "Error during receive phase (S->C)" << endl;
+        cerr << "Error during receive phase (S->C)" << endl;
         clear_vec(recv_buffer);
         return -1;
     }
@@ -1467,7 +1443,7 @@ int Client::downloadFile()
     aad.fill('0');
  
     if (opcode != DOWNLOAD_REQ) {
-        cout << "Error! Exiting download request phase" << endl;
+        cerr << "Error! Exiting download request phase" << endl;
         clear_vec(plaintext);
         return -1;
     }
@@ -1481,6 +1457,7 @@ int Client::downloadFile()
     clear_vec(plaintext);
     if (server_response != MESSAGE_OK) {       
         cout << "The file cannot be downloaded: " << server_response << endl;
+        // the return value is 1 also in this case because the error is not a security error
         return 1;
     }
     
@@ -1493,7 +1470,7 @@ int Client::downloadFile()
 
     fileChunk = receiveMsgChunks(filedimension, file_path);
 
-    if (fileChunk == -1) {
+    if (fileChunk != 1) {
         cerr << "Error! Exiting Download phase" << endl;
         clear_vec(recv_buffer);        
         return -1;
@@ -1531,7 +1508,7 @@ int Client::downloadFile()
 // _BEGIN_(4)-------------- [ M4: INVIO_CONFERMA_DOWNLOAD_AL_SERVER ] --------------
 
     if (sendMsg(payload_size) != 1) {
-        cout << "Error during send phase (C->S)" << endl;
+        cerr << "Error during send phase (C->S)" << endl;
         clear_vec(send_buffer);
         return -1;
     }
@@ -1578,7 +1555,7 @@ int Client::deleteFile() {
     ciphertext.fill('0');
 
     if (sendMsg(payload_size) != 1) {
-        cout << "Error during send phase (C->S)" << endl;
+        cerr << "Error during send phase (C->S)" << endl;
         clear_vec(send_buffer);
         return -1;
     }
@@ -1596,7 +1573,7 @@ int Client::deleteFile() {
 
     received_len = receiveMsg();
     if (received_len <= 0) {
-        cout << "Error during receive phase (S->C)" << endl;
+        cerr << "Error during receive phase (S->C)" << endl;
         clear_vec(recv_buffer);
 
         return -1;
@@ -1620,7 +1597,7 @@ int Client::deleteFile() {
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
     aad.fill('0');
     if (opcode != DELETE_REQ) {
-        cout << "Error! Exiting DELETE request phase" << endl;
+        cerr << "Error! Exiting DELETE request phase" << endl;
         clear_vec(plaintext);
         return -1;
     }
@@ -1688,7 +1665,7 @@ int Client::deleteFile() {
     ciphertext.fill('0');
 
     if (sendMsg(payload_size) != 1) {
-        cout << "Error during send phase (C->S)" << endl;
+        cerr << "Error during send phase (C->S)" << endl;
         clear_vec(send_buffer);
 
         return -1;
@@ -1703,7 +1680,7 @@ int Client::deleteFile() {
 
     received_len = receiveMsg();
     if (received_len <= 0) {
-        cout << "Error during receive phase (S->C)" << endl;
+        cerr << "Error during receive phase (S->C)" << endl;
         clear_vec(recv_buffer);            
         return -1;
     }
@@ -1726,7 +1703,7 @@ int Client::deleteFile() {
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
     aad.fill('0');    
     if (opcode != END_OP) {
-        cout << "Error! Exiting DELETE phase" << endl;
+        cerr << "Error! Exiting DELETE phase" << endl;
         clear_vec(plaintext);
         return -1;
     }

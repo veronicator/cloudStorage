@@ -1,6 +1,5 @@
 #include "client.h"
 
-// TODO
 int main(int argc, char* argv[]) {
 
     if(argc != 2) {
@@ -44,6 +43,5 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     delete client;
-    cout << "end client main" << endl;
     return 0;
 }

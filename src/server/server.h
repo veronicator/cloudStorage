@@ -1,7 +1,5 @@
 #include "../utils/security_utils.h"
 
-#define path_file "./server/userStorage/"
-
 #define FILE_PATH_SRV "./server/userStorage/"
 #define KEY_PATH_SRV "./server/userKeys/"
 
@@ -15,7 +13,6 @@ struct UserInfo {
     UserInfo(int sd, string name);
     ~UserInfo();
 
-    void cleanup();
 };
     
 
@@ -34,20 +31,11 @@ class Server {
     bool createSrvSocket();
     
     /****************************************************/
-    //pthread_t client_thread;
+
     pthread_mutex_t mutex_client_list;
-    //pthread_mutex_t mutex_socket_list;
-
-    //list<thread> threads;
-    //std::mutex mtx;
-
 
     /****************************************************/
     
-    bool searchUserExist(string usr_name);
-    
-    /****************************************************/
-
     int sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer);
     long receiveMsg(int sockd, vector<unsigned char> &recv_buffer);    // restituisce lunghezza totale messaggio ricevuto, msg_size
 
@@ -81,6 +69,7 @@ class Server {
         void run_thread(int sd);
 };
 
+/** data structure to manage the arguments needed by a thread*/
 struct ThreadArgs {
     Server* server;
     int sockd;

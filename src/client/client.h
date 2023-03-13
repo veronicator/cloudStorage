@@ -4,11 +4,8 @@
 
 class Client {
     string username;
-    //EVP_PKEY *my_priv_key;  // togliere?
     Session *active_session;
 
-    //unsigned char *send_buffer;
-    //unsigned char *recv_buffer;
     vector<unsigned char> send_buffer;
     vector<unsigned char> recv_buffer;
 
@@ -21,12 +18,8 @@ class Client {
 
     /***** utility methods *****/
 
-    // new sed/receive
     int sendMsg(uint32_t payload_size);
     long receiveMsg();
-
-
-    //void sendErrorMsg(string errorMsg);
     
     bool verifyCert(unsigned char* buffer_cert, long cert_size, EVP_PKEY*& srv_pubK); // verify certificate -> build store -> load cert&crl -> extract pubK
     bool buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& new_store);
