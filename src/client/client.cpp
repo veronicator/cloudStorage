@@ -11,9 +11,9 @@ Client::Client(string username, string srv_ip) {
 
 Client::~Client() {
     cout << "~Client" << endl;
-    //TODO: check if everything is deallocated
+    
     delete active_session;
-    //active_session = nullptr;
+
     username.clear();
     clear_vec(send_buffer);
     clear_vec(recv_buffer);
@@ -176,6 +176,7 @@ bool Client::authentication() {
     my_priv_key = active_session->retrievePrivKey("./client/users/" + username + "/" + username + "_key.pem");
     if (my_priv_key == nullptr) {
         cerr << "retrievePrivKey failed" << endl;
+        EVP_PKEY_free(my_priv_key);
         clear_vec(server_nonce);
         return false;
     }
@@ -189,11 +190,12 @@ bool Client::authentication() {
         return false;
     }
 
-    if (active_session->deriveSecret() != 1) {
+    if (active_session->deriveSecret() != 1) {     // derive secrete & compute session key
         clear_vec(server_nonce);
         EVP_PKEY_free(my_priv_key);
         return false;
-    }     // derive secrete & compute session key
+    }
+    EVP_PKEY_free(my_priv_key);
     
     return receiveFileList() != -1;
 }
@@ -315,14 +317,9 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     if (!active_session->checkNonce(received_nonce.data(), client_nonce.data())) {
         cerr << "Received nonce not valid\n";
 
-        received_nonce.clear();
-        // TODO: check and clear all used buffers
-        recv_buffer.assign(recv_buffer.size(), '0');
-        recv_buffer.clear();    //fill('0');
-        
+        clear_vec(recv_buffer);
         clear_vec(received_nonce);
         client_nonce.fill('0');
-        clear_vec(recv_buffer);
 
         return false;
     }
@@ -368,6 +365,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         cerr << "Server certificate not verified\n";
         clear_vec(temp_buffer);
         clear_vec(recv_buffer);
+        EVP_PKEY_free(srv_pubK);
 
         return false;
     }
@@ -379,6 +377,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         
         cerr << "Received msg size error " << endl;
         clear_vec(recv_buffer);
+        EVP_PKEY_free(srv_pubK);
         return false;
     }
 
@@ -392,6 +391,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         
         cerr << "Received msg size error " << endl;
         clear_vec(recv_buffer);
+        EVP_PKEY_free(srv_pubK);
         return false;
     }
 
@@ -408,6 +408,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         cerr << "Dig_sign length error " << endl;
         clear_vec(recv_buffer);
         clear_vec(ECDH_server_key);
+        EVP_PKEY_free(srv_pubK);
         return false;
     }
 
@@ -421,6 +422,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         clear_vec(server_signature);
         clear_vec(ECDH_server_key);
         clear_vec(recv_buffer);
+        EVP_PKEY_free(srv_pubK);
         return false;
     }
     
@@ -430,6 +432,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         clear_vec(server_signature);
         clear_vec(ECDH_server_key);
         clear_vec(recv_buffer);
+        EVP_PKEY_free(srv_pubK);
         return false;
     }
     signed_msg_len = NONCE_SIZE + ECDH_key_size;
@@ -455,6 +458,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
 
         // clear buffer key
         clear_vec(ECDH_server_key);
+        EVP_PKEY_free(srv_pubK);
 
         return false;
     }
@@ -464,10 +468,12 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
         cerr << "Error: deserializePubKey failed!" << endl;
         
         clear_vec(ECDH_server_key);
+        EVP_PKEY_free(srv_pubK);
         return false;
     }
 
     clear_vec(ECDH_server_key);
+    EVP_PKEY_free(srv_pubK);
     return true;
 }
 
@@ -704,6 +710,8 @@ bool Client::verifyCert(unsigned char* cert_buf, long cert_size, EVP_PKEY*& srv_
     X509_free(certToCheck);
     X509_STORE_free(store); // deallocates also CA_cert and CRL
     X509_STORE_CTX_free(certvfy_ctx);
+    X509_free(CA_cert);
+    X509_CRL_free(CA_crl);
 
     return verified;
 }
@@ -1363,7 +1371,7 @@ int Client::downloadFile()
         string choice;
 
         cout << "The requeste file already exists in the Download folder, "
-                << "overwrite it?: [y/n]\n\n " << endl;
+                << "overwrite it?: [y/n] " << endl;
         getline(cin, choice);
 
         if (!cin) {
@@ -1631,7 +1639,7 @@ int Client::deleteFile() {
     
 // _END_(2)-------- [ M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] --------
     
-    cout << "Are you sure to delete the file " << filename << "?: [y/n]\n" << endl;
+    cout << "Are you sure to delete the file " << filename << "?: [y/n]" << endl;
     getline(cin, choice);
 
     if (!cin) {

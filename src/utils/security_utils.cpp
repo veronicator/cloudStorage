@@ -334,27 +334,28 @@ bool Session::checkNonce(unsigned char* received_nonce, unsigned char *sent_nonc
 bool Session::generateECDHKey() {
     cout << "session->generateECDHkey" << endl;
     // create context for ECDH parameters
-    EVP_PKEY* DH_params = NULL;
+    EVP_PKEY* DH_params = nullptr;
     EVP_PKEY_CTX* param_ctx;
     
     if (!(param_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL))) {   // puts the parameters for EC in the context
         cerr << "EVP_PKEY_CTX_new_id failed" << endl;
-        // TODO: liberare risorse
+        EVP_PKEY_CTX_free(param_ctx);
         return false;
     }
     if (EVP_PKEY_paramgen_init(param_ctx) != 1) {
         cerr << "EVP_PKEY_paramgen_init failed" << endl;
-        // TODO: liberare risorse
+        EVP_PKEY_CTX_free(param_ctx);
         return false;
     }
     if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(param_ctx, NID_X9_62_prime256v1) != 1) {
         cerr << "EVP_PKEY_CTX_set_ec_paramgen_curve_nid failed" << endl;
-        // TODO: liberare risorse
+        EVP_PKEY_CTX_free(param_ctx);
         return false;
     }
     if (EVP_PKEY_paramgen(param_ctx, &DH_params) != 1) {
         cerr << "EVP_PKEY_paramgen failed" << endl;
-        // TODO: liberare risorse
+        EVP_PKEY_CTX_free(param_ctx);   
+        EVP_PKEY_free(DH_params);
         return false;
     }
     EVP_PKEY_CTX_free(param_ctx);
@@ -364,22 +365,22 @@ bool Session::generateECDHKey() {
     
     if (!(DH_ctx = EVP_PKEY_CTX_new(DH_params, NULL))) {  // key generation
         cerr << "EVP_PKEY_CTX_new failed" << endl;
-        // TODO: liberare risorse
+        EVP_PKEY_free(DH_params);
         return false;
     }
 
-    //EVP_PKEY* my_ECDHkey = NULL;
     if (EVP_PKEY_keygen_init(DH_ctx) != 1) {
         cerr << "ECP_PKEY_keygen_init failed" << endl;
-        // TODO: liberare risorse
+        EVP_PKEY_free(DH_params);
         return false;
     }
     if (EVP_PKEY_keygen(DH_ctx, &ECDH_myKey) != 1) {
         cerr << "EVP_PKEY_keygen failed" << endl;
-        // TODO: liberare risorse
+        EVP_PKEY_free(DH_params);
         return false;
     }
     EVP_PKEY_CTX_free(DH_ctx);    
+    EVP_PKEY_free(DH_params);
     cout << "session->generateECDHKey done" << endl;
     return true;
 }

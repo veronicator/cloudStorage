@@ -484,6 +484,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         free(canon_path);
         return false;
     }
+    free(canon_path);
     
     pthread_mutex_lock(&mutex_client_list);
     if (connectedClient.find(sockd) != connectedClient.end()) {
@@ -823,6 +824,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         // clear buffers and return
         clear_vec(ECDH_client_key);
         clear_vec(usr->recv_buffer);
+        EVP_PKEY_free(client_pubK);
 
         return false;
     }
@@ -843,6 +845,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     // clear buffer
     temp_buf.clear();
     client_signature.clear();
+    EVP_PKEY_free(client_pubK);
 
     if (!verified) {
         cerr << "Digital Signature not verified" << endl;
