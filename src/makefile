@@ -1,26 +1,28 @@
-CFLAGS = -Wall -lcrypto -lpthread
+CFLAGS = -Wall -lpthread -lcrypto -lstdc++fs
+WFLAGS = -Wall
 
-all: client server
+all: clean server.exe client.exe
 
-client: client.o client_main.o security_utils.o
-	g++ ${CFLAGS} client.o client_main.o security_utils.o -o client.exe
+server.exe: server.o server_main.o security_utils.o
+	g++ server.o server_main.o security_utils.o -o server.exe ${CFLAGS}
 
-server: server.o server_main.o security_utils.o
-	g++ ${CFLAGS} server.o server_main.o security_utils.o -o server.exe
+client.exe: client.o client_main.o security_utils.o
+	g++ client.o client_main.o security_utils.o -o client.exe ${CFLAGS}
 
-client.o: client/client.cpp client/client.h utils/security_utils.h utils/symbols.h
-	g++ -c client/client.cpp
+security_utils.o: utils/security_utils.h utils/symbols.h
+	g++ -c utils/security_utils.cpp utils/symbols.h ${CFLAGS}
 
-client_main.o: client/client_main.cpp client/client.h utils/security_utils.h  utils/symbols.h
-	g++ -c client/client_main.cpp
+server.o: server/server.h utils/security_utils.h utils/symbols.h
+	g++ -c server/server.cpp ${CFLAGS}
 
-security_utils.o: utils/security_utils.cpp utils/security_utils.h utils/symbols.h
-	g++ -c utils/security_utils.cpp
+server_main.o: server/server.h utils/security_utils.h utils/symbols.h
+	g++ -c server/server_main.cpp ${CFLAGS}
 
-server.o: server/server.cpp server/server.h utils/security_utils.h utils/symbols.h
-	g++ -c server/server.cpp
+client.o: client/client.h utils/security_utils.h utils/symbols.h
+	g++ -c client/client.cpp ${CFLAGS}
 
-server_main.o: server/server_main.cpp server/server.h utils/security_utils.h utils/symbols.h
-	g++ -c server/server_main.cpp
+client_main.o: client/client.h utils/security_utils.h  utils/symbols.h
+	g++ -c client/client_main.cpp ${CFLAGS}
 
-clean: rm *.o client server
+clean:
+	rm -rf *.o *.exe

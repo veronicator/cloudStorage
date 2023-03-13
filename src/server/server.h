@@ -1,8 +1,7 @@
 #include "../utils/security_utils.h"
 
-#define path_file "./server/userStorage/"
-
-// TODO
+#define FILE_PATH_SRV "./server/userStorage/"
+#define KEY_PATH_SRV "./server/userKeys/"
 
 struct UserInfo {
     string username;    // client username
@@ -14,25 +13,14 @@ struct UserInfo {
     UserInfo(int sd, string name);
     ~UserInfo();
 
-    void cleanup();
 };
     
 
 class Server {
-    //static Server* server;
 
-    // vector<Session> activeSessions;
-    //todo: fare un unica mappa <int sockID, UserInfo> ?
-    unordered_map<int, UserInfo*> connectedClient;    // client sockd, session
-    //unordered_map<string, int> socketClient;      // client username, socket descriptor -> to find if a client is already connected and what is his sockd
-    //map<int, UserInfo> connectedClient;     // client_socket descriptor, userInfo struct
-    //unordered_map<string, UserInfo> activeChats;  // client username, data about chat
-    // vector/list/map di int socket e username ?
+    unordered_map<int, UserInfo*> connectedClient;    // client socket descriptor, user data
+
     EVP_PKEY *priv_key;
-    
-    /***********************/
-    // singlenton
-    //Server();
 
     /***********************/
     // socket 
@@ -43,21 +31,12 @@ class Server {
     bool createSrvSocket();
     
     /****************************************************/
-    //pthread_t client_thread;
+
     pthread_mutex_t mutex_client_list;
-    //pthread_mutex_t mutex_socket_list;
-
-    //list<thread> threads;
-    //std::mutex mtx;
-
 
     /****************************************************/
     
-    bool searchUserExist(string usr_name);
-    
-    /****************************************************/
-
-    int sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer);       //dopo invio: deallocare buffer
+    int sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &send_buffer);
     long receiveMsg(int sockd, vector<unsigned char> &recv_buffer);    // restituisce lunghezza totale messaggio ricevuto, msg_size
 
     EVP_PKEY* getPeerKey(string username);
@@ -67,20 +46,18 @@ class Server {
     bool receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce);
     bool authenticationClient(int sockd);  // call session.generatenonce & sendMsg
  
-    int receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string filename);
-    int sendMsgChunks(UserInfo* ui, string filename);
+    int receiveMsgChunks(UserInfo* ui, uint64_t filedimension, string canon_path);
+    int sendMsgChunks(UserInfo* ui, string canon_path);
     
+    int changeName(string old_filename, string new_filename, string username);
     int uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len);
     int downloadFile(int sockd, vector<unsigned char> plaintext);
     int renameFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len);
-    int deleteFile(int sockd, vector<unsigned char> plaintext);
+    int deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_len);
 
     int sendFileList(int sockd);
     void logoutClient(int sockd); 
 
-    void sendErrorMsg(int sockd, string errorMsg);
-
-    
     /****************************************************/
 
     public:
@@ -89,14 +66,10 @@ class Server {
         // socket
         int acceptConnection();
         int getListener();
-        //void* client_thread_code(void *arg);  // friend?
         void run_thread(int sd);
-
-        //void joinThread();
-
-    //test
 };
 
+/** data structure to manage the arguments needed by a thread*/
 struct ThreadArgs {
     Server* server;
     int sockd;
@@ -105,4 +78,3 @@ struct ThreadArgs {
 };
 
 void* client_thread_code(void *arg);
-//void joinThread();

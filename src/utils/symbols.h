@@ -14,16 +14,22 @@
 #define HELP 11
 #define ERROR 12
 
+//others
+//#define SERVER_SIDE bool(true)
+//#define CLIENT_SIDE bool(false)
+
 //Dir Path
-#define SRV_DIR "./server/"
-#define FILE_PATH_CLT "/users/"
-#define FILE_PATH_SVR "/userStorage/"
+//#define SRV_DIR "./server/"
+//#define FILE_PATH_CLT "./client/users/"
+//#define FILE_PATH_SRV "./server/userStorage/"
 
 //responses
 #define MESSAGE_OK "ack_operation_req"
 #define OP_TERMINATED "ack_operation_terminated"
 #define MALFORMED_FILENAME "Filename not correct"
-#define FILE_PRESENT "File already present. Delete or rename the file on the cloud before upload"
+#define FILE_NOT_FOUND "File not found in the Cloud Storage"
+#define FILE_FOUND "File already in the Cloud Storage. Delete or rename the file on the cloud before upload"
+#define CLIENT_LOGOUT "Close this client session"
 
 // whitelist
 #define USERNAME_OK_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_@&!"
@@ -38,7 +44,6 @@
 #define SRV_PORT 4242
 
 // Variables size
-// TODO
 #define MAX_COMMAND_SIZE 10
 #define MAX_NAME_SIZE 20
 #define MAX_CLIENTS 50

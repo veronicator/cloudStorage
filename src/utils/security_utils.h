@@ -40,23 +40,13 @@ void handleErrors();
 
 void handleErrors(const char *error);
 
-void handleErrors(const char *error, int sockd);
 
-/*
-void generateRandomValue(unsigned char* new_value, int value_size) {
-    if(RAND_poll() != 1) { cerr << "Error in RAND_poll\n"; exit(1); }
-    if(RAND_bytes((unsigned char*)&new_value[0], value_size) != 1) { cerr << "Error in RAND_bytes\n"; exit(1); }
-}
-*/
-//void readUsername(string& usr);
-
-void readInput(string& input, const int MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
+void readInput(string& input, const size_t MAX_SIZE, string);  // read MAX_SIZE charachters from standard input and put them in "input" string
 void readFilenameInput(string& input, string msg);
 
-//bool searchUserExist(string usr_name);
-long searchFile(string filename, string username, bool server_side);
-int32_t checkFileExist(string filename, string username, string path_side);
-int removeFile(string filename, string username, string path_side);
+char* canonicalizationPath(string file_dir_path);
+long getFileSize(string canon_file_path);
+int removeFile(string canon_path);
 
 
 void print_progress_bar(int total, unsigned int fragment);
@@ -65,12 +55,6 @@ int  catch_the_signal(); // Register signal and signal handler
 void custom_act(int signum); //the function to be called when signal is sent to process (handler)
 
 void clear_vec(vector<unsigned char>& v);
-void clear_arr(unsigned char* arr, int arr_len);
-void clear_three_vec(vector<unsigned char>& v1, vector<unsigned char>& v2, vector<unsigned char>& v3);
-void clear_vec_array(vector<unsigned char>& v1, unsigned char* arr, int arr_len);
-void clear_two_vec(vector<unsigned char>& v1, vector<unsigned char>& v2);
-
-
 
 class Session {
     unsigned char* session_key = nullptr;
@@ -87,12 +71,10 @@ class Session {
         EVP_PKEY* ECDH_peerKey = nullptr;  // ephimeral
 
         Session() {};
-        ~Session(); //deallocare tutti i vari buffer utilizzati: session_key ecc
+        ~Session();
 
         // Session utils
         uint32_t createAAD(unsigned char* aad, uint16_t opcode); // return aad_len
-        // void readInput(string& input, const int MAX_SIZE, string msg = "");  // read MAX_SIZE charachters from standard input and put in "input" string
-
 
         EVP_PKEY* retrievePrivKey(string path);  // retrieve its own private key from pem file and return it
         int computeHash(unsigned char* msg, int len, unsigned char*& msgDigest);
@@ -110,14 +92,7 @@ class Session {
    
         bool checkCounter(uint32_t counter);
 
-        uint32_t encryptMsg(unsigned char *plaintext, int pt_len, unsigned char *aad, unsigned char *output);  // encrypt message to send and return message length
-        uint32_t decryptMsg(unsigned char *input_buffer, int msg_size, unsigned char *aad, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
+        uint32_t encryptMsg(unsigned char *plaintext, size_t pt_len, unsigned char *aad, unsigned char *output);  // encrypt message to send and return message length
+        uint32_t decryptMsg(unsigned char *input_buffer, uint64_t payload_size, unsigned char *aad, unsigned char *plaintext);  // dencrypt received message and return message (pt) length
 
-        //encrypt/decrypt()
-        /* 
-         * deriva shared secret
-         * calcola chiave di sessione
-         * 
-         * incrementa contatore nella send e nella receive
-        */
 };
