@@ -171,7 +171,12 @@ bool Client::authentication() {
         clear_vec(server_nonce);
         return false;
     }
-    active_session->generateECDHKey();
+    if (!active_session->generateECDHKey()) {
+        cerr << "Generation of the ECDH key failed" << endl;
+        EVP_PKEY_free(my_priv_key);
+        clear_vec(server_nonce);
+        return false;
+    }
     ret = sendSign(server_nonce, my_priv_key);
     server_nonce.clear();
     if (ret != 1) {
@@ -450,7 +455,7 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
 
         return false;
     }
-    cout << " Digital Signature Verified!" << endl;
+    cout << "Digital Signature Verified!" << endl;
     
     if (active_session->deserializePubKey(ECDH_server_key.data(), ECDH_key_size, active_session->ECDH_peerKey) != 1) {
         cerr << "Error: deserializePubKey failed!" << endl;

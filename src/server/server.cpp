@@ -514,12 +514,14 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     if (!srv_priv_k) {
         perror("Server private key not found!");
         exit(EXIT_FAILURE);
+        return false;
     }
 
     // retrieve and serialize server certificate
     cert_file = fopen(cert_file_name.c_str(), "r");
     if (!cert_file) { 
         perror("Server_cert file does not exist\n");
+        EVP_PKEY_free(srv_priv_k);
         exit(EXIT_FAILURE);
         return false;
     }
@@ -527,12 +529,15 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     fclose(cert_file);
     if (!cert) {
         cerr << "PEM_read_X509 (cert) returned NULL\n" << endl;
+        EVP_PKEY_free(srv_priv_k);
         return false;
     }
 
     cert_size = i2d_X509(cert, &cert_buf);
     if (cert_size < 0) {
         cerr << "Server cert serialization error, i2d_X509 failed" << endl;
+        EVP_PKEY_free(srv_priv_k);
+        X509_free(cert);
         return false;
     }
     // clean
@@ -540,10 +545,18 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     // generete and serialize ecdh key
     if (usr->client_session->generateNonce(srv_nonce.data()) != 1) {
-        cerr << "generate nonce failed" << endl;
+        cerr << "Generation nonce failed" << endl;
+        OPENSSL_free(cert_buf);
+        EVP_PKEY_free(srv_priv_k);
         return false;
     }
-    usr->client_session->generateECDHKey();
+
+    if (!usr->client_session->generateECDHKey()) {
+        cerr << "Generation of the ECDH key failed" << endl;
+        OPENSSL_free(cert_buf);
+        EVP_PKEY_free(srv_priv_k);
+        return false;
+    }
 
     ret = usr->client_session->serializePubKey (usr->client_session->ECDH_myKey, ECDH_srv_pub_key);
 
@@ -651,15 +664,13 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
 }
 
-/** 
- * receive client digital signature
+/** M3 (Authentication phase)
+ * receive and verify client digital signature
  * @sockd: socket descriptor
  * @srv_nonce: array containing the nonce of the server
  * @return: true on success, false on failure
 */
 bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce) {
-    // M3 Authentication
-    // receive and verify client digital signature 
 
     UserInfo *usr = nullptr;
     long payload_size;
@@ -694,7 +705,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         
     start_index = NUMERIC_FIELD_SIZE;
     if (payload_size > 0 && size_t(payload_size) > (usr->recv_buffer.size() - start_index)) {
-        cerr << "receiveSign1:Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(usr->recv_buffer);
         return false;
     }
@@ -708,8 +719,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         clear_vec(usr->recv_buffer);
         return false;
     }
-    //start_index >= recv_buffer.size() - (int)NONCE_SIZE
-    //if (recv_buf.size() <= NONCE_SIZE) {
+    
     if (start_index >= usr->recv_buffer.size() - size_t(NONCE_SIZE)) {
         cerr << "ReceiveSign2: Received msg size error on socket: " << sockd << endl;
         clear_vec(usr->recv_buffer);
@@ -727,10 +737,9 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         return false;
     }
     cout << "Received nonce verified" << endl;
-    /* | ecdh_size | ecdh_Pubk | digital signature |
-    */
+    /* | ecdh_size | ecdh_Pubk | digital signature | */
     if (start_index >= usr->recv_buffer.size() - NUMERIC_FIELD_SIZE) {
-        cerr << "receiveSign3: Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(usr->recv_buffer);
         return false;
     }
@@ -741,7 +750,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     start_index += NUMERIC_FIELD_SIZE;
 
     if (start_index >= usr->recv_buffer.size() - ECDH_key_size) {
-        cerr << "receiveSign4: Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(usr->recv_buffer);
         return false;
     }
@@ -795,8 +804,8 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
                                                         client_pubK, temp_buf.data(), signed_msg_len);
     
     // clear buffer
-    temp_buf.clear();
-    client_signature.clear();
+    clear_vec(temp_buf);
+    clear_vec(client_signature);
     EVP_PKEY_free(client_pubK);
 
     if (!verified) {
@@ -845,7 +854,7 @@ int Server::sendFileList(int sockd) {
         return -1;
     }
     
-    file_list = "File of the user '" + ui->username + "' on the cloud:\n\n";
+    file_list = "Files of the user <" + ui->username + "> in the cloud storage:\n\n";
     const string path = FILE_PATH_SRV + ui->username + "/";
 
     int found_files = 0;
@@ -1035,7 +1044,7 @@ int Server::sendMsgChunks(UserInfo* usr, string canon_path) {
     struct stat buffer;               
 
     if (stat(canon_path.c_str(), &buffer) != 0) {
-        cerr << "The requested file doesn't exist in " << usr->username << " folder" << endl;
+        cerr << "The requested file doesn't exist in <" << usr->username << "> storage" << endl;
         return -1;
     }
 
@@ -1288,10 +1297,9 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
         if (file_ok) {
             file_dim = getFileSize(canon_file);
             if (file_dim < 0) {
-                cerr << "Error: the file '" << filename 
-                    << "' does not exist in the cloud storage of the user" << endl;
+                cerr << "Error: the file <" << filename 
+                    << "> does not exist in the user storage" << endl;
                 ack_msg = FILE_NOT_FOUND;
-
                 file_ok = false;
             }
         }
@@ -1746,7 +1754,7 @@ void* client_thread_code(void *arg) {
     int sockd = args->sockd;
     serv->run_thread(sockd);
     close(sockd);
-    cout << "exit thread \n";
+    cout << "Exit thread \n" << endl;
     pthread_exit(NULL);
     return NULL;
 }
