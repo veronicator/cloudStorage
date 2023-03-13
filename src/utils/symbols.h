@@ -7,21 +7,13 @@
 #define DELETE_REQ 4
 #define UPLOAD 5
 #define DOWNLOAD 6
-#define DELETE_CONFIRM 7
+#define DELETE 7
 #define FILE_LIST 8
 #define END_OP 9
 #define LOGOUT 10
 #define HELP 11
 #define ERROR 12
 
-//others
-//#define SERVER_SIDE bool(true)
-//#define CLIENT_SIDE bool(false)
-
-//Dir Path
-//#define SRV_DIR "./server/"
-//#define FILE_PATH_CLT "./client/users/"
-//#define FILE_PATH_SRV "./server/userStorage/"
 
 //responses
 #define MESSAGE_OK "ack_operation_req"

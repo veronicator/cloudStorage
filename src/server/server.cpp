@@ -111,7 +111,7 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
     memcpy(arr.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
 
     ret = send(sockd, arr.data(), NUMERIC_FIELD_SIZE, 0);
-    if ( ret < 0 || (ret >= 0 && (size_t)ret < NUMERIC_FIELD_SIZE)) {
+    if (ret < 0 || (ret >= 0 && (size_t)ret < NUMERIC_FIELD_SIZE)) {
         perror("Error sending message size");
         clear_vec(send_buffer);
         return -1;
@@ -212,7 +212,7 @@ void Server::run_thread(int sockd) {
     try {
         usr = connectedClient.at(sockd);
     } catch (const out_of_range& ex) {
-        cerr << "Impossible to find the user" << endl;
+        cerr << "User not found" << endl;
         return;
     }    
 
@@ -249,19 +249,22 @@ void Server::run_thread(int sockd) {
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         switch(opcode) {
             case UPLOAD_REQ:
-                cout << to_string(pt_len) + " pt_len -> " << string(plaintext.begin(), plaintext.end()) << endl;
+                cout << "\nUpload Request\n" << endl;
                 ret = uploadFile(sockd, plaintext, pt_len);
                 break;
 
             case DOWNLOAD_REQ:
+                cout << "\nDownload Request\n" << endl;
                 ret = downloadFile(sockd, plaintext);
                 break;
 
             case RENAME_REQ:
+                cout << "\nRename Request\n" << endl;
                 ret = renameFile(sockd, plaintext, pt_len);
                 break;
 
             case DELETE_REQ:
+                cout << "\nDelete Request\n" << endl;
                 ret = deleteFile(sockd, plaintext, pt_len);
                 break;
 
@@ -270,7 +273,7 @@ void Server::run_thread(int sockd) {
                 break;
              
             case LOGOUT:
-                cout << "Client requested logout" << endl;
+                cout << "\nLogout Request\n" << endl;
                 logoutClient(sockd);
                 end_thread = true;
                 break;
@@ -385,13 +388,13 @@ bool Server::authenticationClient(int sockd) {
 /********************************************************************/
 
 
-/** receive the first message from a client to establish a connection
+/** M1 (Authentication phase)
+ * receive the first message from a client to establish a connection
  * @sockd: descriptor of the socket from which the request arrives
  * @client_nonce: reference to a vector where to save the received nonce of the client
  * @return: true on success, false otherwise
 */
 bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
-    // M1 (Authentication)
     vector<unsigned char> recv_buffer;
     long payload_size;
     uint32_t start_index = 0;
@@ -409,7 +412,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         
     start_index = NUMERIC_FIELD_SIZE;   // payload field
     if (payload_size > 0 && size_t(payload_size) < (recv_buffer.size() - start_index)) { 
-        cerr << "receiveUsrname1: Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(recv_buffer);
         return false;
     }
@@ -418,14 +421,14 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     opcode = ntohs(opcode);
     start_index += OPCODE_SIZE;
     if (opcode != LOGIN) {
-        cerr << "receiveUsrname2:Received message not expected on socket: " << sockd << endl;
+        cerr << "Received message not expected on socket: " << sockd << endl;
         clear_vec(recv_buffer);
         return false;
     }
     
     if (start_index >= recv_buffer.size() - size_t(NONCE_SIZE)) {
             // if it is equal => there is no username in the message -> error
-        cerr << "ReceiveUsrname3: Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(recv_buffer);
         return false;
     }
@@ -433,7 +436,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     client_nonce.insert(client_nonce.begin(), recv_buffer.begin() + start_index, recv_buffer.begin() + start_index + NONCE_SIZE);
     start_index += NONCE_SIZE;
     username = string(recv_buffer.begin() + start_index, recv_buffer.end());
-    cout << "username " << username << endl;
+    cout << "User: " << username << endl;
     clear_vec(recv_buffer);
     
     // check user existence
@@ -453,7 +456,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     }
     new_usr = new UserInfo(sockd, username);
     auto ret = connectedClient.insert({sockd, new_usr});
-    cout << "Client connected to the cloud service: " << connectedClient.size() << endl;
+    cout << "Clients connected to the cloud service: " << connectedClient.size() << endl;
 
     pthread_mutex_unlock(&mutex_client_list);
     return ret.second;
@@ -462,7 +465,8 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
 
 /********************************************************************/
 
-/** method to send the server certificate and its digital signature
+/** M2 (Authentication phase)
+ * method to send the server certificate and its digital signature
  * to the client requesting the connection to the cloud
  * @clt_nonce: nonce received in the firt message from the client, 
  *             to re-send signed, to the same client
@@ -472,8 +476,6 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
 bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<unsigned char, NONCE_SIZE> &srv_nonce) {
     // recupera certificato, serializza cert, copia nel buffer, genera nonce, genera ECDH key, firma, invia
 
-    // M2 (Authentication)
-    // cout << "server->sendCertSign" << endl;
     long ret = 0;
     
     uint32_t payload_size = 0;
@@ -509,11 +511,16 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     // retrieve server private key
     srv_priv_k = usr->client_session->retrievePrivKey("./server/Server_key.pem");
+    if (!srv_priv_k) {
+        perror("Server private key not found!");
+        exit(EXIT_FAILURE);
+    }
 
     // retrieve and serialize server certificate
     cert_file = fopen(cert_file_name.c_str(), "r");
     if (!cert_file) { 
-        cerr << "Server_cert file does not exist\n" << endl;
+        perror("Server_cert file does not exist\n");
+        exit(EXIT_FAILURE);
         return false;
     }
     cert = PEM_read_X509(cert_file, NULL, NULL, NULL);
@@ -563,6 +570,13 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     signed_msg_len = usr->client_session->signMsg(msg_to_sign.data(), 
                                     msg_to_sign.size(), srv_priv_k, signed_msg.data());
     
+    if (signed_msg_len < 0) {
+        cerr << "Signature operation failed " << endl;
+        EVP_PKEY_free(srv_priv_k);
+        OPENSSL_free(cert_buf);
+        free(ECDH_srv_pub_key);
+        return false;
+    }
     // prepare send buffer    
     payload_size = OPCODE_SIZE + NONCE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE 
                 + cert_size + NUMERIC_FIELD_SIZE + ECDH_srv_key_size + signed_msg_len;
@@ -1427,6 +1441,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     array<unsigned char, MAX_BUF_SIZE> output;
     bool file_ok = true;
     string file_path_old, file_path_new;
+    char *canon_path_old, *canon_path_new;
     UserInfo* ui = nullptr;
     cout << "****************************************" << endl;
     cout << "***********   Rename Request   *********" << endl;
@@ -1456,17 +1471,24 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     } else {
         file_path_old = FILE_PATH_SRV + ui->username + "/" + old_filename;
         file_path_new = FILE_PATH_SRV + ui->username + "/" + new_filename;
+
+        canon_path_old = canonicalizationPath(file_path_old);
     
-        if (getFileSize(file_path_old) < 0) {
+        if (!canon_path_old) {
             cerr << "Filename to change doesn't correspond to any file" << endl;
             ack_msg = "Filename to change doesn't correspond to any file\n";
             file_ok = false;
         }
     
-        if (getFileSize(file_path_new) >= 0) {
-            cout << "The new filename is already used by another file" << endl;
-            ack_msg += "The new filename is already used by another file\n";
-            file_ok = false;
+        if (file_ok) {
+            canon_path_new = canonicalizationPath(file_path_new);
+             if (canon_path_new) {
+                cout << "The new filename is already used by another file" << endl;
+                ack_msg = "The new filename is already used by another file\n";
+                file_ok = false;
+                free(canon_path_new);
+                free(canon_path_old);
+             }
         }    
 
         if (file_ok) {
@@ -1642,7 +1664,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     //Opcode sent by the client, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
     aad.fill('0');
-    if (opcode != DELETE_CONFIRM) {
+    if (opcode != DELETE) {
         cerr << "Error! Exiting DELETE_OPERATION phase" << endl;
         clear_vec(plaintext);
         free(canon_file);

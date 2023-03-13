@@ -502,7 +502,7 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
     
     signed_msg_len = active_session->signMsg(msg_to_sign.data(), NONCE_SIZE + ECDH_my_key_size, priv_k, signed_msg.data());
 
-    if ( signed_msg_len < 0) {
+    if (signed_msg_len < 0) {
         cerr << "signMsg failed" << endl;
         free(ECDH_my_pub_key);
         clear_vec(msg_to_sign);
@@ -1642,7 +1642,7 @@ int Client::deleteFile() {
 // _BEGIN_(3)-------------- [ M3: SEND_USER-CHOICE_TO_SERVER ] --------------
 
     // === Preparing Data Sending and Encryption ===    
-    active_session->createAAD(aad.data(), DELETE_CONFIRM);
+    active_session->createAAD(aad.data(), DELETE);
     
     plaintext.insert(plaintext.begin(), choice.begin(), choice.end());
 

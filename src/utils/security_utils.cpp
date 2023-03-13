@@ -30,7 +30,7 @@ char* canonicalizationPath(string file_dir_path) {
 
     char *canon_dir = realpath(file_dir_path.c_str(), NULL);
     if (!canon_dir) {
-        cerr << "realpath returned NULL" << endl;
+        //cerr << "realpath returned NULL" << endl;
         free(canon_dir);
         return nullptr;
     }
