@@ -153,14 +153,21 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
     do {
         received_partial = recv(sockd, receiver.data() + recv_byte, payload_size - recv_byte, 0);
         recv_byte += received_partial;
-    } while(recv_byte < payload_size || received_partial <= 0);
-    
-    if (received_partial == 0) {
-        cerr << "The connection with the socket " << sockd << " will be closed" << endl;
-        return 0;
-    }
+                
+        if (received_partial == 0) {
+            cerr << "The connection with the socket " << sockd << " will be closed" << endl;
+            receiver.fill('0');
+            return 0;
+        }
 
-    if (received_partial < 0 || (recv_byte >= 0 && size_t(recv_byte) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
+        if (received_partial < 0) {
+            perror("Socket error: receive message failed");
+            return -1;
+        }
+    } while(recv_byte < payload_size);
+
+
+    if (recv_byte < 0 || (recv_byte >= 0 && size_t(recv_byte) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
         return -1;

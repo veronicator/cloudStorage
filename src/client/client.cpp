@@ -109,15 +109,22 @@ int Client::sendMsg(uint32_t payload_size) {
     do {
         received_partial = recv(sd, receiver.data() + recv_byte, payload_size - recv_byte, 0);
         recv_byte += received_partial;
-    } while(recv_byte < payload_size || received_partial <= 0);
+            
+        if (received_partial == 0) {
+            cerr << "The connection has been closed" << endl;
+            receiver.fill('0');
+            return 0;
+        }
 
-    if (received_partial == 0) {
-        cerr << "The connection has been closed" << endl;
-        return 0;
-    }
+        if (received_partial < 0) {
+            perror("Socket error: receive message failed");
+            receiver.fill('0');
+            return -1;
+        }
+    } while(recv_byte < payload_size);
 
-    if (received_partial < 0 || 
-        (recv_byte >= 0 && size_t(recv_byte) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
+
+    if (recv_byte < 0 || (recv_byte >= 0 && size_t(recv_byte) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
         return -1;
