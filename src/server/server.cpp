@@ -135,11 +135,11 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
 */
 long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
-    ssize_t msg_size = 0;
+    ssize_t received_partial = 0, recv_byte = 0;
     uint32_t payload_size;
     array<unsigned char, MAX_BUF_SIZE> receiver;
     
-    msg_size = recv(sockd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
+    received_partial = recv(sockd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
@@ -148,14 +148,20 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
         return -1;
     }
 
-    msg_size = recv(sockd, receiver.data(), payload_size, 0);
+    //cout << "Expected msg size: " << payload_size << endl;
+
+    do{
+        received_partial = recv(sockd, receiver.data() + recv_byte, payload_size - recv_byte, 0);
+        recv_byte += received_partial;
+    }
+    while(recv_byte < payload_size || received_partial <= 0);
     
-    if (msg_size == 0) {
+    if (received_partial == 0) {
         cerr << "The connection with the socket " << sockd << " will be closed" << endl;
         return 0;
     }
 
-    if (msg_size < 0 || (msg_size >= 0 && size_t(msg_size) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
+    if (received_partial < 0 || (recv_byte >= 0 && size_t(recv_byte) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
         return -1;
@@ -163,10 +169,10 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    cout << "receiveMsg->msg_size received: " << msg_size << endl;
+    //cout << "receiveMsg->msg_size received: " << recv_byte << endl;
 
     //check if received all data
-    if (payload_size != size_t(msg_size) - NUMERIC_FIELD_SIZE) {
+    if (payload_size != size_t(recv_byte) - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         return -1;
@@ -174,7 +180,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     clear_vec(recv_buffer);
 
-    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
+    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + recv_byte);
     receiver.fill('0');
 
     return payload_size;
@@ -976,7 +982,10 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
     aad.fill('0');
     frag_buffer.fill('0');
 
+    cout << (int)(tot_chunks/10) << endl;
+
     for (uint32_t i = 0; i < tot_chunks; i++) {
+        // cout << "Chunk n: " << i + 1 <<" of " << tot_chunks <<endl;
         received_len = receiveMsg(usr->sockd, usr->recv_buffer);
 
         if (received_len < 0 || (received_len >=0 && uint32_t(received_len) < MIN_LEN)) {
@@ -1021,6 +1030,19 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
         outfile << string(frag_buffer.begin(), frag_buffer.begin() + pt_len);
         frag_buffer.fill('0');
         outfile.flush();
+
+        if(tot_chunks == 1)
+            cout << "|==========|" << endl;
+        else if(i == (tot_chunks - 1)){
+            for (int j = 0; (j < 10 - (int)tot_chunks) && (tot_chunks >= 10); j++)
+                cout << "=";
+
+            cout << "=|" << endl;
+        }
+        else if(i == 0)
+            cout << "|=";
+        else if(i % (int)(tot_chunks/10) == 0)
+            cout << "=" << i << std::flush;
     }
     outfile.close();
     return 1;

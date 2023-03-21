@@ -90,12 +90,12 @@ int Client::sendMsg(uint32_t payload_size) {
  long Client::receiveMsg() {
 
     array<unsigned char, MAX_BUF_SIZE> receiver;
-    ssize_t msg_size = 0;
+    ssize_t received_partial = 0, recv_byte = 0;
     uint32_t payload_size;
 
     clear_vec(recv_buffer);
 
-    msg_size = recv(sd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
+    received_partial = recv(sd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
@@ -106,15 +106,19 @@ int Client::sendMsg(uint32_t payload_size) {
         return -1;
     }
 
-    msg_size = recv(sd, receiver.data(), payload_size, 0);
+    do{
+        received_partial = recv(sd, receiver.data() + recv_byte, payload_size - recv_byte, 0);
+        recv_byte += received_partial;
+    }
+    while(recv_byte < payload_size || received_partial <= 0);
 
-    if (msg_size == 0) {
+    if (received_partial == 0) {
         cerr << "The connection has been closed" << endl;
         return 0;
     }
 
-    if (msg_size < 0 || 
-        (msg_size >= 0 && size_t(msg_size) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
+    if (received_partial < 0 || 
+        (recv_byte >= 0 && size_t(recv_byte) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
         return -1;
@@ -124,13 +128,13 @@ int Client::sendMsg(uint32_t payload_size) {
     payload_size = ntohl(payload_size);
 
     //check if all data were received
-    if (payload_size != size_t(msg_size) - NUMERIC_FIELD_SIZE) {
+    if (payload_size != size_t(recv_byte) - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         return -1;
     }
 
-    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
+    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + recv_byte);
     receiver.fill('0');     // clear content of the temporary receiver buffer
 
     return payload_size;
@@ -945,7 +949,7 @@ uint32_t Client::sendMsgChunks(string canon_path) {
     array<unsigned char, MAX_BUF_SIZE> output;      //encrypted text
 
     for (uint32_t i = 0; i < tot_chunks; i++) {
-        cout << "Chunk n: " << i + 1 << " of " << tot_chunks << endl;
+        //cout << "Chunk n: " << i + 1 << " of " << tot_chunks << endl;
         if (i == tot_chunks - 1) {
             to_send = buf.st_size - i * FRAGM_SIZE;
             active_session->createAAD(aad.data(), END_OP);                        //last chunk -> END_OP opcode sent to server
@@ -980,7 +984,7 @@ uint32_t Client::sendMsgChunks(string canon_path) {
                                 output.begin() + payload_size);
         
         output.fill('0');
-
+        //cout << "\t -> " << payload_size <<endl;
         if (sendMsg(payload_size) != 1) {
             cerr << "Error during send phase (C->S) | Upload Chunk Phase (chunk num: " <<i<< ")" << endl;
             clear_vec(send_buffer);
