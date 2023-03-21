@@ -106,11 +106,10 @@ int Client::sendMsg(uint32_t payload_size) {
         return -1;
     }
 
-    do{
+    do {
         received_partial = recv(sd, receiver.data() + recv_byte, payload_size - recv_byte, 0);
         recv_byte += received_partial;
-    }
-    while(recv_byte < payload_size || received_partial <= 0);
+    } while(recv_byte < payload_size || received_partial <= 0);
 
     if (received_partial == 0) {
         cerr << "The connection has been closed" << endl;
@@ -992,18 +991,18 @@ uint32_t Client::sendMsgChunks(string canon_path) {
         }
         clear_vec(send_buffer);
         
-        if(tot_chunks == 1)
+        if (tot_chunks == 1) {
             cout << "Start |==========| Finish" << endl;
-        else if(i == (tot_chunks - 1)){
+        } else if (i == (tot_chunks - 1)) {
             for (int j = 0; (j < 10 - (int)tot_chunks) && (tot_chunks >= 10); j++)
                 cout << "=";
 
             cout << "=| Finish" << endl;
-        }
-        else if(i == 0)
+        } else if (i == 0) {
             cout << "Start |=" << std::flush;
-        else if(i % (int)(tot_chunks/10) == 0)
+        } else if (i % (int)(tot_chunks/10) == 0) {
             cout << "=" << std::flush;
+        }
     }
 
     fclose(file);
@@ -1030,7 +1029,7 @@ int Client::uploadFile() {
     file_path = FILE_PATH_CLT + username + "/" + filename;
     canon_file = canonicalizationPath(file_path);
     if (!canon_file) {
-        cerr << "File not found. Upload operation rejected." << endl;
+        cerr << "File '" << filename << "' not found. Upload operation rejected." << endl;
         free(canon_file);
         return 1;
     }
@@ -1042,7 +1041,7 @@ int Client::uploadFile() {
         if (file_dim == -2)
             cerr << "File is too big! Upload terminated ---- " << file_dim << endl;
         else if  (file_dim == -1)
-            cerr << "File not found! Upload not possible" << endl;
+            cerr << "File '" << filename << "' not found! Upload not possible" << endl;
         else
             cerr << "Error on getFileSize" << endl;
 
@@ -1278,7 +1277,7 @@ int Client::renameFile() {
     server_response = ((char*)plaintext.data());
     clear_vec(plaintext);
     if (server_response != MESSAGE_OK) {
-        cout << "Rename not accepted" << server_response << endl;
+        cout << "Rename not accepted: " << server_response << endl;
     } else {
         cout << "Rename successfully completed" << endl;
     }
@@ -1342,18 +1341,18 @@ int Client::receiveMsgChunks( uint32_t filedimension, string canon_path) {
         aad.fill('0');
         outfile.flush();
      
-        if(tot_chunks == 1)
+        if (tot_chunks == 1) {
             cout << "Start |==========| Finish" << endl;
-        else if(i == (tot_chunks - 1)){
+        } else if (i == (tot_chunks - 1)) {
             for (int j = 0; (j < 10 - (int)tot_chunks) && (tot_chunks >= 10); j++)
                 cout << "=";
 
             cout << "=| Finish" << endl;
-        }
-        else if(i == 0)
+        } else if (i == 0) {
             cout << "Start |=" << std::flush;
-        else if(i % (int)(tot_chunks/10) == 0)
+        } else if (i % (int)(tot_chunks/10) == 0) {
             cout << "=" << std::flush;
+        }
     }
     aad.fill('0');
     plaintext.fill('0');
@@ -1377,7 +1376,7 @@ int Client::downloadFile()
         string choice;
 
         cout << "The requeste file already exists in the Download folder, "
-                << "overwrite it?: [y/n] " << endl;
+                << "overwrite it? [y/n] " << endl;
         getline(cin, choice);
 
         if (!cin) {
@@ -1386,7 +1385,7 @@ int Client::downloadFile()
         }
 
         while (choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" ) {
-            cout << "\nError: Type Y/y or N/n!" << endl << "Try again: [y/n] ";
+            cout << "\nError: Type Y/y or N/n!" << endl << "Try again [y/n] ";
             getline(cin, choice);
 
             if (!cin) {
@@ -1395,12 +1394,12 @@ int Client::downloadFile()
             }
         }
         if (choice == "N" || choice == "n") {
-            cout << "\n\t~ The file <" << filename << ">  will not be overwritten. ~\n\n" << endl;
+            cout << "\nThe file '" << filename << "'  will not be overwritten. \n" << endl;
             return 1;
         }
 
         if (removeFile(file_path) != 1) {
-            cerr << "\n\t --- Error during Deleting file ---\n" << endl;
+            cerr << "\n--- Error during Deleting file ---\n" << endl;
             return -1; 
         }
     }
@@ -1486,7 +1485,7 @@ int Client::downloadFile()
     
     clear_vec(plaintext);
     if (server_response != MESSAGE_OK) {       
-        cout << "The file cannot be downloaded: " << server_response << endl;
+        cout << "The file '" << filename << "' cannot be downloaded: " << server_response << endl;
         // the return value is 1 also in this case because the error is not a security error
         return 1;
     }
@@ -1494,7 +1493,7 @@ int Client::downloadFile()
 // _END_(2)------ [ M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] )------
 
     cout << "\nThe requested file is in the cloud storage and can be downloaded." << endl;
-    cout << "\n\t ...Download file " + filename +" in progress...\n\n" << endl;    
+    cout << "\nDownload file '" + filename + "' in progress...\n\n" << endl;    
 
 // _BEGIN_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
 
@@ -1508,7 +1507,7 @@ int Client::downloadFile()
 
 // _END_(3)-------------- [ M3: RICEZIONE_FILE_DAL_SERVER ] --------------
     
-    cout << "\n\tFile Download Completed!" << endl;
+    cout << "\nFile Download Completed!" << endl;
 
     // === Preparing Data Sending and Encryption ===    
     active_session->createAAD(aad.data(), END_OP);
@@ -1646,7 +1645,7 @@ int Client::deleteFile() {
     
 // _END_(2)-------- [ M2: RECEIVE_CONFIRMATION_DELETE_REQUEST_FROM_SERVER ] --------
     
-    cout << "Are you sure to delete the file " << filename << "?: [y/n]" << endl;
+    cout << "Are you sure to delete the file " << filename << "? [y/n]" << endl;
     getline(cin, choice);
 
     if (!cin) {
@@ -1655,7 +1654,7 @@ int Client::deleteFile() {
     }
 
     while (choice != "Y" && choice!= "y" && choice != "N" && choice!= "n" ) {
-        cout << "\nError: Type Y/y or N/n!" << endl << "Try again: [y/n] ";
+        cout << "\nError: Type Y/y or N/n!" << endl << "Try again [y/n] ";
         getline(cin, choice);
 
         if (!cin) {
@@ -1665,7 +1664,7 @@ int Client::deleteFile() {
     }
 
     if (choice == "N" || choice == "n") {
-        cout << "\n\t The file '" << filename << "' will not be deleted. \n" << endl;
+        cout << "\nThe file '" << filename << "' will not be deleted. \n" << endl;
     }
         
     
