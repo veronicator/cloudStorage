@@ -982,8 +982,6 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
     aad.fill('0');
     frag_buffer.fill('0');
 
-    cout << (int)(tot_chunks/10) << endl;
-
     for (uint32_t i = 0; i < tot_chunks; i++) {
         // cout << "Chunk n: " << i + 1 <<" of " << tot_chunks <<endl;
         received_len = receiveMsg(usr->sockd, usr->recv_buffer);
@@ -1032,17 +1030,17 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
         outfile.flush();
 
         if(tot_chunks == 1)
-            cout << "|==========|" << endl;
+            cout << "Start |==========| Finish" << endl;
         else if(i == (tot_chunks - 1)){
             for (int j = 0; (j < 10 - (int)tot_chunks) && (tot_chunks >= 10); j++)
                 cout << "=";
 
-            cout << "=|" << endl;
+            cout << "=| Finish" << endl;
         }
         else if(i == 0)
-            cout << "|=";
+            cout << "Start |=" << std::flush;
         else if(i % (int)(tot_chunks/10) == 0)
-            cout << "=" << i << std::flush;
+            cout << "=" << std::flush;
     }
     outfile.close();
     return 1;
@@ -1121,6 +1119,19 @@ int Server::sendMsgChunks(UserInfo* usr, string canon_path) {
             clear_vec(usr->send_buffer);
             return -1;
         }
+
+        if(tot_chunks == 1)
+            cout << "Start |==========| Finish" << endl;
+        else if(i == (tot_chunks - 1)){
+            for (int j = 0; (j < 10 - (int)tot_chunks) && (tot_chunks >= 10); j++)
+                cout << "=";
+
+            cout << "=| Finish" << endl;
+        }
+        else if(i == 0)
+            cout << "Start |=" << std::flush;
+        else if(i % (int)(tot_chunks/10) == 0)
+            cout << "=" << std::flush;
     }
 
     fclose(file);    

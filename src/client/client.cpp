@@ -991,6 +991,19 @@ uint32_t Client::sendMsgChunks(string canon_path) {
             return -1;
         }
         clear_vec(send_buffer);
+        
+        if(tot_chunks == 1)
+            cout << "Start |==========| Finish" << endl;
+        else if(i == (tot_chunks - 1)){
+            for (int j = 0; (j < 10 - (int)tot_chunks) && (tot_chunks >= 10); j++)
+                cout << "=";
+
+            cout << "=| Finish" << endl;
+        }
+        else if(i == 0)
+            cout << "Start |=" << std::flush;
+        else if(i % (int)(tot_chunks/10) == 0)
+            cout << "=" << std::flush;
     }
 
     fclose(file);
@@ -1328,6 +1341,19 @@ int Client::receiveMsgChunks( uint32_t filedimension, string canon_path) {
         plaintext.fill('0');
         aad.fill('0');
         outfile.flush();
+     
+        if(tot_chunks == 1)
+            cout << "Start |==========| Finish" << endl;
+        else if(i == (tot_chunks - 1)){
+            for (int j = 0; (j < 10 - (int)tot_chunks) && (tot_chunks >= 10); j++)
+                cout << "=";
+
+            cout << "=| Finish" << endl;
+        }
+        else if(i == 0)
+            cout << "Start |=" << std::flush;
+        else if(i % (int)(tot_chunks/10) == 0)
+            cout << "=" << std::flush;
     }
     aad.fill('0');
     plaintext.fill('0');
