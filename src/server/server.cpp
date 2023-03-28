@@ -111,7 +111,7 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
     memcpy(arr.data(), &payload_size_n, NUMERIC_FIELD_SIZE);
 
     ret = send(sockd, arr.data(), NUMERIC_FIELD_SIZE, 0);
-    if ( ret < 0 || (ret >= 0 && (size_t)ret < NUMERIC_FIELD_SIZE)) {
+    if (ret < 0 || (ret >= 0 && (size_t)ret < NUMERIC_FIELD_SIZE)) {
         perror("Error sending message size");
         clear_vec(send_buffer);
         return -1;
@@ -135,11 +135,11 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
 */
 long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
-    ssize_t msg_size = 0;
+    ssize_t received_partial = 0, recv_byte = 0;
     uint32_t payload_size;
     array<unsigned char, MAX_BUF_SIZE> receiver;
     
-    msg_size = recv(sockd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
+    received_partial = recv(sockd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
@@ -148,14 +148,26 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
         return -1;
     }
 
-    msg_size = recv(sockd, receiver.data(), payload_size, 0);
-    
-    if (msg_size == 0) {
-        cerr << "The connection with the socket " << sockd << " will be closed" << endl;
-        return 0;
-    }
+    //cout << "Expected msg size: " << payload_size << endl;
 
-    if (msg_size < 0 || (msg_size >= 0 && size_t(msg_size) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
+    do {
+        received_partial = recv(sockd, receiver.data() + recv_byte, payload_size - recv_byte, 0);
+        recv_byte += received_partial;
+                
+        if (received_partial == 0) {
+            cerr << "The connection with the socket " << sockd << " will be closed" << endl;
+            receiver.fill('0');
+            return 0;
+        }
+
+        if (received_partial < 0) {
+            perror("Socket error: receive message failed");
+            return -1;
+        }
+    } while(recv_byte < payload_size);
+
+
+    if (recv_byte < 0 || (recv_byte >= 0 && size_t(recv_byte) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
         return -1;
@@ -163,10 +175,10 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    cout << "receiveMsg->msg_size received: " << msg_size << endl;
+    //cout << "receiveMsg->msg_size received: " << recv_byte << endl;
 
     //check if received all data
-    if (payload_size != size_t(msg_size) - NUMERIC_FIELD_SIZE) {
+    if (payload_size != size_t(recv_byte) - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         return -1;
@@ -174,7 +186,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     clear_vec(recv_buffer);
 
-    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
+    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + recv_byte);
     receiver.fill('0');
 
     return payload_size;
@@ -183,7 +195,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 /********************************************************************/
 
 void Server::run_thread(int sockd) {
-    cout << "run_thread -> run() thread on socket " << sockd << endl;
+    cout << "run() thread on socket " << sockd << endl;
 
     UserInfo *usr = nullptr;
 
@@ -212,7 +224,7 @@ void Server::run_thread(int sockd) {
     try {
         usr = connectedClient.at(sockd);
     } catch (const out_of_range& ex) {
-        cerr << "Impossible to find the user" << endl;
+        cerr << "User not found" << endl;
         return;
     }    
 
@@ -249,28 +261,31 @@ void Server::run_thread(int sockd) {
         opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));
         switch(opcode) {
             case UPLOAD_REQ:
-                cout << to_string(pt_len) + " pt_len -> " << string(plaintext.begin(), plaintext.end()) << endl;
+                cout << "\nUpload Request\n" << endl;
                 ret = uploadFile(sockd, plaintext, pt_len);
                 break;
 
             case DOWNLOAD_REQ:
+                cout << "\nDownload Request\n" << endl;
                 ret = downloadFile(sockd, plaintext);
                 break;
 
             case RENAME_REQ:
+                cout << "\nRename Request\n" << endl;
                 ret = renameFile(sockd, plaintext, pt_len);
                 break;
 
             case DELETE_REQ:
+                cout << "\nDelete Request\n" << endl;
                 ret = deleteFile(sockd, plaintext, pt_len);
                 break;
 
-            case FILE_LIST:
+            case FILE_LIST_REQ:
                 ret = sendFileList(sockd);
                 break;
              
             case LOGOUT:
-                cout << "Client requested logout" << endl;
+                cout << "\nLogout Request\n" << endl;
                 logoutClient(sockd);
                 end_thread = true;
                 break;
@@ -385,13 +400,13 @@ bool Server::authenticationClient(int sockd) {
 /********************************************************************/
 
 
-/** receive the first message from a client to establish a connection
+/** M1 (Authentication phase)
+ * receive the first message from a client to establish a connection
  * @sockd: descriptor of the socket from which the request arrives
  * @client_nonce: reference to a vector where to save the received nonce of the client
  * @return: true on success, false otherwise
 */
 bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
-    // M1 (Authentication)
     vector<unsigned char> recv_buffer;
     long payload_size;
     uint32_t start_index = 0;
@@ -409,7 +424,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
         
     start_index = NUMERIC_FIELD_SIZE;   // payload field
     if (payload_size > 0 && size_t(payload_size) < (recv_buffer.size() - start_index)) { 
-        cerr << "receiveUsrname1: Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(recv_buffer);
         return false;
     }
@@ -418,14 +433,14 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     opcode = ntohs(opcode);
     start_index += OPCODE_SIZE;
     if (opcode != LOGIN) {
-        cerr << "receiveUsrname2:Received message not expected on socket: " << sockd << endl;
+        cerr << "Received message not expected on socket: " << sockd << endl;
         clear_vec(recv_buffer);
         return false;
     }
     
     if (start_index >= recv_buffer.size() - size_t(NONCE_SIZE)) {
             // if it is equal => there is no username in the message -> error
-        cerr << "ReceiveUsrname3: Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(recv_buffer);
         return false;
     }
@@ -433,7 +448,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     client_nonce.insert(client_nonce.begin(), recv_buffer.begin() + start_index, recv_buffer.begin() + start_index + NONCE_SIZE);
     start_index += NONCE_SIZE;
     username = string(recv_buffer.begin() + start_index, recv_buffer.end());
-    cout << "username " << username << endl;
+    cout << "User: " << username << endl;
     clear_vec(recv_buffer);
     
     // check user existence
@@ -453,7 +468,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     }
     new_usr = new UserInfo(sockd, username);
     auto ret = connectedClient.insert({sockd, new_usr});
-    cout << "Client connected to the cloud service: " << connectedClient.size() << endl;
+    cout << "Clients connected to the cloud service: " << connectedClient.size() << endl;
 
     pthread_mutex_unlock(&mutex_client_list);
     return ret.second;
@@ -462,7 +477,8 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
 
 /********************************************************************/
 
-/** method to send the server certificate and its digital signature
+/** M2 (Authentication phase)
+ * method to send the server certificate and its digital signature
  * to the client requesting the connection to the cloud
  * @clt_nonce: nonce received in the firt message from the client, 
  *             to re-send signed, to the same client
@@ -472,8 +488,6 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
 bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<unsigned char, NONCE_SIZE> &srv_nonce) {
     // recupera certificato, serializza cert, copia nel buffer, genera nonce, genera ECDH key, firma, invia
 
-    // M2 (Authentication)
-    // cout << "server->sendCertSign" << endl;
     long ret = 0;
     
     uint32_t payload_size = 0;
@@ -509,23 +523,33 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     // retrieve server private key
     srv_priv_k = usr->client_session->retrievePrivKey("./server/Server_key.pem");
+    if (!srv_priv_k) {
+        perror("Server private key not found!");
+        exit(EXIT_FAILURE);
+        return false;
+    }
 
     // retrieve and serialize server certificate
     cert_file = fopen(cert_file_name.c_str(), "r");
     if (!cert_file) { 
-        cerr << "Server_cert file does not exist\n" << endl;
+        perror("Server_cert file does not exist\n");
+        EVP_PKEY_free(srv_priv_k);
+        exit(EXIT_FAILURE);
         return false;
     }
     cert = PEM_read_X509(cert_file, NULL, NULL, NULL);
     fclose(cert_file);
     if (!cert) {
         cerr << "PEM_read_X509 (cert) returned NULL\n" << endl;
+        EVP_PKEY_free(srv_priv_k);
         return false;
     }
 
     cert_size = i2d_X509(cert, &cert_buf);
     if (cert_size < 0) {
         cerr << "Server cert serialization error, i2d_X509 failed" << endl;
+        EVP_PKEY_free(srv_priv_k);
+        X509_free(cert);
         return false;
     }
     // clean
@@ -533,10 +557,18 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
     // generete and serialize ecdh key
     if (usr->client_session->generateNonce(srv_nonce.data()) != 1) {
-        cerr << "generate nonce failed" << endl;
+        cerr << "Generation nonce failed" << endl;
+        OPENSSL_free(cert_buf);
+        EVP_PKEY_free(srv_priv_k);
         return false;
     }
-    usr->client_session->generateECDHKey();
+
+    if (!usr->client_session->generateECDHKey()) {
+        cerr << "Generation of the ECDH key failed" << endl;
+        OPENSSL_free(cert_buf);
+        EVP_PKEY_free(srv_priv_k);
+        return false;
+    }
 
     ret = usr->client_session->serializePubKey (usr->client_session->ECDH_myKey, ECDH_srv_pub_key);
 
@@ -563,6 +595,13 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     signed_msg_len = usr->client_session->signMsg(msg_to_sign.data(), 
                                     msg_to_sign.size(), srv_priv_k, signed_msg.data());
     
+    if (signed_msg_len < 0) {
+        cerr << "Signature operation failed " << endl;
+        EVP_PKEY_free(srv_priv_k);
+        OPENSSL_free(cert_buf);
+        free(ECDH_srv_pub_key);
+        return false;
+    }
     // prepare send buffer    
     payload_size = OPCODE_SIZE + NONCE_SIZE + NONCE_SIZE + NUMERIC_FIELD_SIZE 
                 + cert_size + NUMERIC_FIELD_SIZE + ECDH_srv_key_size + signed_msg_len;
@@ -637,15 +676,13 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
 
 }
 
-/** 
- * receive client digital signature
+/** M3 (Authentication phase)
+ * receive and verify client digital signature
  * @sockd: socket descriptor
  * @srv_nonce: array containing the nonce of the server
  * @return: true on success, false on failure
 */
 bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce) {
-    // M3 Authentication
-    // receive and verify client digital signature 
 
     UserInfo *usr = nullptr;
     long payload_size;
@@ -680,7 +717,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         
     start_index = NUMERIC_FIELD_SIZE;
     if (payload_size > 0 && size_t(payload_size) > (usr->recv_buffer.size() - start_index)) {
-        cerr << "receiveSign1:Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(usr->recv_buffer);
         return false;
     }
@@ -694,8 +731,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         clear_vec(usr->recv_buffer);
         return false;
     }
-    //start_index >= recv_buffer.size() - (int)NONCE_SIZE
-    //if (recv_buf.size() <= NONCE_SIZE) {
+    
     if (start_index >= usr->recv_buffer.size() - size_t(NONCE_SIZE)) {
         cerr << "ReceiveSign2: Received msg size error on socket: " << sockd << endl;
         clear_vec(usr->recv_buffer);
@@ -713,10 +749,9 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
         return false;
     }
     cout << "Received nonce verified" << endl;
-    /* | ecdh_size | ecdh_Pubk | digital signature |
-    */
+    /* | ecdh_size | ecdh_Pubk | digital signature | */
     if (start_index >= usr->recv_buffer.size() - NUMERIC_FIELD_SIZE) {
-        cerr << "receiveSign3: Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(usr->recv_buffer);
         return false;
     }
@@ -727,7 +762,7 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
     start_index += NUMERIC_FIELD_SIZE;
 
     if (start_index >= usr->recv_buffer.size() - ECDH_key_size) {
-        cerr << "receiveSign4: Received msg size error on socket: " << sockd << endl;
+        cerr << "Received msg size error on socket: " << sockd << endl;
         clear_vec(usr->recv_buffer);
         return false;
     }
@@ -781,8 +816,8 @@ bool Server::receiveSign(int sockd, array<unsigned char, NONCE_SIZE> &srv_nonce)
                                                         client_pubK, temp_buf.data(), signed_msg_len);
     
     // clear buffer
-    temp_buf.clear();
-    client_signature.clear();
+    clear_vec(temp_buf);
+    clear_vec(client_signature);
     EVP_PKEY_free(client_pubK);
 
     if (!verified) {
@@ -831,7 +866,7 @@ int Server::sendFileList(int sockd) {
         return -1;
     }
     
-    file_list = "File of the user '" + ui->username + "' on the cloud:\n\n";
+    file_list = "Files of the user <" + ui->username + "> in the cloud storage:\n\n";
     const string path = FILE_PATH_SRV + ui->username + "/";
 
     int found_files = 0;
@@ -963,6 +998,7 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
     frag_buffer.fill('0');
 
     for (uint32_t i = 0; i < tot_chunks; i++) {
+        // cout << "Chunk n: " << i + 1 <<" of " << tot_chunks <<endl;
         received_len = receiveMsg(usr->sockd, usr->recv_buffer);
 
         if (received_len < 0 || (received_len >=0 && uint32_t(received_len) < MIN_LEN)) {
@@ -985,7 +1021,7 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
             aad.fill('0');
             outfile.close();
 
-            if(remove(canon_path.c_str()) != 0) {
+            if (remove(canon_path.c_str()) != 0) {
                 cerr << "File not correctly deleted"<<endl;
             }
             return -1;
@@ -1007,6 +1043,7 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
         outfile << string(frag_buffer.begin(), frag_buffer.begin() + pt_len);
         frag_buffer.fill('0');
         outfile.flush();
+
     }
     outfile.close();
     return 1;
@@ -1021,7 +1058,7 @@ int Server::sendMsgChunks(UserInfo* usr, string canon_path) {
     struct stat buffer;               
 
     if (stat(canon_path.c_str(), &buffer) != 0) {
-        cerr << "The requested file doesn't exist in " << usr->username << " folder" << endl;
+        cerr << "The requested file doesn't exist in <" << usr->username << "> storage" << endl;
         return -1;
     }
 
@@ -1109,7 +1146,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     string file_path;
     long ret;
     cout << "****************************************" << endl;
-    cout << "***********   RECEIVING FILE   *********" << endl;
+    cout << "**********   RECEIVING FILE   **********" << endl;
     cout << "****************************************" << endl;
 
     UserInfo* ui = nullptr;
@@ -1150,7 +1187,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     clear_vec(plaintext);
     aad.fill('0');
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
-    ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
+    ui->client_session->createAAD(aad.data(), UPLOAD);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
 
     clear_vec(plaintext);
@@ -1184,7 +1221,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         return 1;       
     }
 
-    cout << "       -------- RECEIVING FILE --------" << endl;
+    cout << "\t-------- RECEIVING FILE --------" << endl;
 
     ret = receiveMsgChunks(ui, filedimension, file_path);
     
@@ -1223,7 +1260,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         return -1;
     }
     clear_vec(ui->send_buffer);
-    cout << "    -------- RECEPTION ENDED --------" << endl;
+    cout << "\n    -------- RECEPTION ENDED --------" << endl;
     cout << "****************************************" << endl;
     return 1;
 }
@@ -1266,7 +1303,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
     } else {
         canon_file = canonicalizationPath(FILE_PATH_SRV + ui->username + "/" + filename);
         if (!canon_file) {
-            cerr << "File " << filename << " not found! Download rejected!" << endl;
+            cerr << "File '" << filename << "' not found! Download rejected!" << endl;
             free(canon_file);
             ack_msg = FILE_NOT_FOUND;
             file_ok = false;
@@ -1274,10 +1311,9 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
         if (file_ok) {
             file_dim = getFileSize(canon_file);
             if (file_dim < 0) {
-                cerr << "Error: the file '" << filename 
-                    << "' does not exist in the cloud storage of the user" << endl;
+                cerr << "Error: the file <" << filename 
+                    << "> does not exist in the user storage" << endl;
                 ack_msg = FILE_NOT_FOUND;
-
                 file_ok = false;
             }
         }
@@ -1293,7 +1329,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
     memcpy(plaintext.data(), &file_dimension, NUMERIC_FIELD_SIZE);
     plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, ack_msg.begin(), ack_msg.end());
 
-    ui->client_session->createAAD(aad.data(), DOWNLOAD_REQ);
+    ui->client_session->createAAD(aad.data(), DOWNLOAD);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(),
                                             aad.data(), ciphertext.data());
     clear_vec(plaintext);
@@ -1324,7 +1360,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
     clear_vec(ui->send_buffer);
 
     if (strcmp(ack_msg.c_str(), FILE_NOT_FOUND) == 0) {
-        cout << "File not found in the cloud storage. Download rejected" << endl;
+        //cout << "File not found in the cloud storage. Download rejected" << endl;
         free(canon_file);
         return 1;       
     }
@@ -1427,6 +1463,7 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     array<unsigned char, MAX_BUF_SIZE> output;
     bool file_ok = true;
     string file_path_old, file_path_new;
+    char *canon_path_old, *canon_path_new;
     UserInfo* ui = nullptr;
     cout << "****************************************" << endl;
     cout << "***********   Rename Request   *********" << endl;
@@ -1456,17 +1493,24 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     } else {
         file_path_old = FILE_PATH_SRV + ui->username + "/" + old_filename;
         file_path_new = FILE_PATH_SRV + ui->username + "/" + new_filename;
+
+        canon_path_old = canonicalizationPath(file_path_old);
     
-        if (getFileSize(file_path_old) < 0) {
-            cerr << "Filename to change doesn't correspond to any file" << endl;
-            ack_msg = "Filename to change doesn't correspond to any file\n";
+        if (!canon_path_old) {
+            cerr << "Filename '" << old_filename << "' to change doesn't correspond to any file\n" << endl;
+            ack_msg = "Filename '" + old_filename + "' to change doesn't correspond to any file";
             file_ok = false;
         }
     
-        if (getFileSize(file_path_new) >= 0) {
-            cout << "The new filename is already used by another file" << endl;
-            ack_msg += "The new filename is already used by another file\n";
-            file_ok = false;
+        if (file_ok) {
+            canon_path_new = canonicalizationPath(file_path_new);
+             if (canon_path_new) {
+                cout << "The new filename is already used by another file" << endl;
+                ack_msg = "The new filename is already used by another file\n";
+                file_ok = false;
+                free(canon_path_new);
+                free(canon_path_old);
+             }
         }    
 
         if (file_ok) {
@@ -1568,7 +1612,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     clear_vec(plaintext);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
 
-    ui->client_session->createAAD(aad.data(), DELETE_REQ);
+    ui->client_session->createAAD(aad.data(), DELETE);
 
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ciphertext.data());
     aad.fill('0');
@@ -1642,7 +1686,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     //Opcode sent by the client, must be checked before proceeding (Lies into aad)
     opcode = ntohs(*(uint16_t*)(aad.data() + NUMERIC_FIELD_SIZE));    
     aad.fill('0');
-    if (opcode != DELETE_CONFIRM) {
+    if (opcode != DELETE) {
         cerr << "Error! Exiting DELETE_OPERATION phase" << endl;
         clear_vec(plaintext);
         free(canon_file);
@@ -1658,10 +1702,10 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 // _BEGIN_(3)-------------- [ M3: SEND_RESPONSE_OF_THE_OPERATION_TO_CLIENT ] --------------
 
     if (user_choice == "Y" || user_choice == "y") {
-        cout << "\n\t~ The file *( " << filename << " )* is going to be deleted. ~\n\n" << endl;
+        cout << "\nThe file '" << filename << "' is going to be deleted.\n" << endl;
 
         if (removeFile(canon_file) != 1) {
-            cout << "\n\t --- Error during Delete operation ---\n" << endl; 
+            cout << "\n--- Error during Delete operation ---\n" << endl; 
             free(canon_file);
             return -1;
         } else {
@@ -1724,7 +1768,7 @@ void* client_thread_code(void *arg) {
     int sockd = args->sockd;
     serv->run_thread(sockd);
     close(sockd);
-    cout << "exit thread \n";
+    cout << "Exit thread \n" << endl;
     pthread_exit(NULL);
     return NULL;
 }
