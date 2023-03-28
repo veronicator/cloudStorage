@@ -24,7 +24,7 @@ int main() {
 
             pthread_t client_thread;
             ThreadArgs* args = new ThreadArgs(server, new_sd);
-            cout << "pthread_create" << endl;
+            cout << "pthread creation" << endl;
             if(pthread_create(&client_thread, NULL, &client_thread_code, (void*)args) != 0) {
                 perror("thread_create failed");
                 continue;

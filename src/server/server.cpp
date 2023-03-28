@@ -135,11 +135,11 @@ int Server::sendMsg(uint32_t payload_size, int sockd, vector<unsigned char> &sen
 */
 long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
-    ssize_t msg_size = 0;
+    ssize_t received_partial = 0, recv_byte = 0;
     uint32_t payload_size;
     array<unsigned char, MAX_BUF_SIZE> receiver;
     
-    msg_size = recv(sockd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
+    received_partial = recv(sockd, receiver.data(), NUMERIC_FIELD_SIZE, 0);
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
@@ -148,14 +148,26 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
         return -1;
     }
 
-    msg_size = recv(sockd, receiver.data(), payload_size, 0);
-    
-    if (msg_size == 0) {
-        cerr << "The connection with the socket " << sockd << " will be closed" << endl;
-        return 0;
-    }
+    //cout << "Expected msg size: " << payload_size << endl;
 
-    if (msg_size < 0 || (msg_size >= 0 && size_t(msg_size) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
+    do {
+        received_partial = recv(sockd, receiver.data() + recv_byte, payload_size - recv_byte, 0);
+        recv_byte += received_partial;
+                
+        if (received_partial == 0) {
+            cerr << "The connection with the socket " << sockd << " will be closed" << endl;
+            receiver.fill('0');
+            return 0;
+        }
+
+        if (received_partial < 0) {
+            perror("Socket error: receive message failed");
+            return -1;
+        }
+    } while(recv_byte < payload_size);
+
+
+    if (recv_byte < 0 || (recv_byte >= 0 && size_t(recv_byte) < size_t(NUMERIC_FIELD_SIZE + OPCODE_SIZE))) {
         perror("Socket error: receive message failed");
         receiver.fill('0');
         return -1;
@@ -163,10 +175,10 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     payload_size = *(uint32_t*)(receiver.data());
     payload_size = ntohl(payload_size);
-    cout << "receiveMsg->msg_size received: " << msg_size << endl;
+    //cout << "receiveMsg->msg_size received: " << recv_byte << endl;
 
     //check if received all data
-    if (payload_size != size_t(msg_size) - NUMERIC_FIELD_SIZE) {
+    if (payload_size != size_t(recv_byte) - NUMERIC_FIELD_SIZE) {
         cerr << "Error: Data received too short (malformed message?)" << endl;
         receiver.fill('0');
         return -1;
@@ -174,7 +186,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 
     clear_vec(recv_buffer);
 
-    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + msg_size);
+    recv_buffer.insert(recv_buffer.begin(), receiver.begin(), receiver.begin() + recv_byte);
     receiver.fill('0');
 
     return payload_size;
@@ -183,7 +195,7 @@ long Server::receiveMsg(int sockd, vector<unsigned char> &recv_buffer) {
 /********************************************************************/
 
 void Server::run_thread(int sockd) {
-    cout << "run_thread -> run() thread on socket " << sockd << endl;
+    cout << "run() thread on socket " << sockd << endl;
 
     UserInfo *usr = nullptr;
 
@@ -268,7 +280,7 @@ void Server::run_thread(int sockd) {
                 ret = deleteFile(sockd, plaintext, pt_len);
                 break;
 
-            case FILE_LIST:
+            case FILE_LIST_REQ:
                 ret = sendFileList(sockd);
                 break;
              
@@ -986,6 +998,7 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
     frag_buffer.fill('0');
 
     for (uint32_t i = 0; i < tot_chunks; i++) {
+        // cout << "Chunk n: " << i + 1 <<" of " << tot_chunks <<endl;
         received_len = receiveMsg(usr->sockd, usr->recv_buffer);
 
         if (received_len < 0 || (received_len >=0 && uint32_t(received_len) < MIN_LEN)) {
@@ -1008,7 +1021,7 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
             aad.fill('0');
             outfile.close();
 
-            if(remove(canon_path.c_str()) != 0) {
+            if (remove(canon_path.c_str()) != 0) {
                 cerr << "File not correctly deleted"<<endl;
             }
             return -1;
@@ -1030,6 +1043,7 @@ int Server::receiveMsgChunks(UserInfo* usr, uint64_t filedimension, string canon
         outfile << string(frag_buffer.begin(), frag_buffer.begin() + pt_len);
         frag_buffer.fill('0');
         outfile.flush();
+
     }
     outfile.close();
     return 1;
@@ -1132,7 +1146,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     string file_path;
     long ret;
     cout << "****************************************" << endl;
-    cout << "***********   RECEIVING FILE   *********" << endl;
+    cout << "**********   RECEIVING FILE   **********" << endl;
     cout << "****************************************" << endl;
 
     UserInfo* ui = nullptr;
@@ -1173,7 +1187,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     clear_vec(plaintext);
     aad.fill('0');
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
-    ui->client_session->createAAD(aad.data(), UPLOAD_REQ);
+    ui->client_session->createAAD(aad.data(), UPLOAD);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), output.data());
 
     clear_vec(plaintext);
@@ -1207,7 +1221,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         return 1;       
     }
 
-    cout << "       -------- RECEIVING FILE --------" << endl;
+    cout << "\t-------- RECEIVING FILE --------" << endl;
 
     ret = receiveMsgChunks(ui, filedimension, file_path);
     
@@ -1246,7 +1260,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         return -1;
     }
     clear_vec(ui->send_buffer);
-    cout << "    -------- RECEPTION ENDED --------" << endl;
+    cout << "\n    -------- RECEPTION ENDED --------" << endl;
     cout << "****************************************" << endl;
     return 1;
 }
@@ -1289,7 +1303,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
     } else {
         canon_file = canonicalizationPath(FILE_PATH_SRV + ui->username + "/" + filename);
         if (!canon_file) {
-            cerr << "File " << filename << " not found! Download rejected!" << endl;
+            cerr << "File '" << filename << "' not found! Download rejected!" << endl;
             free(canon_file);
             ack_msg = FILE_NOT_FOUND;
             file_ok = false;
@@ -1315,7 +1329,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
     memcpy(plaintext.data(), &file_dimension, NUMERIC_FIELD_SIZE);
     plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, ack_msg.begin(), ack_msg.end());
 
-    ui->client_session->createAAD(aad.data(), DOWNLOAD_REQ);
+    ui->client_session->createAAD(aad.data(), DOWNLOAD);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(),
                                             aad.data(), ciphertext.data());
     clear_vec(plaintext);
@@ -1346,7 +1360,7 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
     clear_vec(ui->send_buffer);
 
     if (strcmp(ack_msg.c_str(), FILE_NOT_FOUND) == 0) {
-        cout << "File not found in the cloud storage. Download rejected" << endl;
+        //cout << "File not found in the cloud storage. Download rejected" << endl;
         free(canon_file);
         return 1;       
     }
@@ -1483,8 +1497,8 @@ int Server::renameFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
         canon_path_old = canonicalizationPath(file_path_old);
     
         if (!canon_path_old) {
-            cerr << "Filename to change doesn't correspond to any file" << endl;
-            ack_msg = "Filename to change doesn't correspond to any file\n";
+            cerr << "Filename '" << old_filename << "' to change doesn't correspond to any file\n" << endl;
+            ack_msg = "Filename '" + old_filename + "' to change doesn't correspond to any file";
             file_ok = false;
         }
     
@@ -1598,7 +1612,7 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     clear_vec(plaintext);
     plaintext.insert(plaintext.begin(), ack_msg.begin(), ack_msg.end());
 
-    ui->client_session->createAAD(aad.data(), DELETE_REQ);
+    ui->client_session->createAAD(aad.data(), DELETE);
 
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(), aad.data(), ciphertext.data());
     aad.fill('0');
@@ -1688,10 +1702,10 @@ int Server::deleteFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 // _BEGIN_(3)-------------- [ M3: SEND_RESPONSE_OF_THE_OPERATION_TO_CLIENT ] --------------
 
     if (user_choice == "Y" || user_choice == "y") {
-        cout << "\n\t~ The file *( " << filename << " )* is going to be deleted. ~\n\n" << endl;
+        cout << "\nThe file '" << filename << "' is going to be deleted.\n" << endl;
 
         if (removeFile(canon_file) != 1) {
-            cout << "\n\t --- Error during Delete operation ---\n" << endl; 
+            cout << "\n--- Error during Delete operation ---\n" << endl; 
             free(canon_file);
             return -1;
         } else {

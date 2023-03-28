@@ -48,12 +48,6 @@ char* canonicalizationPath(string file_dir_path);
 long getFileSize(string canon_file_path);
 int removeFile(string canon_path);
 
-
-void print_progress_bar(int total, unsigned int fragment);
-
-int  catch_the_signal(); // Register signal and signal handler
-void custom_act(int signum); //the function to be called when signal is sent to process (handler)
-
 void clear_vec(vector<unsigned char>& v);
 
 class Session {
