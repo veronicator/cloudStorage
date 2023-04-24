@@ -21,6 +21,6 @@ To execute the code, open different terminals for server and clients and type:
 ```sh
 ./client.exe <server_ip>
 ```
-for testing on the same machine, use <localhost> as the <server_ip>.
+for testing on the same machine, use *localhost* as the <server_ip>.
 
 The user_key password is the name of the user itself.
