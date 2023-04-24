@@ -10,7 +10,7 @@ In order to compile and run the code, you must be in the *cloudStorage/src/* fol
 ```sh
 make
 ```
-in order to compile the executable for both client and server.
+that creates the executables for the both server and client.
 
 To execute the code, open different terminals for server and clients and type:
 * for the server:
