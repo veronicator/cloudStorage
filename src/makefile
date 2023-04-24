@@ -1,5 +1,4 @@
 CFLAGS = -Wall -lpthread -lcrypto -lstdc++fs
-WFLAGS = -Wall
 
 all: clean server.exe client.exe
 
