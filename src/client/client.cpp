@@ -1047,7 +1047,7 @@ int Client::uploadFile() {
     }
     file_dim = getFileSize(canon_file);
 
-    if (file_dim < 0 && file_dim != -1 && file_dim != -2) {
+    if (file_dim < 0 || file_dim == -1 || file_dim == -2) {
         free(canon_file);
 
         if (file_dim == -2)
