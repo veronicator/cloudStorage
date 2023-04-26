@@ -1304,7 +1304,7 @@ int Client::renameFile() {
 
 //---------------------------------------------//
 
-int Client::receiveMsgChunks( uint32_t filedimension, string canon_path) {
+int Client::receiveMsgChunks( uint64_t filedimension, string canon_path) {
     ofstream outfile(canon_path, ofstream::binary);
 
     array<unsigned char, AAD_LEN> aad;
@@ -1497,7 +1497,8 @@ int Client::downloadFile()
     memcpy(&r_dim_h, plaintext.data() + NUMERIC_FIELD_SIZE, NUMERIC_FIELD_SIZE);
     filedimension = ((uint64_t)ntohl(r_dim_h) << 32) + ntohl(r_dim_l);
     server_response.insert(server_response.begin(), plaintext.begin() + FILE_SIZE_FIELD, plaintext.begin() + plaintext_len);    
-    
+
+
     clear_vec(plaintext);
     if (server_response != MESSAGE_OK) {       
         cout << "The file '" << filename << "' cannot be downloaded: " << server_response << endl;

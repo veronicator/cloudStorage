@@ -37,7 +37,7 @@ class Client {
 
     int uploadFile();
     uint32_t sendMsgChunks(string canon_path);
-    int receiveMsgChunks( uint32_t filedimension, string canon_path);
+    int receiveMsgChunks( uint64_t filedimension, string canon_path);
     int downloadFile();
     int renameFile();
     int deleteFile();

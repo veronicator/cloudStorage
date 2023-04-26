@@ -50,7 +50,7 @@ long getFileSize(string canon_file_path) {
         return -1;
     }
     
-    if (buffer.st_size >= MAX_FILE_DIMENSION) {
+    if (buffer.st_size > MAX_FILE_DIMENSION) {
         cerr << "File too big" << endl;
         return -2;
     }
