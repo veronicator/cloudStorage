@@ -1163,6 +1163,14 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
     filedimension = ((uint64_t)ntohl(r_dim_h) << 32) + ntohl(r_dim_l);
     filename = string(plaintext.begin() + FILE_SIZE_FIELD, plaintext.begin() + pt_len);
 
+    if (filedimension > MAX_FILE_DIMENSION) {
+        cerr << "Error during receive phase (C->S | Uploaded file too big)" << endl;
+        cout << "****************************************" << endl;
+        clear_vec(plaintext);
+        clear_vec(ui->send_buffer);
+        return -1;
+    }
+
     const auto re = regex{R"(^\w[\w\.\-\+_!#$%^&()]{0,19}$)"};
     file_ok = regex_match(filename, re);
 
@@ -1273,7 +1281,7 @@ int Server::uploadFile(int sockd, vector<unsigned char> plaintext, uint32_t pt_l
 int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
     string filename;
     ssize_t file_dim;
-    uint32_t payload_size, payload_size_n, name_len, file_dimension;
+    uint32_t payload_size, payload_size_n, name_len, file_dim_l_n, file_dim_h_n;
     string ack_msg;
     array<unsigned char, AAD_LEN> aad;
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
@@ -1323,12 +1331,14 @@ int Server::downloadFile(int sockd, vector<unsigned char> plaintext) {
         ack_msg = MESSAGE_OK; 
     }
 
-    file_dimension = htonl((uint32_t)(file_dim));
-    plaintext.resize(NUMERIC_FIELD_SIZE);
+    file_dim_h_n = htonl((uint32_t)(file_dim >> 32));
+    file_dim_l_n = htonl((uint32_t) (file_dim));
+    plaintext.resize(FILE_SIZE_FIELD);
     
-    memcpy(plaintext.data(), &file_dimension, NUMERIC_FIELD_SIZE);
-    plaintext.insert(plaintext.begin() + NUMERIC_FIELD_SIZE, ack_msg.begin(), ack_msg.end());
-
+    memcpy(plaintext.data(), &file_dim_l_n, NUMERIC_FIELD_SIZE);
+    memcpy(plaintext.data() + NUMERIC_FIELD_SIZE, &file_dim_h_n, NUMERIC_FIELD_SIZE);
+    plaintext.insert(plaintext.begin() + FILE_SIZE_FIELD, ack_msg.begin(), ack_msg.end());
+    
     ui->client_session->createAAD(aad.data(), DOWNLOAD);
     payload_size = ui->client_session->encryptMsg(plaintext.data(), plaintext.size(),
                                             aad.data(), ciphertext.data());
