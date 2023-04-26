@@ -1375,7 +1375,8 @@ int Client::receiveMsgChunks( uint32_t filedimension, string canon_path) {
 int Client::downloadFile()
 {
     string filename, file_path;
-    uint32_t filename_size, filename_size_n, payload_size, payload_size_n, filedimension;   
+    uint32_t filename_size, filename_size_n, payload_size, payload_size_n, r_dim_l, r_dim_h;
+    uint64_t filedimension;   
     array<unsigned char, AAD_LEN> aad;
     vector<unsigned char> plaintext(NUMERIC_FIELD_SIZE);
     array<unsigned char, MAX_BUF_SIZE> ciphertext;
@@ -1492,8 +1493,10 @@ int Client::downloadFile()
 // _BEGIN_(2)------ [M2: RICEZIONE_CONFERMA_RICHIESTA_DOWNLOAD_DAL_SERVER ] ------
     
     /*--- Check Response file existence in the Cloud Storage by the Server ---*/
-    filedimension = ntohl(*(uint32_t*)plaintext.data());
-    server_response.insert(server_response.begin(), plaintext.begin() + NUMERIC_FIELD_SIZE, plaintext.begin() + plaintext_len);    
+    memcpy(&r_dim_l, plaintext.data(), NUMERIC_FIELD_SIZE);
+    memcpy(&r_dim_h, plaintext.data() + NUMERIC_FIELD_SIZE, NUMERIC_FIELD_SIZE);
+    filedimension = ((uint64_t)ntohl(r_dim_h) << 32) + ntohl(r_dim_l);
+    server_response.insert(server_response.begin(), plaintext.begin() + FILE_SIZE_FIELD, plaintext.begin() + plaintext_len);    
     
     clear_vec(plaintext);
     if (server_response != MESSAGE_OK) {       
