@@ -1050,10 +1050,14 @@ int Client::uploadFile() {
     if (file_dim < 0 || file_dim == -1 || file_dim == -2) {
         free(canon_file);
 
-        if (file_dim == -2)
-            cerr << "File is too big! Upload terminated ---- " << file_dim << endl;
-        else if  (file_dim == -1)
+        if (file_dim == -2) {
+            cerr << "File is too big! Upload terminated " << endl;
+            return 1;
+        }
+        else if  (file_dim == -1) {
             cerr << "File '" << filename << "' not found! Upload not possible" << endl;
+            return 1;
+        }
         else
             cerr << "Error on getFileSize" << endl;
 
