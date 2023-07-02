@@ -451,7 +451,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
     cout << "User: " << username << endl;
     clear_vec(recv_buffer);
     
-    // check user existence
+    // check user existence (through the existence of its public key pem file on the server)
     string path = KEY_PATH_SRV + username + "/" + username + "_pub.pem";
     char *canon_path = canonicalizationPath(path);
     if (!canon_path) {
@@ -480,6 +480,7 @@ bool Server::receiveUsername(int sockd, vector<unsigned char> &client_nonce) {
 /** M2 (Authentication phase)
  * method to send the server certificate and its digital signature
  * to the client requesting the connection to the cloud
+ * moreover, the ECDH key and the server nonce are generated
  * @clt_nonce: nonce received in the firt message from the client, 
  *             to re-send signed, to the same client
  * @sockd: socket descriptor
@@ -506,7 +507,7 @@ bool Server::sendCertSign(int sockd, vector<unsigned char> &clt_nonce, array<uns
     uint32_t signed_msg_len;
     array<unsigned char, MAX_BUF_SIZE> signed_msg;  
 
-    string cert_file_name = "./server/Server_cert.pem";
+    string cert_file_name = SERV_CERT_PATH;
     FILE* cert_file = nullptr;
     uint32_t cert_size_n;
     X509* cert = nullptr;

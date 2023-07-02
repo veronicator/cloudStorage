@@ -2,6 +2,7 @@
 
 #define FILE_PATH_SRV "./server/userStorage/"
 #define KEY_PATH_SRV "./server/userKeys/"
+#define SERV_CERT_PATH "./server/Server_cert.pem"
 
 struct UserInfo {
     string username;    // client username

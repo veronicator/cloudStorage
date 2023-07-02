@@ -1,6 +1,8 @@
 #include "../utils/security_utils.h"
 
 #define FILE_PATH_CLT "./client/users/"
+#define CA_CERT_FILE "./client/FoundationOfCybersecurity_cert.pem"
+#define CA_CRL_FILE "./client/FoundationOfCybersecurity_crl.pem"
 
 class Client {
     string username;

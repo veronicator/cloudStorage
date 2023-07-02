@@ -31,7 +31,7 @@ int main() {
             }
             cout << "new pthread_created" << endl;
             threads.push_back(client_thread);
-            pthread_detach(client_thread);  // con detach non serve fare il join finale (controllare funzioni bene)
+            pthread_detach(client_thread);  // con detach non serve fare il join finale
         }
     } catch (const exception &e) {
         cout << "Exit due to an error:\n" << endl;

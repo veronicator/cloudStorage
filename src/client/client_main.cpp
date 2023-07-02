@@ -3,7 +3,7 @@
 int main(int argc, char* argv[]) {
 
     if(argc != 2) {
-        cout << "required parameters: <server ip> " << endl;    // <server port>
+        cout << "required parameters: <server ip> " << endl;
         return 1;
     }
     char command = '!';
@@ -12,7 +12,6 @@ int main(int argc, char* argv[]) {
     string usr;
     Client *client = nullptr;
     try {
-        // readUsername(usr);
         readInput(usr, MAX_NAME_SIZE, "Please, insert your username: ");
         client = new Client(usr, argv[1]);
         if(!client->authentication()) {
@@ -20,7 +19,6 @@ int main(int argc, char* argv[]) {
             delete client;
             exit(EXIT_FAILURE);
         }
-        // stampa lista utenti
 
         string msg_input;
         bool ok = true;

@@ -1,4 +1,4 @@
-// TODO: ADD WHITELIST (FOR FILENAME)
+
 // Operation codes
 #define LOGIN 0
 #define UPLOAD_REQ 1

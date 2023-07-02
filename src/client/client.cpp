@@ -208,7 +208,7 @@ bool Client::authentication() {
 
 /********************************************************************/
 
-/** Message M1: sending the <username> to the server
+/** Message M1: sending the client <username> to the server
  * @client_nonce: nonce of the connected client, to prevent a reply attack
  * @return: 1 on success, -1 on failure
 */
@@ -257,7 +257,7 @@ int Client::sendUsername(array<unsigned char, NONCE_SIZE> &client_nonce) {
 
 /** Message M2: receive the certification and the digital signature of the server
  * @client_nonce: nonce of the client previously sent, to compare with the one received from the server
- * @server_nonce: vector where store the server nonce received (it will be checked in another method)
+ * @server_nonce: vector where store the server nonce received (it will be used in another method)
  * @return: true on success, false on failure
 */
 bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce, 
@@ -333,7 +333,6 @@ bool Client::receiveCertSign(array<unsigned char, NONCE_SIZE> &client_nonce,
     srv_nonce.insert(srv_nonce.begin(), 
                     recv_buffer.begin() + start_index, 
                     recv_buffer.begin() + start_index + NONCE_SIZE);
-    //memcpy(srv_nonce.data(), recv_buffer.data() + start_index, NONCE_SIZE);   // server nonce
     start_index += NONCE_SIZE;
 
     if (start_index > UINT32_MAX - NUMERIC_FIELD_SIZE || 
@@ -576,7 +575,7 @@ int Client::sendSign(vector<unsigned char> &srv_nonce, EVP_PKEY *&priv_k) {
 
 bool Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
     // load CA certificate
-    string ca_cert_filename = "./client/FoundationOfCybersecurity_cert.pem";
+    string ca_cert_filename = CA_CERT_FILE;
     FILE* ca_cert_file = fopen(ca_cert_filename.c_str(), "r");
     if (!ca_cert_file) {
         cerr << "CA_cert file does not exists" << endl;
@@ -591,7 +590,7 @@ bool Client::buildStore(X509*& ca_cert, X509_CRL*& crl, X509_STORE*& store) {
        return false;
     }
     // load the CRL
-    string crl_filename = "./client/FoundationOfCybersecurity_crl.pem";
+    string crl_filename = CA_CRL_FILE;
     FILE* crl_file = fopen(crl_filename.c_str(), "r");
     if (!crl_file) {
         cerr << "CRL file not found" << endl;
