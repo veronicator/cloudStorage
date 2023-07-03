@@ -24,3 +24,9 @@ To execute the code, open different terminals for server and clients and type:
 for testing on the same machine, use the *localhost ip* as <server_ip>.
 
 The user_key password is the name of the user itself.
+
+## Credits
+- [Veronica Torraca](https://github.com/veronicator)
+- [Emanuele Tinghi](https://github.com/EmanueleTinghi)
+- [Gaetano Sferrazza](https://github.com/g-sferr)
+
